@@ -3,10 +3,12 @@
 #include "Console.h"
 #include "Events.h"
 #include "Game.h"
+#include "GfxApi.h"
 #include "NativeCall.h"
 #include "Net.h"
 #include "ScriptRunner.h"
 #include "Text.h"
+#include "Ui.h"
 
 // Lua собран как C++ (исключения вместо longjmp) — заголовки подключаются без extern "C".
 #include "lua.h"
@@ -56,6 +58,7 @@ namespace
         std::vector<int> subscriptions;                        // Events ids
         std::map<std::string, std::vector<int>> netHandlers[2]; // event -> refs функций
         std::vector<Bind> binds;                                // client
+        std::map<int, int> clickHandlers;                       // client: элемент интерфейса -> ref функции
     };
 
     lua_State* L = nullptr;
@@ -645,16 +648,182 @@ namespace
         return 0;
     }
 
+    // ---------- API: ui (client) ----------
+
+    Ui::Color ReadColor(lua_State* L, int t)
+    {
+        Ui::Color c;
+        if (lua_getfield(L, t, "color") == LUA_TTABLE)
+        {
+            int ct = lua_gettop(L);
+            auto channel = [&](int i, int def) {
+                lua_rawgeti(L, ct, i);
+                int v = lua_isinteger(L, -1) ? static_cast<int>(lua_tointeger(L, -1)) : def;
+                lua_pop(L, 1);
+                return std::clamp(v, 0, 255);
+            };
+            c = { channel(1, 255), channel(2, 255), channel(3, 255), channel(4, 255) };
+        }
+        lua_pop(L, 1);
+        return c;
+    }
+
+    int IntField(lua_State* L, int t, const char* key, int def)
+    {
+        lua_getfield(L, t, key);
+        int v = lua_isnumber(L, -1) ? static_cast<int>(lua_tointeger(L, -1)) : def;
+        lua_pop(L, 1);
+        return v;
+    }
+
+    std::string StrField(lua_State* L, int t, const char* key, const std::string& def = {})
+    {
+        lua_getfield(L, t, key);
+        std::string v = lua_isstring(L, -1) ? lua_tostring(L, -1) : def;
+        lua_pop(L, 1);
+        return v;
+    }
+
+    int PushElement(lua_State* L, int handle, const std::string& what, const std::string& name)
+    {
+        if (!handle)
+            return luaL_error(L, "ui.%s '%s' failed (see [engine] messages above)", what.c_str(), name.c_str());
+        lua_pushinteger(L, handle);
+        return 1;
+    }
+
+    // ui.window{ name=, parent=0, x=, y=, w=, h= }
+    int l_uiWindow(lua_State* L)
+    {
+        luaL_checktype(L, 1, LUA_TTABLE);
+        std::string name = StrField(L, 1, "name");
+        return PushElement(L, Ui::CreateGameWindow(name, IntField(L, 1, "parent", 0), IntField(L, 1, "x", 0), IntField(L, 1, "y", 0),
+                                               IntField(L, 1, "w", 200), IntField(L, 1, "h", 100)), "window", name);
+    }
+
+    // ui.text{ name=, parent=0, text=, x=, y=, w=0, h=0, font="gc_font_serif_15", color={r,g,b,a} }
+    int l_uiText(lua_State* L)
+    {
+        luaL_checktype(L, 1, LUA_TTABLE);
+        std::string name = StrField(L, 1, "name");
+        return PushElement(L, Ui::CreateGameText(name, IntField(L, 1, "parent", 0), StrField(L, 1, "text"), IntField(L, 1, "x", 0),
+                                             IntField(L, 1, "y", 0), IntField(L, 1, "w", 0), IntField(L, 1, "h", 0),
+                                             StrField(L, 1, "font", "gc_font_serif_15"), ReadColor(L, 1)), "text", name);
+    }
+
+    // ui.button{ name=, parent=0, text=, x=, y=, material="btn.large", hint="", onClick=function(element) end }
+    int l_uiButton(lua_State* L)
+    {
+        Mod* mod = ModFromUpvalue(L);
+        luaL_checktype(L, 1, LUA_TTABLE);
+        std::string name = StrField(L, 1, "name");
+        int handle = Ui::CreateGameButton(name, IntField(L, 1, "parent", 0), StrField(L, 1, "text"), IntField(L, 1, "x", 0),
+                                      IntField(L, 1, "y", 0), StrField(L, 1, "material", "btn.large"), StrField(L, 1, "hint"), 0);
+        if (handle && lua_getfield(L, 1, "onClick") == LUA_TFUNCTION)
+        {
+            auto it = mod->clickHandlers.find(handle);
+            if (it != mod->clickHandlers.end())
+                luaL_unref(L, LUA_REGISTRYINDEX, it->second); // кнопку пересоздали — старый обработчик не нужен
+            mod->clickHandlers[handle] = luaL_ref(L, LUA_REGISTRYINDEX);
+        }
+        else
+            lua_pop(L, 1);
+        return PushElement(L, handle, "button", name);
+    }
+
+    // ui.onClick(element, function(element) end) — для любой нашей кнопки
+    int l_uiOnClick(lua_State* L)
+    {
+        Mod* mod = ModFromUpvalue(L);
+        int handle = static_cast<int>(luaL_checkinteger(L, 1));
+        luaL_checktype(L, 2, LUA_TFUNCTION);
+        lua_pushvalue(L, 2);
+        mod->clickHandlers[handle] = luaL_ref(L, LUA_REGISTRYINDEX);
+        return 0;
+    }
+
+    // Обработчик ui.hookState (главный поток игры; L — глобальное состояние). payload: "элемент|press|tag".
+    void CallStateHook(int ref, const std::string& who, const std::string& payload)
+    {
+        if (!L)
+            return;
+        int element = atoi(payload.c_str());
+        size_t a = payload.find('|'), b = a == std::string::npos ? a : payload.find('|', a + 1);
+        std::string press = a != std::string::npos ? payload.substr(a + 1, (b == std::string::npos ? payload.size() : b) - a - 1) : "";
+        int tag = b != std::string::npos ? atoi(payload.c_str() + b + 1) : 0;
+
+        lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
+        lua_pushinteger(L, element);
+        lua_pushstring(L, press.c_str());
+        lua_pushinteger(L, tag);
+        if (Call(3, 1, who))
+        {
+            if (lua_toboolean(L, -1))
+                Events::RequestBlock(); // обработчик вернул true — игра это нажатие не обработает
+            lua_pop(L, 1);
+        }
+    }
+
+    // ui.hookState("EventMenu", function(element, press, tag) return true --[[ = игра не обработает ]] end)
+    int l_uiHookState(lua_State* L)
+    {
+        Mod* mod = ModFromUpvalue(L);
+        std::string state = luaL_checkstring(L, 1);
+        luaL_checktype(L, 2, LUA_TFUNCTION);
+        lua_pushvalue(L, 2);
+        int ref = luaL_ref(L, LUA_REGISTRYINDEX);
+        std::string who = Who(*mod, Client);
+
+        Ui::HookState(state);
+        int id = Events::Subscribe("guistate." + state, [ref, who](const std::string&, const std::string& payload) {
+            CallStateHook(ref, who, payload);
+        });
+        mod->subscriptions.push_back(id);
+        return 0;
+    }
+
+    // Общие функции работы с элементами (базовое окружение клиента).
+    const char* kClientPrelude = R"lua(
+ui = {}
+
+-- Элемент интерфейса по имени: верхнего уровня или внутри parent. nil — не найден.
+function ui.find(name, parent)
+    local h = parent and native.GetGUIElementIndexByNameParent(name, parent) or native.GetGUIElementTopIndexByName(name)
+    if h == 0 then return nil end
+    return h
+end
+function ui.name(h) return native.GetGUIElementNameByIndex(h) end
+function ui.getText(h) return native.GetGUIElementText(h) end
+function ui.setText(h, text) native.SetGUIElementText(h, text) end
+function ui.isVisible(h) return native.GetGUIElementVisible(h) end
+function ui.setVisible(h, visible) native.SetGUIElementVisible(h, visible) end
+function ui.getPosition(h) return native.GetGUIElementPositionX(h), native.GetGUIElementPositionY(h) end
+function ui.setPosition(h, x, y) native.SetGUIElementPosition(h, x, y) end
+function ui.setHint(h, hint) native.SetGUIElementHint(h, hint) end
+function ui.remove(h) native.RemoveGUIElement(h) end
+function ui.children(h)
+    local list = {}
+    for i = 0, native.GetGUIElementChildrenCount(h) - 1 do
+        list[#list + 1] = native.GetGUIElementChildrenByIndex(h, i)
+    end
+    return list
+end
+)lua";
+
     // ---------- API: native ----------
 
-    // Клиентским скриптам — только чтение: нативы, которые по имени ничего не меняют.
-    bool IsReadOnlyNative(const std::string& name)
+    // Клиентским скриптам — нативы, которые ничего не меняют в игре: чтение (Get*, Is*, ...) и интерфейс
+    // (*GUI* — меняет только картинку у этого игрока), кроме запуска состояний, которые могут делать что угодно.
+    bool IsClientNative(const std::string& name)
     {
         static const char* prefixes[] = { "Get", "Is", "Has", "Can", "Calc", "Check", "Find", "Count" };
         for (const char* p : prefixes)
             if (name.rfind(p, 0) == 0)
                 return true;
-        return false;
+        bool gui = name.find("GUI") != std::string::npos;
+        bool runsStates = name.find("ExecuteState") != std::string::npos || name.find("DelayExecute") != std::string::npos ||
+                          name.find("TimeExec") != std::string::npos;
+        return gui && !runsStates;
     }
 
     int l_nativeCall(lua_State* L)
@@ -710,7 +879,7 @@ namespace
         const NativeCall::Signature* sig = NativeCall::Find(name);
         if (!sig)
             return 0; // nil
-        if (lua_tointeger(L, lua_upvalueindex(1)) == Client && !IsReadOnlyNative(sig->name))
+        if (lua_tointeger(L, lua_upvalueindex(1)) == Client && !IsClientNative(sig->name))
         {
             lua_pushstring(L, sig->name.c_str());
             lua_pushcclosure(L, l_nativeServerOnly, 1);
@@ -720,6 +889,25 @@ namespace
             lua_pushlightuserdata(L, const_cast<NativeCall::Signature*>(sig));
             lua_pushcclosure(L, l_nativeCall, 1);
         }
+        lua_pushvalue(L, -1);
+        lua_setfield(L, 1, name);
+        return 1;
+    }
+
+    // ---------- API: gfx ----------
+
+    // gfx.<Name> — как native.<Name>, но только нативы графики (GfxApi::IsGraphicsNative) и без
+    // деления на стороны: картинка у каждого своя, на ход партии не влияет.
+    int l_gfxIndex(lua_State* L)
+    {
+        const char* name = luaL_checkstring(L, 2);
+        if (!GfxApi::IsGraphicsNative(name))
+            return 0; // nil
+        const NativeCall::Signature* sig = NativeCall::Find(name);
+        if (!sig)
+            return 0;
+        lua_pushlightuserdata(L, const_cast<NativeCall::Signature*>(sig));
+        lua_pushcclosure(L, l_nativeCall, 1);
         lua_pushvalue(L, -1);
         lua_setfield(L, 1, name);
         return 1;
@@ -845,6 +1033,16 @@ end
         lua_setmetatable(L, -2);
         lua_setfield(L, -2, "native");
 
+        if (side == Client)
+        {
+            lua_newtable(L); // gfx
+            lua_newtable(L);
+            lua_pushcfunction(L, l_gfxIndex);
+            lua_setfield(L, -2, "__index");
+            lua_setmetatable(L, -2);
+            lua_setfield(L, -2, "gfx");
+        }
+
         g_baseEnvRef[side] = luaL_ref(L, LUA_REGISTRYINDEX);
 
         std::string error;
@@ -852,6 +1050,25 @@ end
             LOG_ERROR("[lua] prelude: %s", error.c_str());
         else
             Call(0, 0, "prelude");
+
+        if (side == Client)
+        {
+            if (!LoadChunk(kClientPrelude, "=prelude.client", g_baseEnvRef[side], &error))
+                LOG_ERROR("[lua] client prelude: %s", error.c_str());
+            else
+                Call(0, 0, "prelude.client");
+
+            if (!LoadChunk(GfxApi::Prelude(), "=prelude.gfx", g_baseEnvRef[side], &error))
+                LOG_ERROR("[lua] gfx prelude: %s", error.c_str());
+            else
+                Call(0, 0, "prelude.gfx");
+
+            lua_rawgeti(L, LUA_REGISTRYINDEX, g_baseEnvRef[side]); // ui.window / ui.text — без привязки к моду
+            lua_getfield(L, -1, "ui");
+            SetPlain("window", l_uiWindow);
+            SetPlain("text", l_uiText);
+            lua_pop(L, 2);
+        }
     }
 
     // Окружение стороны мода: свои log/print/require/events/net/(input)/mod, остальное — из базового.
@@ -886,6 +1103,18 @@ end
             lua_newtable(L); // input
             SetFunc("bind", l_inputBind, modIndex, side);
             lua_setfield(L, -2, "input");
+
+            lua_newtable(L); // ui: своё (кнопки, клики, перехват) + общее из базового окружения через __index
+            SetFunc("button", l_uiButton, modIndex, side);
+            SetFunc("onClick", l_uiOnClick, modIndex, side);
+            SetFunc("hookState", l_uiHookState, modIndex, side);
+            lua_newtable(L);
+            lua_rawgeti(L, LUA_REGISTRYINDEX, g_baseEnvRef[Client]);
+            lua_getfield(L, -1, "ui");
+            lua_setfield(L, -3, "__index");
+            lua_pop(L, 1);
+            lua_setmetatable(L, -2);
+            lua_setfield(L, -2, "ui");
         }
 
         lua_newtable(L); // mod — информация о себе
@@ -1026,6 +1255,7 @@ end
         for (auto& handlers : mod.netHandlers)
             handlers.clear();
         mod.binds.clear();
+        mod.clickHandlers.clear();
     }
 
     void Close()
@@ -1070,6 +1300,15 @@ end
 
         g_console.id = "console";
         CreateEnv(g_console, -1, Server);
+        // Консоли — ещё и клиентские таблицы: интерфейс (ui.find/setText/window…) и графика (gfx).
+        lua_rawgeti(L, LUA_REGISTRYINDEX, g_console.env[Server].envRef);
+        lua_rawgeti(L, LUA_REGISTRYINDEX, g_baseEnvRef[Client]);
+        for (const char* table : { "ui", "gfx" })
+        {
+            lua_getfield(L, -1, table);
+            lua_setfield(L, -3, table);
+        }
+        lua_pop(L, 2);
 
         fs::path root = ModsDir();
         std::error_code ec;
@@ -1198,6 +1437,25 @@ void LuaHost::OnNetMessage(char direction, const std::string& modId, const std::
         return;
     }
     LOG_WARN("[lua] net message for mod '%s' which is not loaded here", modId.c_str());
+}
+
+void LuaHost::OnUiPress(int element, const std::string& press, int tag)
+{
+    if (!L || press != "c") // onClick — только щелчок
+        return;
+    for (auto& mod : g_mods)
+    {
+        if (!mod.loaded)
+            continue;
+        auto it = mod.clickHandlers.find(element);
+        if (it == mod.clickHandlers.end())
+            continue;
+        lua_rawgeti(L, LUA_REGISTRYINDEX, it->second);
+        lua_pushinteger(L, element);
+        lua_pushinteger(L, tag);
+        Call(2, 0, Who(mod, Client));
+        return;
+    }
 }
 
 void LuaHost::PollInput(bool active)

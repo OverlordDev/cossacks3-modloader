@@ -25,6 +25,11 @@ namespace Events
     // Сгенерировать событие из C++ (главный поток игры).
     void Emit(const std::string& event, const std::string& payload = {});
 
+    // Из обработчика: попросить прервать состояние игры, в которое вставлено событие. Работает, если вставка
+    // после вызова проверяет ответ: <вызов DScriptSetgDbgString0>; + kBlockCheck.
+    void RequestBlock();
+    inline constexpr char kBlockCheck[] = " if (DScriptGetgDbgString0='ML:block') then exit;";
+
     int Subscribe(const std::string& event, Handler handler); // event = "*" — все события
     void Unsubscribe(int id);
 

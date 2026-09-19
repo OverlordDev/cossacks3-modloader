@@ -195,6 +195,8 @@
     <ClInclude Include="core/Overlay.h" />
 
     <ClInclude Include="core/Game.h" />
+    <ClInclude Include="core/GfxApi.h" />
+    <ClInclude Include="core/Ui.h" />
 
     <ClInclude Include="core/Net.h" />
     <ClInclude Include="core/Checksum.h" />
@@ -235,6 +237,8 @@
     <ClCompile Include="core/Overlay.cpp" />
 
     <ClCompile Include="core/Game.cpp" />
+    <ClCompile Include="core/GfxApi.cpp" />
+    <ClCompile Include="core/Ui.cpp" />
 
     <ClCompile Include="core/Net.cpp" />
     <ClCompile Include="core/Checksum.cpp" />

@@ -71,6 +71,7 @@ namespace
     }
 
     constexpr char kRetPrefix[] = "ret:";
+    bool g_blockRequested = false;
     bool g_capturing = false;
     bool g_captured = false;
     std::string g_capture;
@@ -91,7 +92,12 @@ namespace
             }
             // "event|payload" — данные события (например id игрока) после '|'
             const char* bar = strchr(body, '|');
+            bool saved = g_blockRequested; // события бывают вложенными
+            g_blockRequested = false;
             Dispatch(bar ? std::string(body, bar) : std::string(body), bar ? std::string(bar + 1) : std::string());
+            // Ответ для вставки: 'ML:block' — прервать состояние (см. kBlockCheck в Events.h).
+            oTrampoline(GameApi::DelphiString(g_blockRequested ? "ML:block" : "").get());
+            g_blockRequested = saved;
             return;
         }
         oTrampoline(msg);
@@ -211,6 +217,11 @@ void Events::HookGuiStateCode(const std::string& state, const std::string& key, 
 void Events::Emit(const std::string& event, const std::string& payload)
 {
     Dispatch(event, payload);
+}
+
+void Events::RequestBlock()
+{
+    g_blockRequested = true;
 }
 
 int Events::Subscribe(const std::string& event, Handler handler)

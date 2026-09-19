@@ -12,6 +12,7 @@
 #include "Overlay.h"
 #include "Profiler.h"
 #include "ScriptRunner.h"
+#include "Ui.h"
 
 #include <set>
 
@@ -56,6 +57,8 @@ DWORD WINAPI Loader::MainThread(LPVOID param)
             });
             Game::Install();
             Net::Install(LuaHost::OnNetMessage);
+            Ui::Install();
+            Ui::SetPressHandler(LuaHost::OnUiPress);
         }
         else
             LOG_WARN("Events failed to install");
@@ -80,6 +83,7 @@ DWORD WINAPI Loader::MainThread(LPVOID param)
         Console::PollInput();
         FrameStats::Update();
         Events::Update();
+        Ui::Update();
         Cheats::Update();
         Sleep(50);
 

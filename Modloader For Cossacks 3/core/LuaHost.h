@@ -20,6 +20,9 @@ namespace LuaHost
     // Сообщение мода из сети (Net::Receiver). Главный поток игры.
     void OnNetMessage(char direction, const std::string& mod, const std::string& event, const std::string& data, int from);
 
+    // Нажатие кнопки, созданной через ui.button (Ui::PressHandler). Главный поток игры.
+    void OnUiPress(int element, const std::string& press, int tag);
+
     // Бинды клиентских скриптов; active — окно игры активно и меню модлоадера закрыто. Каждый кадр.
     void PollInput(bool active);
 

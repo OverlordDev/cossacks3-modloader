@@ -4975,6 +4975,38 @@
 
 Крутилки картинки из консоли. Пост-эффекты: `data/posteffects/posteffects.lib` (пресеты `default/winter/desaturate`, `DOF/SSAO/Gamma` по дефолту `False`), шейдеры `data/shaders/tone/*.frag`, свет `data/env/lights/light.cfg`, камеры `data/cameras/camera.cfg`. Рендер — OpenGL, точка хука кадра — `gdi32.SwapBuffers`.
 
+### gfx — графика из Lua
+
+Клиентским скриптам и консоли доступна таблица `gfx` (`core/GfxApi.*`): нативы графики из белого списка
+как `gfx.SetShadowMapSize(4096)` плюс группы-обёртки. Графика — дело каждого компьютера: на ход партии
+не влияет, поэтому разрешена клиенту и не требует `multiplayer = "required"`.
+
+Группа читается вызовом без аргументов и пишется таблицей:
+
+```lua
+gfx.fog{ density = 2.0, power = 1.2, finish = 3000 }   -- записать (finish, т.к. end — ключевое слово)
+local f = gfx.fog()                                    -- { enabled = true, density = 2.0, ... }
+```
+
+| Группа | Ключи |
+| --- | --- |
+| `post` | `preset` (запись в posteffects.lib), `preset2`, `ssao`, `dof` |
+| `camera` | `dof`, `depth`, `dynamicFocal`, `focal {min,max,power}`, `sceneScale {x,y}`, `angle`, `distance`, `rotateSpeed`, `zoomSpeed`, `bounded`, `autoRayCast`, `wheelRotate`, `wheelZoom`, `profile`, `height` (чтение); методы `fovOf`, `focalOf` |
+| `fog` | `enabled`, `density`, `power`, `start`, `finish`, `offset`, `depth` |
+| `clouds` | `visible`, `active`, `height`, `horizon`, `fog`, `speed` |
+| `sky` | `visible`, `active`, `flareAngle`, `flareZ`, `flare` |
+| `shadows` | `enabled`, `size`, `scaleHeight`, `addHeight`, `lightDepth`, `polygonOffset {scale,bias}` |
+| `light` | `pattern`, `index`, `blendTo`, `blendTime`; метод `list()` |
+| `time` | `game`, `speed`, `season`, `dayNight`, `fogOfWarDay`, `current`/`total`/`real` (чтение) |
+| `water` | `name`, `index`, `offset` (чтение) |
+| `wind` | `vector {x,y,z}`, `target {x,y,z}`, `random`, `interval` |
+| `terrain` | `visible`, `borders`, `bordersVisible`, `bordersStep`, `colorMode`; метод `setColor` |
+
+Сверх групп: `gfx.pfx.brightness/gamma(менеджер [, значение])`, `gfx.highlight{...}`, `gfx.vsync([вкл])`,
+`gfx.snapshot()` — снимок всего, что можно записать обратно, и `gfx.apply(профиль)` — применить целиком.
+Опечатка в ключе и запись в поле «только чтение» дают ошибку сразу, а не молча ничего не делают.
+Пример: `examples/mods/graphics_mod`.
+
 ### Camera — 138
 
 | VA | Объявление |
