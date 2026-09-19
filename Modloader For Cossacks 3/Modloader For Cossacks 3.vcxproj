@@ -1,0 +1,267 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>18.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{68838970-70ae-4d34-a46b-f5209ebaaa19}</ProjectGuid>
+    <RootNamespace>ModloaderForCossacks3</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;_DEBUG;MODLOADERFORCOSSACKS3_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalIncludeDirectories>$(SolutionDir)external/minhook/include;$(SolutionDir)external/lua;$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableUAC>false</EnableUAC>
+    </Link>
+    <Manifest>
+      <EnableSegmentHeap>true</EnableSegmentHeap>
+    </Manifest>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;NDEBUG;MODLOADERFORCOSSACKS3_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalIncludeDirectories>$(SolutionDir)external/minhook/include;$(SolutionDir)external/lua;$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableUAC>false</EnableUAC>
+    </Link>
+    <Manifest>
+      <EnableSegmentHeap>true</EnableSegmentHeap>
+    </Manifest>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>_DEBUG;MODLOADERFORCOSSACKS3_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalIncludeDirectories>$(SolutionDir)external/minhook/include;$(SolutionDir)external/lua;$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableUAC>false</EnableUAC>
+    </Link>
+    <Manifest>
+      <EnableSegmentHeap>true</EnableSegmentHeap>
+    </Manifest>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>NDEBUG;MODLOADERFORCOSSACKS3_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalIncludeDirectories>$(SolutionDir)external/minhook/include;$(SolutionDir)external/lua;$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableUAC>false</EnableUAC>
+    </Link>
+    <Manifest>
+      <EnableSegmentHeap>true</EnableSegmentHeap>
+    </Manifest>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClInclude Include="framework.h" />
+    <ClInclude Include="pch.h" />
+    <ClInclude Include="core/Console.h" />
+    <ClInclude Include="core/Hooks.h" />
+    <ClInclude Include="core/Loader.h" />
+    <ClInclude Include="mods/ExampleMod.h" />
+
+    <ClInclude Include="mods/ScriptLog.h" />
+
+    <ClInclude Include="mods/Cheats.h" />
+
+    <ClInclude Include="core/GameApi.h" />
+
+    <ClInclude Include="core/ScriptRunner.h" />
+
+    <ClInclude Include="core/DevConsole.h" />
+
+    <ClInclude Include="core/FrameStats.h" />
+
+    <ClInclude Include="core/Profiler.h" />
+
+    <ClInclude Include="core/Symbols.h" />
+
+    <ClInclude Include="core/Engine.h" />
+
+    <ClInclude Include="core/Events.h" />
+    <ClInclude Include="core/LuaHost.h" />
+    <ClInclude Include="core/NativeCall.h" />
+    <ClInclude Include="core/Text.h" />
+
+    <None Include="core/FunctionsTable.inc" />
+
+    <None Include="core/NativesTable.inc" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="dllmain.cpp" />
+    <ClCompile Include="core/Console.cpp" />
+    <ClCompile Include="core/Hooks.cpp" />
+    <ClCompile Include="core/Loader.cpp" />
+    <ClCompile Include="mods/ExampleMod.cpp" />
+
+    <ClCompile Include="mods/ScriptLog.cpp" />
+
+    <ClCompile Include="mods/Cheats.cpp" />
+
+    <ClCompile Include="core/ScriptRunner.cpp" />
+
+    <ClCompile Include="core/DevConsole.cpp" />
+
+    <ClCompile Include="core/FrameStats.cpp" />
+
+    <ClCompile Include="core/Profiler.cpp" />
+
+    <ClCompile Include="core/Symbols.cpp" />
+
+    <ClCompile Include="core/Engine.cpp" />
+
+    <ClCompile Include="core/Events.cpp" />
+    <ClCompile Include="core/LuaHost.cpp" />
+    <ClCompile Include="core/NativeCall.cpp" />
+
+    <ClCompile Include="core/GameApi.cpp" />
+    <ClCompile Include="$(SolutionDir)external/minhook/src/buffer.c"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/minhook/src/hook.c"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/minhook/src/trampoline.c"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/minhook/src/hde/hde32.c"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/minhook/src/hde/hde64.c"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/lua/lapi.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/lua/lauxlib.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/lua/lbaselib.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/lua/lcode.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/lua/lcorolib.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/lua/lctype.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/lua/ldebug.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/lua/ldo.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/lua/ldump.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/lua/lfunc.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/lua/lgc.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/lua/llex.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/lua/lmathlib.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/lua/lmem.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/lua/lobject.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/lua/lopcodes.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/lua/loslib.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/lua/lparser.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/lua/lstate.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/lua/lstring.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/lua/lstrlib.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/lua/ltable.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/lua/ltablib.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/lua/ltm.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/lua/lundump.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/lua/lutf8lib.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/lua/lvm.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/lua/lzio.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+    <ClCompile Include="pch.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
+    </ClCompile>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>
