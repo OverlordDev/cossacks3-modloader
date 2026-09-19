@@ -8,8 +8,11 @@
 
 namespace
 {
-    constexpr uintptr_t VaChecksumNative = 0x6C3FF8; // function StateMachineLibraryCodeMD5Checksum(): string
-    constexpr uintptr_t VaMd5            = 0x6BE484; // (eax = AnsiString, edx = var hex-результат)
+    // sub_718138(eax = TXProject, edx = var результат) — считает хеш. Вызывают его скриптовый натив
+    // StateMachineLibraryCodeMD5Checksum (0x6C3FF8) и TXRecordManager (sub_736748), который отправляет хеш
+    // публичному серверу (PublicSrvSendChecksum) — поэтому перехватываем саму функцию, а не натив.
+    constexpr uintptr_t VaLibChecksum    = 0x718138;
+    constexpr uintptr_t VaMd5           = 0x6BE484; // (eax = AnsiString, edx = var hex-результат)
     constexpr uintptr_t VaIsClass        = 0x40470C; // @IsClass(eax = obj, edx = class) -> al
     constexpr uintptr_t VaLStrAsg        = 0x405454; // @LStrAsg(eax = var dest, edx = src)
     constexpr uintptr_t VaTXDWSStateRef  = 0x8625E4; // переменная с классом TXDWSState
@@ -17,8 +20,7 @@ namespace
     constexpr uintptr_t OffProjectSmList = 0x4C; // TXProject -> список state machine
     constexpr uintptr_t OffEngineExtra   = 0x90; // TXDMScript -> строка, тоже входит в хеш
 
-    using ChecksumFn = void(__stdcall*)(char** result);
-    ChecksumFn oChecksum = nullptr;
+    void* oLibChecksum = nullptr;
 
     std::string Md5(const std::string& text)
     {
@@ -88,10 +90,9 @@ namespace
     }
 
     // Как sub_718138: MD5 от склейки хешей всех state machine проекта и MD5 строки движка.
-    std::string ComputeChecksum(bool filter)
+    std::string ComputeChecksum(uint8_t* project, bool filter)
     {
         uint8_t* engine = Engine::ScriptEngine();
-        uint8_t* project = *reinterpret_cast<uint8_t**>(engine + GameApi::Off::ScriptProject);
         uint8_t* list = *reinterpret_cast<uint8_t**>(project + OffProjectSmList);
         uint8_t* inner = *reinterpret_cast<uint8_t**>(list + 4);
         int count = *reinterpret_cast<int*>(inner + 0x0C);
@@ -118,24 +119,52 @@ namespace
         }
     }
 
-    void __stdcall hkChecksum(char** result)
+    void __cdecl OnLibChecksum(uint8_t* project, char** result)
     {
-        AssignDelphiString(result, ComputeChecksum(true));
+        AssignDelphiString(result, ComputeChecksum(project, true));
+    }
+
+    // Delphi register: eax = project, edx = var result. Полностью заменяем оригинал.
+    __declspec(naked) void hkLibChecksum()
+    {
+        __asm
+        {
+            pushad
+            push edx
+            push eax
+            call OnLibChecksum
+            add esp, 8
+            popad
+            ret
+        }
+    }
+
+    uint8_t* CurrentProject()
+    {
+        return *reinterpret_cast<uint8_t**>(Engine::ScriptEngine() + GameApi::Off::ScriptProject);
     }
 
     std::string EngineChecksum()
     {
+        void* fn = oLibChecksum;
+        uint8_t* project = CurrentProject();
         char* out = nullptr;
-        oChecksum(&out);
+        char** pout = &out;
+        __asm
+        {
+            mov eax, project
+            mov edx, pout
+            call fn
+        }
         std::string result = out ? out : "";
-        Engine::FreeString(&out);
+        Engine::FreeString(pout);
         return result;
     }
 }
 
 bool Checksum::Install()
 {
-    return Hooks::Create("Script checksum", GameApi::Addr(VaChecksumNative), &hkChecksum, &oChecksum);
+    return Hooks::CreateRaw("Script checksum", GameApi::Addr(VaLibChecksum), reinterpret_cast<void*>(hkLibChecksum), &oLibChecksum);
 }
 
 void Checksum::Print()
@@ -144,8 +173,8 @@ void Checksum::Print()
         std::string stored;
         ScriptRunner::Call("ML_RET(gstring_checksumlong);", "", &stored);
         Console::Print("  engine (with modloader changes): %s", EngineChecksum().c_str());
-        Console::Print("  replica of engine algorithm:     %s  (must equal the line above)", ComputeChecksum(false).c_str());
-        Console::Print("  vanilla (reported to lobby):     %s", ComputeChecksum(true).c_str());
+        Console::Print("  replica of engine algorithm:     %s  (must equal the line above)", ComputeChecksum(CurrentProject(), false).c_str());
+        Console::Print("  vanilla (reported to lobby):     %s", ComputeChecksum(CurrentProject(), true).c_str());
         Console::Print("  stored by game (last menu):      %s", stored.c_str());
     });
 }
