@@ -37,7 +37,7 @@ namespace
 
     bool g_initialized = false;
     bool g_open = false;
-    HWND g_hwnd = nullptr;
+    std::atomic<HWND> g_hwnd = nullptr; // читается из потока модлоадера (RenderWindow)
     WNDPROC g_origProc = nullptr;
     bool g_unicode = false;
     std::string g_iniPath;
@@ -71,12 +71,12 @@ namespace
 
     void RestoreWndProc()
     {
-        if (!g_hwnd || !g_origProc)
+        if (!g_hwnd.load() || !g_origProc)
             return;
         if (g_unicode)
-            SetWindowLongW(g_hwnd, GWL_WNDPROC, reinterpret_cast<LONG>(g_origProc));
+            SetWindowLongW(g_hwnd.load(), GWL_WNDPROC, reinterpret_cast<LONG>(g_origProc));
         else
-            SetWindowLongA(g_hwnd, GWL_WNDPROC, reinterpret_cast<LONG>(g_origProc));
+            SetWindowLongA(g_hwnd.load(), GWL_WNDPROC, reinterpret_cast<LONG>(g_origProc));
         g_origProc = nullptr;
     }
 
@@ -388,4 +388,9 @@ void Overlay::Shutdown()
     }
     CloseHandle(g_shutdownDone);
     g_shutdownDone = nullptr;
+}
+
+HWND Overlay::RenderWindow()
+{
+    return g_hwnd.load();
 }

@@ -4,6 +4,7 @@
 #include "Console.h"
 #include "Engine.h"
 #include "Events.h"
+#include "Overlay.h"
 
 #include <mutex>
 #include <atomic>
@@ -169,38 +170,74 @@ void ScriptRunner::Install()
     g_pumpMsg = RegisterWindowMessageW(L"Cossacks3ModLoader.Pump");
 }
 
+namespace
+{
+    WNDPROC CurrentProc(HWND wnd, bool unicode)
+    {
+        return reinterpret_cast<WNDPROC>(unicode ? GetWindowLongW(wnd, GWL_WNDPROC) : GetWindowLongA(wnd, GWL_WNDPROC));
+    }
+
+    void Detach()
+    {
+        if (!g_wnd)
+            return;
+        if (CurrentProc(g_wnd, g_unicode) == WndProc) // поверх нас никто не встал — снимаем аккуратно
+        {
+            if (g_unicode)
+                SetWindowLongW(g_wnd, GWL_WNDPROC, reinterpret_cast<LONG>(g_origProc));
+            else
+                SetWindowLongA(g_wnd, GWL_WNDPROC, reinterpret_cast<LONG>(g_origProc));
+        }
+        g_wnd = nullptr;
+        g_origProc = nullptr;
+    }
+
+    void Attach(HWND wnd)
+    {
+        g_unicode = IsWindowUnicode(wnd) != FALSE;
+        g_scriptThread = GetWindowThreadProcessId(wnd, nullptr);
+        g_origProc = reinterpret_cast<WNDPROC>(g_unicode
+            ? SetWindowLongW(wnd, GWL_WNDPROC, reinterpret_cast<LONG>(WndProc))
+            : SetWindowLongA(wnd, GWL_WNDPROC, reinterpret_cast<LONG>(WndProc)));
+        g_wnd = wnd;
+        LOG_INFO("ScriptRunner: attached to game window %p, script thread = %lu", wnd, g_scriptThread.load());
+
+        std::lock_guard lock(g_mutex);
+        if (!g_queue.empty())
+            PostMessageW(g_wnd, g_pumpMsg, 0, 0);
+    }
+}
+
+// Окно игры может смениться: при автозагрузке мы стартуем раньше игры и поначалу видим только
+// служебные окна, а настоящее окно рендера появляется позже. Поэтому на каждом такте сверяемся
+// с тем, в котором игра рисует, и перевешиваемся, если это другое окно или игра поставила свою
+// оконную процедуру поверх нашей.
 void ScriptRunner::Update()
 {
-    if (g_wnd)
+    HWND want = Overlay::RenderWindow();
+    if (!want && !g_wnd) // кадров ещё не было (игра свёрнута?) — берём по признакам
+        EnumWindows(FindGameWindow, reinterpret_cast<LPARAM>(&want));
+    if (!want || !IsWindow(want))
         return;
 
-    HWND wnd = nullptr;
-    EnumWindows(FindGameWindow, reinterpret_cast<LPARAM>(&wnd));
-    if (!wnd)
-        return;
-
-    g_unicode = IsWindowUnicode(wnd) != FALSE;
-    g_scriptThread = GetWindowThreadProcessId(wnd, nullptr);
-    g_origProc = reinterpret_cast<WNDPROC>(g_unicode
-        ? SetWindowLongW(wnd, GWL_WNDPROC, reinterpret_cast<LONG>(WndProc))
-        : SetWindowLongA(wnd, GWL_WNDPROC, reinterpret_cast<LONG>(WndProc)));
-    g_wnd = wnd;
-    LOG_INFO("ScriptRunner: attached to game window %p, script thread = %lu", wnd, g_scriptThread.load());
-
-    std::lock_guard lock(g_mutex);
-    if (!g_queue.empty())
-        PostMessageW(g_wnd, g_pumpMsg, 0, 0);
+    if (g_wnd == want)
+    {
+        if (CurrentProc(g_wnd, g_unicode) == WndProc)
+            return; // всё на месте
+        LOG_WARN("ScriptRunner: the game replaced the window procedure — reattaching");
+        g_wnd = nullptr;
+    }
+    else if (g_wnd)
+    {
+        LOG_INFO("ScriptRunner: game window changed %p -> %p", g_wnd, want);
+        Detach();
+    }
+    Attach(want);
 }
 
 void ScriptRunner::Uninstall()
 {
-    if (!g_wnd)
-        return;
-    if (g_unicode)
-        SetWindowLongW(g_wnd, GWL_WNDPROC, reinterpret_cast<LONG>(g_origProc));
-    else
-        SetWindowLongA(g_wnd, GWL_WNDPROC, reinterpret_cast<LONG>(g_origProc));
-    g_wnd = nullptr;
+    Detach();
 }
 
 DWORD ScriptRunner::GameThreadId()
