@@ -192,9 +192,12 @@
 
     <ClInclude Include="core/Text.h" />
 
-    <ClInclude Include="core/Overlay.h" />
-    <ClInclude Include="core/Game.h" />
-    <ClInclude Include="core/Net.h" />
+    <ClInclude Include="core/Overlay.h" />
+
+    <ClInclude Include="core/Game.h" />
+
+    <ClInclude Include="core/Net.h" />
+    <ClInclude Include="core/Checksum.h" />
 
     <None Include="core/FunctionsTable.inc" />
 
@@ -229,9 +232,12 @@
 
     <ClCompile Include="core/NativeCall.cpp" />
 
-    <ClCompile Include="core/Overlay.cpp" />
-    <ClCompile Include="core/Game.cpp" />
-    <ClCompile Include="core/Net.cpp" />
+    <ClCompile Include="core/Overlay.cpp" />
+
+    <ClCompile Include="core/Game.cpp" />
+
+    <ClCompile Include="core/Net.cpp" />
+    <ClCompile Include="core/Checksum.cpp" />
 
     <ClCompile Include="core/GameApi.cpp" />
     <ClCompile Include="$(SolutionDir)external/minhook/src/buffer.c"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>

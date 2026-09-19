@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "Loader.h"
+#include "Checksum.h"
 #include "Console.h"
 #include "DevConsole.h"
 #include "Events.h"
@@ -43,6 +44,8 @@ DWORD WINAPI Loader::MainThread(LPVOID param)
     {
         if (!FrameStats::Install())
             LOG_WARN("FrameStats failed to install");
+        if (!Checksum::Install()) // до вставок событий: лобби должно видеть хеш чистой игры
+            LOG_WARN("Checksum failed to install — multiplayer lobbies will reject this game");
         if (Events::Install())
         {
             // Отладка: первое срабатывание каждого события — в лог (дальше счётчики в .events).

@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "DevConsole.h"
+#include "Checksum.h"
 #include "Console.h"
 #include "Engine.h"
 #include "Events.h"
@@ -158,6 +159,7 @@ namespace
             "  .state <Name> [N]   код состояния GUI state machine (menu.aix): флаги и первые N строк\n"
             "  .hook <Name> [end]  событие gui.<Name> в начале (или в конце) состояния GUI\n"
             "  .events             счётчики событий\n"
+            "  .checksum           хеш скриптов для лобби: движка, чистый (без модлоадера) и сохранённый игрой\n"
             "  =<lua>              выполнить Lua:  =player().gold   =native.GetBuildVersion()\n"
             "  .mods               Lua-моды (modloader/mods/*/manifest.lua) и их статус\n"
             "  .lua reload         перезагрузить все Lua-моды\n"
@@ -236,6 +238,8 @@ namespace
             }
             else if (cmd == "events")
                 Events::PrintStats();
+            else if (cmd == "checksum")
+                Checksum::Print();
             else if (cmd == "mods")
                 LuaHost::PrintMods();
             else if (cmd == "lua")
