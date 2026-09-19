@@ -4991,6 +4991,7 @@ local f = gfx.fog()                                    -- { enabled = true, dens
 | Группа | Ключи |
 | --- | --- |
 | `post` | `preset` (запись в posteffects.lib), `preset2`, `ssao`, `dof` |
+| `render` | `fxaa`, `antialiasing` (строка), `culling`, `objectCulling` |
 | `camera` | `dof`, `depth`, `dynamicFocal`, `focal {min,max,power}`, `sceneScale {x,y}`, `angle`, `distance`, `rotateSpeed`, `zoomSpeed`, `bounded`, `autoRayCast`, `wheelRotate`, `wheelZoom`, `profile`, `height` (чтение); методы `fovOf`, `focalOf` |
 | `fog` | `enabled`, `density`, `power`, `start`, `finish`, `offset`, `depth` |
 | `clouds` | `visible`, `active`, `height`, `horizon`, `fog`, `speed` |
@@ -5001,6 +5002,11 @@ local f = gfx.fog()                                    -- { enabled = true, dens
 | `water` | `name`, `index`, `offset` (чтение) |
 | `wind` | `vector {x,y,z}`, `target {x,y,z}`, `random`, `interval` |
 | `terrain` | `visible`, `borders`, `bordersVisible`, `bordersStep`, `colorMode`; метод `setColor` |
+
+Тени, SSAO и FXAA движок берёт из настроек игры (`SetProjectOptionAsBoolean`: `ShadowMapEnabled`,
+`SSAOEnable`, `FXAAEnable`), а не из одноимённых `Set*Enable`-нативов — их значение движок перетирает
+своим. Группы пишут оба места; вручную настройка доступна как `gfx.option(имя [, значение])`
+(полный список ключей — `_gui_GetSettingsValues` в `data/scripts/lib/gui.script`).
 
 Сверх групп: `gfx.pfx.brightness/gamma(менеджер [, значение])`, `gfx.highlight{...}`, `gfx.vsync([вкл])`,
 `gfx.snapshot()` — снимок всего, что можно записать обратно, и `gfx.apply(профиль)` — применить целиком.

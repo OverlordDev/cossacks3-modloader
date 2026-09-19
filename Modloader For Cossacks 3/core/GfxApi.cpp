@@ -68,8 +68,17 @@ namespace
             "SetPFXPerlinPFXManagerBrightness", "GetPFXPerlinPFXManagerBrightness",
             "SetPFXPerlinPFXManagerGamma", "GetPFXPerlinPFXManagerGamma",
             "SetHighlightRenderSettings",
+            // сглаживание и отсечение невидимого
+            "SetFXAAEnable", "GetFXAAEnable", "SetAntiAliasing", "GetAntiAliasing",
+            "SetVisibilityCulling", "GetVisibilityCulling",
+            "SetObjectBasedVisibilityCulling", "GetObjectBasedVisibilityCulling",
             // вертикальная синхронизация
             "SetVSyncMode", "GetVSyncMode",
+            // настройки видео самой игры: тени, SSAO и FXAA движок берёт отсюда, а не только из Set*-нативов
+            "SetProjectOptionAsBoolean", "GetProjectOptionAsBoolean",
+            "SetProjectOptionAsInteger", "GetProjectOptionAsInteger",
+            "SetProjectOptionAsString", "GetProjectOptionAsString",
+            "SetProjectOptionAsFloat", "GetProjectOptionAsFloat",
         };
         return kNames;
     }
@@ -92,9 +101,10 @@ local function defgroup(name, props, extra)
     local function read(onlySettable)
         local out = {}
         for key, p in pairs(props) do
-            if p.get and not (onlySettable and not p.set) then
+            local getter = p.read or (p.get and gfx[p.get])
+            if getter and not (onlySettable and not (p.set or p.apply)) then
                 -- вне партии часть нативов падает (сцены ещё нет) — такие ключи просто пропускаем
-                local ok, value = pcall(gfx[p.get])
+                local ok, value = pcall(getter)
                 if ok then out[key] = value end
             end
         end
@@ -104,8 +114,10 @@ local function defgroup(name, props, extra)
         for key, value in pairs(t) do
             local p = props[key]
             if not p then error("gfx." .. name .. ": unknown option '" .. tostring(key) .. "'", 3) end
-            if not p.set then error("gfx." .. name .. ": '" .. key .. "' is read-only", 3) end
-            if p.list then gfx[p.set](table.unpack(value)) else gfx[p.set](value) end
+            if p.apply then p.apply(value)
+            elseif not p.set then error("gfx." .. name .. ": '" .. key .. "' is read-only", 3)
+            elseif p.list then gfx[p.set](table.unpack(value))
+            else gfx[p.set](value) end
         end
         return g
     end
@@ -114,13 +126,42 @@ local function defgroup(name, props, extra)
     gfx[name] = g
 end
 
+-- Настройки видео самой игры (окно «Настройки»). Тени, SSAO и FXAA движок берёт отсюда: если
+-- поменять только Set*Enable-натив, игра вернёт своё значение и эффект «не включится».
+-- Полный список ключей — в data/scripts/lib/gui.script, _gui_GetSettingsValues.
+function gfx.option(name, value)
+    if value == nil then return gfx.GetProjectOptionAsString(name) end
+    if type(value) == "boolean" then return gfx.SetProjectOptionAsBoolean(name, value) end
+    if type(value) == "number" then return gfx.SetProjectOptionAsInteger(name, value) end
+    return gfx.SetProjectOptionAsString(name, value)
+end
+
+-- Переключатель, который нужно ставить и нативом, и в настройках игры.
+local function switch(native, optionName)
+    return {
+        read  = function() return gfx.GetProjectOptionAsBoolean(optionName) end,
+        apply = function(v)
+            gfx["Set" .. native](v)
+            gfx.SetProjectOptionAsBoolean(optionName, v)
+        end,
+    }
+end
+
 -- Пост-обработка: bloom/HDR, контраст, виньетка, SSAO, DOF, гамма.
 -- preset — номер записи в data/posteffects/posteffects.lib (0 default, 1 winter, 2 desaturate).
 defgroup("post", {
     preset  = { get = "GetCurrentHDRIndex",  set = "SetCurrentHDRIndex" },
     preset2 = { get = "GetCurrentPHDRIndex", set = "SetCurrentPHDRIndex" },
-    ssao    = { get = "GetSSAOEnable",       set = "SetSSAOEnable" },
+    ssao    = switch("SSAOEnable", "SSAOEnable"),
     dof     = { get = "GetDOFEnable",        set = "SetDOFEnable" },
+})
+
+-- Сглаживание и отсечение невидимого.
+defgroup("render", {
+    fxaa          = switch("FXAAEnable", "FXAAEnable"),
+    antialiasing  = { get = "GetAntiAliasing", set = "SetAntiAliasing" }, -- строка, см. настройки игры
+    culling       = { get = "GetVisibilityCulling", set = "SetVisibilityCulling" },
+    objectCulling = { get = "GetObjectBasedVisibilityCulling", set = "SetObjectBasedVisibilityCulling" },
 })
 
 defgroup("camera", {
@@ -172,7 +213,7 @@ defgroup("sky", {
 })
 
 defgroup("shadows", {
-    enabled     = { get = "GetShadowEnabled",         set = "SetShadowEnabled" },
+    enabled     = switch("ShadowEnabled", "ShadowMapEnabled"),
     size        = { get = "GetShadowMapSize",         set = "SetShadowMapSize" },
     scaleHeight = { get = "GetShadowMapScaleHeight",  set = "SetShadowMapScaleHeight" },
     addHeight   = { get = "GetShadowMapAddHeight",    set = "SetShadowMapAddHeight" },

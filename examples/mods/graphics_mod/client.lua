@@ -4,7 +4,8 @@
 -- Каждая группа работает одинаково:
 --   gfx.fog{ density = 2.0 }   -- записать
 --   gfx.fog()                  -- прочитать всё: { enabled = true, density = 2.0, ... }
--- Группы: post, camera, fog, clouds, sky, shadows, light, time, water, wind, terrain.
+-- Группы: post, render, camera, fog, clouds, sky, shadows, light, time, water, wind, terrain.
+-- Тени, SSAO и FXAA пишутся ещё и в настройки самой игры — иначе движок вернёт своё значение.
 -- Любой натив графики доступен и напрямую: gfx.SetShadowMapSize(4096).
 
 -- Профиль — обычная таблица. gfx.apply применяет её целиком.
@@ -17,6 +18,7 @@ local profiles = {
         shadows = { enabled = true, size = 4096 },
         clouds  = { visible = true, speed = 1.4, fog = 0.7 },
         sky     = { visible = true, flareAngle = 30 },
+        render  = { fxaa = true },
     } },
     { name = "battle", settings = {
         -- Чёткая картинка без размытия: в бою важнее читаемость, чем красота.
@@ -25,6 +27,7 @@ local profiles = {
         fog     = { enabled = true, density = 0.6, power = 1.0 },
         shadows = { enabled = true, size = 2048 },
         clouds  = { speed = 0.6, fog = 0.2 },
+        render  = { fxaa = true },
     } },
     { name = "winter", settings = {
         post    = { preset = 1, ssao = true, dof = false },
@@ -39,6 +42,7 @@ local profiles = {
         fog     = { enabled = false },
         shadows = { enabled = false },
         clouds  = { active = false },
+        render  = { fxaa = false },
     } },
 }
 
