@@ -81,13 +81,34 @@ uint8_t* Engine::StateByIndex(uint8_t* sm, int index)
     return result;
 }
 
+int Engine::StateCount(uint8_t* sm)
+{
+    void* fn = GameApi::Addr(GameApi::Va::SMStateCount);
+    int result;
+    __asm
+    {
+        mov eax, sm
+        call fn
+        mov result, eax
+    }
+    return result;
+}
+
+// Свой перебор вместо движкового IndexOfState: тот пишет в лог ошибку, если состояния нет,
+// а нам «нет» — нормальный ответ (например, кэш после перезагрузки GUI).
 uint8_t* Engine::FindState(uint8_t* sm, const std::string& name)
 {
     if (!sm)
         return nullptr;
-    GameApi::DelphiString dname(name);
-    int index = StateIndex(sm, dname.get());
-    return index >= 0 ? StateByIndex(sm, index) : nullptr;
+    int count = StateCount(sm);
+    for (int i = 0; i < count; ++i)
+    {
+        uint8_t* state = StateByIndex(sm, i);
+        const char* stateName = state ? *reinterpret_cast<const char**>(state + GameApi::Off::StateName) : nullptr;
+        if (stateName && _stricmp(stateName, name.c_str()) == 0)
+            return state;
+    }
+    return nullptr;
 }
 
 void Engine::StateReset(uint8_t* state)

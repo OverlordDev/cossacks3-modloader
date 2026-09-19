@@ -47,7 +47,7 @@ namespace
 
     GameApi::LogFn oTrampoline = nullptr;
 
-    void Dispatch(const std::string& event)
+    void Dispatch(const std::string& event, const std::string& payload)
     {
         std::vector<Events::Handler> handlers;
         {
@@ -61,7 +61,7 @@ namespace
         {
             try
             {
-                h(event);
+                h(event, payload);
             }
             catch (const std::exception& e)
             {
@@ -89,7 +89,9 @@ namespace
                 }
                 return;
             }
-            Dispatch(body);
+            // "event|payload" — данные события (например id игрока) после '|'
+            const char* bar = strchr(body, '|');
+            Dispatch(bar ? std::string(body, bar) : std::string(body), bar ? std::string(bar + 1) : std::string());
             return;
         }
         oTrampoline(msg);
@@ -185,11 +187,17 @@ void Events::Update()
 
 void Events::HookGuiState(const std::string& state, bool atEnd)
 {
+    std::string event = "gui." + state + (atEnd ? ".end" : "");
+    HookGuiStateCode(state, event, "DScriptSetgDbgString0('" + std::string(kPrefix) + event + "');", atEnd);
+}
+
+void Events::HookGuiStateCode(const std::string& state, const std::string& key, const std::string& line, bool atEnd)
+{
     Injection inj;
     inj.state = state;
     inj.atEnd = atEnd;
-    inj.event = "gui." + state + (atEnd ? ".end" : "");
-    inj.line = "DScriptSetgDbgString0('" + std::string(kPrefix) + inj.event + "');";
+    inj.event = key;
+    inj.line = line;
 
     ScriptRunner::RunOnGameThread([inj] {
         for (const auto& existing : g_injections)
@@ -198,6 +206,11 @@ void Events::HookGuiState(const std::string& state, bool atEnd)
         if (Apply(inj, false))
             g_injections.push_back(inj);
     });
+}
+
+void Events::Emit(const std::string& event, const std::string& payload)
+{
+    Dispatch(event, payload);
 }
 
 int Events::Subscribe(const std::string& event, Handler handler)

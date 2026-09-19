@@ -4,8 +4,10 @@
 #include "DevConsole.h"
 #include "Events.h"
 #include "FrameStats.h"
+#include "Game.h"
 #include "Hooks.h"
 #include "LuaHost.h"
+#include "Net.h"
 #include "Overlay.h"
 #include "Profiler.h"
 #include "ScriptRunner.h"
@@ -44,11 +46,13 @@ DWORD WINAPI Loader::MainThread(LPVOID param)
         if (Events::Install())
         {
             // Отладка: первое срабатывание каждого события — в лог (дальше счётчики в .events).
-            Events::Subscribe("*", [](const std::string& event) {
+            Events::Subscribe("*", [](const std::string& event, const std::string&) {
                 static std::set<std::string> seen; // только главный поток игры
                 if (seen.insert(event).second)
                     LOG_INFO("\x1b[35m[event]\x1b[0m %s fired (first time)", event.c_str());
             });
+            Game::Install();
+            Net::Install(LuaHost::OnNetMessage);
         }
         else
             LOG_WARN("Events failed to install");

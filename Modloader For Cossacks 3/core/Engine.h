@@ -9,6 +9,7 @@ namespace Engine
 
     int StateIndex(uint8_t* sm, const char* delphiName);    // -1, если нет
     uint8_t* StateByIndex(uint8_t* sm, int index);
+    int StateCount(uint8_t* sm);
     uint8_t* FindState(uint8_t* sm, const std::string& name); // nullptr, если нет
     void StateReset(uint8_t* state);                        // сбросить компиляцию — пересоберётся при запуске
     // Скомпилировать сейчас (как при запуске: текущая state machine = sm), с защитой от исключений.

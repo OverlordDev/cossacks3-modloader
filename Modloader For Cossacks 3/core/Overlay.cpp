@@ -234,6 +234,7 @@ namespace
                 continue;
             ImGui::SeparatorText((m.name.empty() ? m.folder : m.name).c_str());
             ImGui::Text("id: %s    folder: %s", m.id.c_str(), m.folder.c_str());
+            ImGui::Text("scripts: %s    multiplayer: %s", m.sides.c_str(), m.multiplayer.c_str());
             if (!m.description.empty())
                 ImGui::TextWrapped("%s", m.description.c_str());
             if (!m.error.empty())
@@ -365,6 +366,9 @@ void Overlay::OnSwapBuffers(HDC dc)
     if (insertDown && !insertWasDown && GameInForeground())
         g_open = !g_open;
     insertWasDown = insertDown;
+
+    // Бинды клиентских Lua-скриптов: только когда играют, а не работают с меню.
+    LuaHost::PollInput(!g_open && GameInForeground());
 
     if (g_open)
         RenderFrame();

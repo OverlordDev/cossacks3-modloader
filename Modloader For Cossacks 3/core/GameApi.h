@@ -30,6 +30,7 @@ namespace GameApi
         constexpr uintptr_t ScriptEngine        = 0x705944; // TXDMScript singleton -> eax
         constexpr uintptr_t SMStateIndexByName  = 0x863C3C; // (eax = TXStateMachine, edx = name) -> index или -1
         constexpr uintptr_t SMStateByIndex      = 0x863AA0; // (eax = TXStateMachine, edx = index) -> TXDWSState
+        constexpr uintptr_t SMStateCount        = 0x863B54; // (eax = TXStateMachine) -> количество состояний
         constexpr uintptr_t SMExecuteState      = 0x8638E0; // (eax = sm, edx = name) — оригинал: сетевой гейт sub_732414 + запуск
 
         // Внутренние логгеры движка: Delphi register (eax = msg, edx = var-результат), одинаковой формы.
@@ -49,6 +50,7 @@ namespace GameApi
         constexpr uintptr_t StateHasErrors  = 0x10;  // TXDWSState: byte, ошибки компиляции
         constexpr uintptr_t StateCompiled   = 0x11;  // TXDWSState: byte, скомпилирован
         constexpr uintptr_t StateVmtExecute = 0x08;  // TXDWSState VMT: Execute (компилирует при необходимости)
+        constexpr uintptr_t StateName       = 0x08;  // TXDWSState: String, имя состояния
     }
 
     using LogFn               = void(__stdcall*)(const char* msg);

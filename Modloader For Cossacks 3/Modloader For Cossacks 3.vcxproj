@@ -190,8 +190,11 @@
 
     <ClInclude Include="core/NativeCall.h" />
 
-    <ClInclude Include="core/Text.h" />
-    <ClInclude Include="core/Overlay.h" />
+    <ClInclude Include="core/Text.h" />
+
+    <ClInclude Include="core/Overlay.h" />
+    <ClInclude Include="core/Game.h" />
+    <ClInclude Include="core/Net.h" />
 
     <None Include="core/FunctionsTable.inc" />
 
@@ -224,20 +227,29 @@
 
     <ClCompile Include="core/LuaHost.cpp" />
 
-    <ClCompile Include="core/NativeCall.cpp" />
-    <ClCompile Include="core/Overlay.cpp" />
+    <ClCompile Include="core/NativeCall.cpp" />
+
+    <ClCompile Include="core/Overlay.cpp" />
+    <ClCompile Include="core/Game.cpp" />
+    <ClCompile Include="core/Net.cpp" />
 
     <ClCompile Include="core/GameApi.cpp" />
     <ClCompile Include="$(SolutionDir)external/minhook/src/buffer.c"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
     <ClCompile Include="$(SolutionDir)external/minhook/src/hook.c"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
     <ClCompile Include="$(SolutionDir)external/minhook/src/trampoline.c"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
     <ClCompile Include="$(SolutionDir)external/minhook/src/hde/hde32.c"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
-    <ClCompile Include="$(SolutionDir)external/minhook/src/hde/hde64.c"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
-    <ClCompile Include="$(SolutionDir)external/imgui/imgui.cpp"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
-    <ClCompile Include="$(SolutionDir)external/imgui/imgui_draw.cpp"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
-    <ClCompile Include="$(SolutionDir)external/imgui/imgui_tables.cpp"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
-    <ClCompile Include="$(SolutionDir)external/imgui/imgui_widgets.cpp"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
-    <ClCompile Include="$(SolutionDir)external/imgui/backends/imgui_impl_win32.cpp"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/minhook/src/hde/hde64.c"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+
+    <ClCompile Include="$(SolutionDir)external/imgui/imgui.cpp"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+
+    <ClCompile Include="$(SolutionDir)external/imgui/imgui_draw.cpp"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+
+    <ClCompile Include="$(SolutionDir)external/imgui/imgui_tables.cpp"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+
+    <ClCompile Include="$(SolutionDir)external/imgui/imgui_widgets.cpp"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+
+    <ClCompile Include="$(SolutionDir)external/imgui/backends/imgui_impl_win32.cpp"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+
     <ClCompile Include="$(SolutionDir)external/imgui/backends/imgui_impl_opengl2.cpp"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
 
     <ClCompile Include="$(SolutionDir)external/lua/lapi.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>

@@ -2,7 +2,9 @@
 #include "LuaHost.h"
 #include "Console.h"
 #include "Events.h"
+#include "Game.h"
 #include "NativeCall.h"
+#include "Net.h"
 #include "ScriptRunner.h"
 #include "Text.h"
 
@@ -21,25 +23,45 @@ namespace fs = std::filesystem;
 
 namespace
 {
+    enum Side { Client = 0, Server = 1 };
+    const char* SideName(int side) { return side == Server ? "server" : "client"; }
+
+    struct Env
+    {
+        int envRef = LUA_NOREF;
+        int loadedRef = LUA_NOREF; // кэш require этой стороны
+    };
+
+    struct Bind
+    {
+        std::string key;
+        int vk = 0;
+        bool ctrl = false, shift = false, alt = false;
+        int ref = LUA_NOREF;
+        bool wasDown = false;
+    };
+
     struct Mod
     {
         fs::path dir;
         std::string folder; // имя папки
         std::string id, name, version, author, description;
-        std::string entry;
+        std::string entry[2];            // client / server
+        std::string multiplayer = "required";
         std::map<std::string, fs::path> files; // имя модуля ("utils", "lib/math") -> путь
         bool enabled = true;
         bool loaded = false;
         std::string error;
-        int envRef = LUA_NOREF;
-        int loadedRef = LUA_NOREF; // кэш require
-        std::vector<int> subscriptions; // Events ids
+        Env env[2];
+        std::vector<int> subscriptions;                        // Events ids
+        std::map<std::string, std::vector<int>> netHandlers[2]; // event -> refs функций
+        std::vector<Bind> binds;                                // client
     };
 
     lua_State* L = nullptr;
     std::vector<Mod> g_mods;
-    Mod g_console; // псевдо-мод для строк из консоли
-    int g_baseEnvRef = LUA_NOREF;
+    Mod g_console; // псевдо-мод для строк из консоли (права server)
+    int g_baseEnvRef[2] = { LUA_NOREF, LUA_NOREF };
 
     // ---------- утилиты ----------
 
@@ -64,7 +86,7 @@ namespace
         while (std::getline(in, line))
         {
             size_t eq = line.find('=');
-            if (eq != std::string::npos && eq > 0)
+            if (eq != std::string::npos && eq > 0 && line[0] != '#')
                 state[line.substr(0, eq)] = line.compare(eq + 1, 1, "1") == 0;
         }
         return state;
@@ -183,10 +205,135 @@ namespace
         return true;
     }
 
+    // Замыкания API получают (индекс мода, сторона) в upvalue 1 и 2.
     Mod* ModFromUpvalue(lua_State* L)
     {
         int index = static_cast<int>(lua_tointeger(L, lua_upvalueindex(1)));
         return index < 0 ? &g_console : &g_mods[index];
+    }
+
+    int SideFromUpvalue(lua_State* L)
+    {
+        return static_cast<int>(lua_tointeger(L, lua_upvalueindex(2)));
+    }
+
+    std::string Who(const Mod& mod, int side)
+    {
+        return mod.id + ":" + SideName(side);
+    }
+
+    // ---------- сериализация для сети (без load(): из пакета нельзя выполнить код) ----------
+
+    void Encode(lua_State* L, int idx, std::string& out, int depth)
+    {
+        if (depth > 16)
+            luaL_error(L, "net: table is nested too deeply");
+        idx = lua_absindex(L, idx);
+        switch (lua_type(L, idx))
+        {
+        case LUA_TNIL: out += 'n'; break;
+        case LUA_TBOOLEAN: out += lua_toboolean(L, idx) ? 't' : 'f'; break;
+        case LUA_TNUMBER:
+        {
+            char buf[64];
+            if (lua_isinteger(L, idx))
+                snprintf(buf, sizeof(buf), "i%lld;", static_cast<long long>(lua_tointeger(L, idx)));
+            else
+                snprintf(buf, sizeof(buf), "d%.17g;", lua_tonumber(L, idx));
+            out += buf;
+            break;
+        }
+        case LUA_TSTRING:
+        {
+            size_t len;
+            const char* s = lua_tolstring(L, idx, &len);
+            out += 's' + std::to_string(len) + ':';
+            out.append(s, len);
+            break;
+        }
+        case LUA_TTABLE:
+            out += '{';
+            lua_pushnil(L);
+            while (lua_next(L, idx))
+            {
+                int kt = lua_type(L, -2);
+                if (kt != LUA_TSTRING && kt != LUA_TNUMBER && kt != LUA_TBOOLEAN)
+                    luaL_error(L, "net: table keys must be strings, numbers or booleans");
+                Encode(L, -2, out, depth + 1);
+                Encode(L, -1, out, depth + 1);
+                lua_pop(L, 1);
+            }
+            out += '}';
+            break;
+        default:
+            luaL_error(L, "net: cannot send a %s", luaL_typename(L, idx));
+        }
+    }
+
+    // Кладёт значение на стек; false — данные повреждены.
+    bool Decode(lua_State* L, const std::string& s, size_t& pos, int depth)
+    {
+        if (pos >= s.size() || depth > 16)
+            return false;
+        char tag = s[pos++];
+        auto readUntil = [&](char end, std::string* out) {
+            size_t e = s.find(end, pos);
+            if (e == std::string::npos)
+                return false;
+            *out = s.substr(pos, e - pos);
+            pos = e + 1;
+            return true;
+        };
+        switch (tag)
+        {
+        case 'n': lua_pushnil(L); return true;
+        case 't': lua_pushboolean(L, 1); return true;
+        case 'f': lua_pushboolean(L, 0); return true;
+        case 'i':
+        {
+            std::string num;
+            if (!readUntil(';', &num))
+                return false;
+            lua_pushinteger(L, strtoll(num.c_str(), nullptr, 10));
+            return true;
+        }
+        case 'd':
+        {
+            std::string num;
+            if (!readUntil(';', &num))
+                return false;
+            lua_pushnumber(L, strtod(num.c_str(), nullptr));
+            return true;
+        }
+        case 's':
+        {
+            std::string len;
+            if (!readUntil(':', &len) || len.empty() || len.size() > 9)
+                return false;
+            size_t n = strtoul(len.c_str(), nullptr, 10);
+            if (pos + n > s.size())
+                return false;
+            lua_pushlstring(L, s.data() + pos, n);
+            pos += n;
+            return true;
+        }
+        case '{':
+            lua_newtable(L);
+            while (pos < s.size() && s[pos] != '}')
+            {
+                if (!Decode(L, s, pos, depth + 1))
+                    return lua_pop(L, 1), false;
+                if (lua_isnil(L, -1) || !Decode(L, s, pos, depth + 1))
+                    return lua_pop(L, 2), false;
+                lua_rawset(L, -3);
+            }
+            if (pos >= s.size())
+                return lua_pop(L, 1), false;
+            ++pos; // '}'
+            return true;
+        default:
+            return false;
+        }
     }
 
     // ---------- API: log / print / require ----------
@@ -195,10 +342,10 @@ namespace
     {
         Mod* mod = ModFromUpvalue(L);
         std::string text = Concat(L, 1);
-        const char* id = mod->id.c_str();
-        if (level == 0) LOG_INFO("\x1b[34m[%s]\x1b[0m %s", id, text.c_str());
-        else if (level == 1) LOG_WARN("\x1b[34m[%s]\x1b[0m %s", id, text.c_str());
-        else LOG_ERROR("\x1b[34m[%s]\x1b[0m %s", id, text.c_str());
+        std::string who = mod == &g_console ? mod->id : Who(*mod, SideFromUpvalue(L));
+        if (level == 0) LOG_INFO("\x1b[34m[%s]\x1b[0m %s", who.c_str(), text.c_str());
+        else if (level == 1) LOG_WARN("\x1b[34m[%s]\x1b[0m %s", who.c_str(), text.c_str());
+        else LOG_ERROR("\x1b[34m[%s]\x1b[0m %s", who.c_str(), text.c_str());
         return 0;
     }
     int l_logInfo(lua_State* L) { return l_log(L, 0); }
@@ -208,9 +355,10 @@ namespace
     int l_require(lua_State* L)
     {
         Mod* mod = ModFromUpvalue(L);
+        int side = SideFromUpvalue(L);
         std::string key = ModuleKey(luaL_checkstring(L, 1));
 
-        lua_rawgeti(L, LUA_REGISTRYINDEX, mod->loadedRef);
+        lua_rawgeti(L, LUA_REGISTRYINDEX, mod->env[side].loadedRef);
         lua_getfield(L, -1, key.c_str());
         if (!lua_isnil(L, -1))
             return 1;
@@ -223,7 +371,7 @@ namespace
         std::string code, error;
         if (!ReadFile(it->second, &code))
             return luaL_error(L, "cannot read %s", key.c_str());
-        if (!LoadChunk(code, "@" + mod->id + "/" + key + ".lua", mod->envRef, &error))
+        if (!LoadChunk(code, "@" + mod->id + "/" + key + ".lua", mod->env[side].envRef, &error))
             return luaL_error(L, "%s", error.c_str());
         lua_call(L, 0, 1);
         if (lua_isnil(L, -1))
@@ -232,7 +380,7 @@ namespace
             lua_pushboolean(L, 1);
         }
         lua_pushvalue(L, -1);
-        lua_setfield(L, -3, key.c_str()); // loaded[key] = result
+        lua_setfield(L, -3, key.c_str()); // loaded[key] = result (у каждой стороны свой экземпляр модуля)
         return 1;
     }
 
@@ -260,14 +408,14 @@ namespace
         return out + "'";
     }
 
-    // game.run(code) — асинхронно, как строка из консоли.
+    // game.run(code) — асинхронно, как строка из консоли. Только server.
     int l_gameRun(lua_State* L)
     {
         ScriptRunner::Queue(SplitLines(Text::Utf8ToAnsi(luaL_checkstring(L, 1))));
         return 0;
     }
 
-    // game.command(text) — как текст в чате игры (res all 5000, cheat fog, ...).
+    // game.command(text) — как текст в чате игры (res all 5000, cheat fog, ...). Только server.
     int l_gameCommand(lua_State* L)
     {
         std::string text = Text::Utf8ToAnsi(luaL_checkstring(L, 1));
@@ -279,7 +427,7 @@ namespace
     }
 
     // Синхронный вызов скрипта; результат ML_RET(...) — строкой (или nil).
-    bool ScriptCall(lua_State* L, const std::string& code, const std::string& arg, std::string* result)
+    bool ScriptCall(const std::string& code, const std::string& arg, std::string* result)
     {
         if (!ScriptRunner::Call(Text::Utf8ToAnsi(code), Text::Utf8ToAnsi(arg), result))
             return false;
@@ -287,13 +435,13 @@ namespace
         return true;
     }
 
-    // game.exec(code [, arg]) -> строка из ML_RET или nil. ML_ARG в коде — это arg.
+    // game.exec(code [, arg]) -> строка из ML_RET или nil. ML_ARG в коде — это arg. Только server.
     int l_gameExec(lua_State* L)
     {
         std::string code = luaL_checkstring(L, 1);
         std::string arg = luaL_optstring(L, 2, "");
         std::string result;
-        if (!ScriptCall(L, code, arg, &result))
+        if (!ScriptCall(code, arg, &result))
             return luaL_error(L, "game script failed (see [engine] messages above)");
         lua_pushstring(L, result.c_str());
         return 1;
@@ -306,7 +454,7 @@ namespace
         std::string code = wrapper;
         code.replace(code.find('#'), 1, expr);
         std::string result;
-        if (!ScriptCall(L, code, "", &result))
+        if (!ScriptCall(code, "", &result))
             return luaL_error(L, "cannot evaluate '%s' (see [engine] messages above)", expr.c_str());
         lua_pushstring(L, result.c_str());
         return 1;
@@ -339,28 +487,48 @@ namespace
         return 1;
     }
 
+    // Роль этого компьютера: "offline" / "client" / "host".
+    int l_gameMode(lua_State* L)
+    {
+        Game::LanMode m = Game::Mode();
+        lua_pushstring(L, m == Game::LanMode::Server ? "host" : m == Game::LanMode::Client ? "client" : "offline");
+        return 1;
+    }
+
+    int l_gameIsAuthority(lua_State* L)
+    {
+        lua_pushboolean(L, Game::IsAuthority());
+        return 1;
+    }
+
     // ---------- API: events ----------
 
     // Обработчик события из Lua (главный поток игры; L — глобальное состояние).
-    void CallEventHandler(int ref, const std::string& who, const std::string& event)
+    void CallEventHandler(int ref, int side, const std::string& who, const std::string& event, const std::string& payload)
     {
         if (!L)
             return;
+        if (side == Server && !Game::IsAuthority())
+            return; // серверная логика работает только там, где решается игра
         lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
         lua_pushstring(L, event.c_str());
-        Call(1, 0, who);
+        lua_pushstring(L, Text::AnsiToUtf8(payload).c_str());
+        Call(2, 0, who);
     }
 
     int l_eventsOn(lua_State* L)
     {
         Mod* mod = ModFromUpvalue(L);
+        int side = SideFromUpvalue(L);
         std::string event = luaL_checkstring(L, 1);
         luaL_checktype(L, 2, LUA_TFUNCTION);
         lua_pushvalue(L, 2);
         int ref = luaL_ref(L, LUA_REGISTRYINDEX);
-        std::string who = mod->id;
+        std::string who = Who(*mod, side);
 
-        int id = Events::Subscribe(event, [ref, who](const std::string& name) { CallEventHandler(ref, who, name); });
+        int id = Events::Subscribe(event, [ref, side, who](const std::string& name, const std::string& payload) {
+            CallEventHandler(ref, side, who, name, payload);
+        });
         mod->subscriptions.push_back(id);
         lua_pushinteger(L, id);
         return 1;
@@ -381,7 +549,113 @@ namespace
         return 0;
     }
 
+    // ---------- API: net ----------
+
+    int l_netOn(lua_State* L)
+    {
+        Mod* mod = ModFromUpvalue(L);
+        int side = SideFromUpvalue(L);
+        std::string event = luaL_checkstring(L, 1);
+        luaL_checktype(L, 2, LUA_TFUNCTION);
+        lua_pushvalue(L, 2);
+        mod->netHandlers[side][event].push_back(luaL_ref(L, LUA_REGISTRYINDEX));
+        return 0;
+    }
+
+    std::string EncodeArg(lua_State* L, int idx)
+    {
+        std::string data;
+        if (!lua_isnoneornil(L, idx))
+            Encode(L, idx, data, 0);
+        return data;
+    }
+
+    // client: net.send(event, data) — хосту (в одиночной игре — своему server-скрипту).
+    int l_netSend(lua_State* L)
+    {
+        Mod* mod = ModFromUpvalue(L);
+        std::string event = luaL_checkstring(L, 1);
+        std::string error;
+        if (!Net::SendToServer(mod->id, event, EncodeArg(L, 2), &error))
+            return luaL_error(L, "net.send: %s", error.c_str());
+        return 0;
+    }
+
+    // server: net.broadcast(event, data) — всем клиентам, включая клиентскую сторону хоста.
+    int l_netBroadcast(lua_State* L)
+    {
+        Mod* mod = ModFromUpvalue(L);
+        std::string event = luaL_checkstring(L, 1);
+        std::string error;
+        if (!Net::Broadcast(mod->id, event, EncodeArg(L, 2), &error))
+            return luaL_error(L, "net.broadcast: %s", error.c_str());
+        return 0;
+    }
+
+    // ---------- API: input (client) ----------
+
+    int ParseKey(const std::string& name)
+    {
+        std::string k = Lower(name);
+        if (k.size() == 1 && isalnum(static_cast<unsigned char>(k[0])))
+            return toupper(k[0]);
+        if (k.size() >= 2 && k[0] == 'f' && isdigit(static_cast<unsigned char>(k[1])))
+        {
+            int n = atoi(k.c_str() + 1);
+            return n >= 1 && n <= 12 ? VK_F1 + n - 1 : 0;
+        }
+        if (k.rfind("num", 0) == 0 && k.size() == 4 && isdigit(static_cast<unsigned char>(k[3])))
+            return VK_NUMPAD0 + (k[3] - '0');
+        static const std::map<std::string, int> named = {
+            { "space", VK_SPACE }, { "enter", VK_RETURN }, { "tab", VK_TAB }, { "escape", VK_ESCAPE },
+            { "backspace", VK_BACK }, { "delete", VK_DELETE }, { "home", VK_HOME }, { "pageup", VK_PRIOR },
+            { "pagedown", VK_NEXT }, { "up", VK_UP }, { "down", VK_DOWN }, { "left", VK_LEFT }, { "right", VK_RIGHT },
+        };
+        auto it = named.find(k);
+        return it != named.end() ? it->second : 0;
+    }
+
+    // input.bind("Ctrl+F5", function(key) ... end)
+    int l_inputBind(lua_State* L)
+    {
+        Mod* mod = ModFromUpvalue(L);
+        std::string spec = luaL_checkstring(L, 1);
+        luaL_checktype(L, 2, LUA_TFUNCTION);
+
+        Bind bind;
+        bind.key = spec;
+        std::string rest = spec;
+        for (;;)
+        {
+            std::string low = Lower(rest);
+            if (low.rfind("ctrl+", 0) == 0) { bind.ctrl = true; rest = rest.substr(5); }
+            else if (low.rfind("shift+", 0) == 0) { bind.shift = true; rest = rest.substr(6); }
+            else if (low.rfind("alt+", 0) == 0) { bind.alt = true; rest = rest.substr(4); }
+            else break;
+        }
+        bind.vk = ParseKey(rest);
+        if (!bind.vk)
+            return luaL_error(L, "input.bind: unknown key '%s' (F1-F12, A-Z, 0-9, Num0-Num9, Space, Enter, arrows...)", spec.c_str());
+        if (!bind.ctrl && !bind.shift && !bind.alt && (bind.vk == VK_F9))
+            LOG_WARN("[%s] input.bind: %s is also used by the modloader", mod->id.c_str(), spec.c_str());
+
+        lua_pushvalue(L, 2);
+        bind.ref = luaL_ref(L, LUA_REGISTRYINDEX);
+        mod->binds.push_back(bind);
+        return 0;
+    }
+
     // ---------- API: native ----------
+
+    // Клиентским скриптам — только чтение: нативы, которые по имени ничего не меняют.
+    bool IsReadOnlyNative(const std::string& name)
+    {
+        static const char* prefixes[] = { "Get", "Is", "Has", "Can", "Calc", "Check", "Find", "Count" };
+        for (const char* p : prefixes)
+            if (name.rfind(p, 0) == 0)
+                return true;
+        return false;
+    }
 
     int l_nativeCall(lua_State* L)
     {
@@ -423,23 +697,41 @@ namespace
         }
     }
 
-    // native.<Name> — функция создаётся при первом обращении и кэшируется в таблице.
+    int l_nativeServerOnly(lua_State* L)
+    {
+        return luaL_error(L, "native.%s can change the game — call it from server scripts",
+                          lua_tostring(L, lua_upvalueindex(1)));
+    }
+
+    // native.<Name> — функция создаётся при первом обращении и кэшируется в таблице. upvalue 1 — сторона.
     int l_nativeIndex(lua_State* L)
     {
         const char* name = luaL_checkstring(L, 2);
         const NativeCall::Signature* sig = NativeCall::Find(name);
         if (!sig)
             return 0; // nil
-        lua_pushlightuserdata(L, const_cast<NativeCall::Signature*>(sig));
-        lua_pushcclosure(L, l_nativeCall, 1);
+        if (lua_tointeger(L, lua_upvalueindex(1)) == Client && !IsReadOnlyNative(sig->name))
+        {
+            lua_pushstring(L, sig->name.c_str());
+            lua_pushcclosure(L, l_nativeServerOnly, 1);
+        }
+        else
+        {
+            lua_pushlightuserdata(L, const_cast<NativeCall::Signature*>(sig));
+            lua_pushcclosure(L, l_nativeCall, 1);
+        }
         lua_pushvalue(L, -1);
         lua_setfield(L, 1, name);
         return 1;
     }
 
-    // Обёртки поверх game/native на Lua (исполняются в базовом окружении).
+    // Обёртки поверх game/native на Lua (исполняются в базовом окружении каждой стороны).
     const char* kPrelude = R"lua(
 local RES = { food = 1, wood = 2, stone = 3, gold = 4, iron = 5, coal = 6 }
+
+local function serverOnly(what)
+    error(what .. " can only be changed by server scripts (client: send a request with net.send)", 3)
+end
 
 local Player = {}
 Player.__index = function(self, key)
@@ -453,11 +745,13 @@ end
 Player.__newindex = function(self, key, value)
     local r = RES[key]
     if not r then error("player." .. tostring(key) .. " cannot be set", 2) end
+    if not game.exec then serverOnly("player." .. key) end
     game.exec("_res_SetResToPlayerByIndex(" .. rawget(self, "index") .. ", " .. r .. ", StrToInt(ML_ARG));",
               tostring(math.floor(value)))
 end
 function Player:add(res, amount)
     local r = RES[res] or error("unknown resource '" .. tostring(res) .. "'", 2)
+    if not game.exec then serverOnly("player resources") end
     game.exec("_res_AddResToPlayerByIndex(" .. self.index .. ", " .. r .. ", StrToInt(ML_ARG));",
               tostring(math.floor(amount)))
 end
@@ -465,6 +759,13 @@ end
 -- Идёт партия (не меню, не редактор, не наблюдатель) — так же проверяют скрипты игры.
 function game.isInGame()
     return game.evalBool("gInterface.gamemode = gc_gamemode_game")
+end
+
+-- Индекс игрока по отправителю сетевого сообщения (from в net.on). 0 — этот компьютер вне сети.
+-- Серверу нужно определять игрока так, а не верить номеру из данных: иначе клиент попросит за другого.
+function game.playerIndexOf(from)
+    if from == 0 then return native.GetPlayerIndexInterfaceIO() end
+    return game.evalInt("_misc_GetMapPlayerIndexByLanID(" .. math.tointeger(from) .. ")")
 end
 
 -- player() — игрок за этим компьютером, player(i) — по индексу
@@ -480,18 +781,26 @@ end
 
     // ---------- окружения ----------
 
-    void SetFunc(const char* name, lua_CFunction fn, int modIndex)
+    void SetFunc(const char* name, lua_CFunction fn, int modIndex, int side)
     {
         lua_pushinteger(L, modIndex);
-        lua_pushcclosure(L, fn, 1);
+        lua_pushinteger(L, side);
+        lua_pushcclosure(L, fn, 2);
         lua_setfield(L, -2, name);
     }
 
-    void BuildBaseEnv()
+    void SetPlain(const char* name, lua_CFunction fn)
     {
-        lua_newtable(L); // base env
+        lua_pushcfunction(L, fn);
+        lua_setfield(L, -2, name);
+    }
 
-        // Безопасное подмножество стандартной библиотеки (без load/dofile/loadfile/io/debug/package).
+    // Базовое окружение стороны: стандартная библиотека (безопасная часть), game, native, player.
+    void BuildBaseEnv(int side)
+    {
+        lua_newtable(L);
+
+        // Без load/dofile/loadfile/io/debug/package.
         static const char* kGlobals[] = { "assert", "error", "ipairs", "next", "pairs", "pcall", "xpcall", "select",
                                           "tonumber", "tostring", "type", "rawequal", "rawget", "rawset", "rawlen",
                                           "setmetatable", "getmetatable", "collectgarbage",
@@ -512,68 +821,91 @@ end
         lua_setfield(L, -2, "os");
 
         lua_newtable(L); // game
-        lua_pushcfunction(L, l_gameRun);       lua_setfield(L, -2, "run");
-        lua_pushcfunction(L, l_gameCommand);   lua_setfield(L, -2, "command");
-        lua_pushcfunction(L, l_gameExec);      lua_setfield(L, -2, "exec");
-        lua_pushcfunction(L, l_gameEval);      lua_setfield(L, -2, "eval");
-        lua_pushcfunction(L, l_gameEvalInt);   lua_setfield(L, -2, "evalInt");
-        lua_pushcfunction(L, l_gameEvalFloat); lua_setfield(L, -2, "evalFloat");
-        lua_pushcfunction(L, l_gameEvalBool);  lua_setfield(L, -2, "evalBool");
+        SetPlain("eval", l_gameEval);
+        SetPlain("evalInt", l_gameEvalInt);
+        SetPlain("evalFloat", l_gameEvalFloat);
+        SetPlain("evalBool", l_gameEvalBool);
+        SetPlain("mode", l_gameMode);
+        SetPlain("isAuthority", l_gameIsAuthority);
+        if (side == Server)
+        {
+            SetPlain("run", l_gameRun);
+            SetPlain("command", l_gameCommand);
+            SetPlain("exec", l_gameExec);
+        }
+        lua_pushstring(L, SideName(side));
+        lua_setfield(L, -2, "side");
         lua_setfield(L, -2, "game");
 
         lua_newtable(L); // native
         lua_newtable(L);
-        lua_pushcfunction(L, l_nativeIndex);
+        lua_pushinteger(L, side);
+        lua_pushcclosure(L, l_nativeIndex, 1);
         lua_setfield(L, -2, "__index");
         lua_setmetatable(L, -2);
         lua_setfield(L, -2, "native");
 
-        g_baseEnvRef = luaL_ref(L, LUA_REGISTRYINDEX);
+        g_baseEnvRef[side] = luaL_ref(L, LUA_REGISTRYINDEX);
 
         std::string error;
-        if (!LoadChunk(kPrelude, "=prelude", g_baseEnvRef, &error))
+        if (!LoadChunk(kPrelude, "=prelude", g_baseEnvRef[side], &error))
             LOG_ERROR("[lua] prelude: %s", error.c_str());
         else
             Call(0, 0, "prelude");
     }
 
-    // Окружение мода: свои log/print/require/events/mod, остальное — из базового через __index.
-    int CreateModEnv(Mod& mod, int modIndex)
+    // Окружение стороны мода: свои log/print/require/events/net/(input)/mod, остальное — из базового.
+    void CreateEnv(Mod& mod, int modIndex, int side)
     {
         lua_newtable(L);
 
         lua_newtable(L); // log
-        SetFunc("info", l_logInfo, modIndex);
-        SetFunc("warn", l_logWarn, modIndex);
-        SetFunc("error", l_logError, modIndex);
+        SetFunc("info", l_logInfo, modIndex, side);
+        SetFunc("warn", l_logWarn, modIndex, side);
+        SetFunc("error", l_logError, modIndex, side);
         lua_setfield(L, -2, "log");
-        SetFunc("print", l_logInfo, modIndex);
-        SetFunc("require", l_require, modIndex);
+        SetFunc("print", l_logInfo, modIndex, side);
+        SetFunc("require", l_require, modIndex, side);
 
         lua_newtable(L); // events (подписки привязаны к моду — снимаются при выгрузке)
-        SetFunc("on", l_eventsOn, modIndex);
-        SetFunc("off", l_eventsOff, modIndex);
-        lua_pushcfunction(L, l_eventsHook);
-        lua_setfield(L, -2, "hook");
+        SetFunc("on", l_eventsOn, modIndex, side);
+        SetFunc("off", l_eventsOff, modIndex, side);
+        SetPlain("hook", l_eventsHook);
         lua_setfield(L, -2, "events");
+
+        lua_newtable(L); // net
+        SetFunc("on", l_netOn, modIndex, side);
+        if (side == Server)
+            SetFunc("broadcast", l_netBroadcast, modIndex, side);
+        else
+            SetFunc("send", l_netSend, modIndex, side);
+        lua_setfield(L, -2, "net");
+
+        if (side == Client)
+        {
+            lua_newtable(L); // input
+            SetFunc("bind", l_inputBind, modIndex, side);
+            lua_setfield(L, -2, "input");
+        }
 
         lua_newtable(L); // mod — информация о себе
         lua_pushstring(L, mod.id.c_str());      lua_setfield(L, -2, "id");
         lua_pushstring(L, mod.name.c_str());    lua_setfield(L, -2, "name");
         lua_pushstring(L, mod.version.c_str()); lua_setfield(L, -2, "version");
+        lua_pushstring(L, SideName(side));      lua_setfield(L, -2, "side");
         lua_setfield(L, -2, "mod");
 
         lua_pushvalue(L, -1);
         lua_setfield(L, -2, "_G");
 
-        lua_newtable(L); // метатаблица: __index = base env
-        lua_rawgeti(L, LUA_REGISTRYINDEX, g_baseEnvRef);
+        lua_newtable(L); // метатаблица: __index = base env стороны
+        lua_rawgeti(L, LUA_REGISTRYINDEX, g_baseEnvRef[side]);
         lua_setfield(L, -2, "__index");
         lua_setmetatable(L, -2);
 
         lua_newtable(L);
-        mod.loadedRef = luaL_ref(L, LUA_REGISTRYINDEX);
-        return luaL_ref(L, LUA_REGISTRYINDEX);
+        mod.env[side].loadedRef = luaL_ref(L, LUA_REGISTRYINDEX);
+        mod.env[side].envRef = luaL_ref(L, LUA_REGISTRYINDEX);
     }
 
     // ---------- манифест ----------
@@ -623,7 +955,10 @@ end
         mod.version = GetStringField(t, "version", "0.0.0");
         mod.author = GetStringField(t, "author");
         mod.description = GetStringField(t, "description");
-        mod.entry = GetStringField(t, "entry");
+        mod.entry[Client] = GetStringField(t, "client");
+        mod.entry[Server] = GetStringField(t, "server");
+        mod.multiplayer = GetStringField(t, "multiplayer", "required");
+        std::string legacyEntry = GetStringField(t, "entry");
         lua_getfield(L, t, "enabled");
         mod.enabled = lua_isnil(L, -1) || lua_toboolean(L, -1);
         lua_pop(L, 1);
@@ -643,10 +978,16 @@ end
 
         if (mod.id.empty() || !std::all_of(mod.id.begin(), mod.id.end(), [](unsigned char c) { return isalnum(c) || c == '_'; }))
             return mod.error = "id is required: latin letters, digits and _", false;
-        if (mod.entry.empty())
-            return mod.error = "entry is required (e.g. entry = \"main.lua\")", false;
+        if (!legacyEntry.empty())
+            return mod.error = "'entry' was replaced: use client = \"client.lua\" and/or server = \"server.lua\"", false;
+        if (mod.entry[Client].empty() && mod.entry[Server].empty())
+            return mod.error = "set client = \"...\" and/or server = \"...\"", false;
+        if (mod.multiplayer != "required" && mod.multiplayer != "optional")
+            return mod.error = "multiplayer must be \"required\" or \"optional\"", false;
 
-        files.push_back(mod.entry);
+        for (int side : { Client, Server })
+            if (!mod.entry[side].empty())
+                files.push_back(mod.entry[side]);
         for (const auto& f : files)
         {
             std::string why;
@@ -676,19 +1017,47 @@ end
         }
     }
 
+    // Снять всё, что мод зарегистрировал (при ошибке одной из сторон или выгрузке).
+    void Detach(Mod& mod)
+    {
+        for (int id : mod.subscriptions)
+            Events::Unsubscribe(id);
+        mod.subscriptions.clear();
+        for (auto& handlers : mod.netHandlers)
+            handlers.clear();
+        mod.binds.clear();
+    }
+
     void Close()
     {
         if (!L)
             return;
         for (auto& mod : g_mods)
-            for (int id : mod.subscriptions)
-                Events::Unsubscribe(id);
-        for (int id : g_console.subscriptions)
-            Events::Unsubscribe(id);
+            Detach(mod);
+        Detach(g_console);
         g_mods.clear();
         g_console = {};
         lua_close(L);
         L = nullptr;
+    }
+
+    bool RunEntry(Mod& mod, int modIndex, int side)
+    {
+        CreateEnv(mod, modIndex, side);
+        std::string code, error;
+        ReadFile(mod.files[ModuleKey(mod.entry[side])], &code);
+        if (!LoadChunk(code, "@" + mod.id + "/" + mod.entry[side], mod.env[side].envRef, &error))
+        {
+            mod.error = error;
+            LOG_ERROR("[lua] %s", error.c_str());
+            return false;
+        }
+        if (!Call(0, 0, Who(mod, side)))
+        {
+            mod.error = std::string(SideName(side)) + " script failed (see above)";
+            return false;
+        }
+        return true;
     }
 
     void LoadAll()
@@ -696,10 +1065,11 @@ end
         Close();
         L = luaL_newstate();
         OpenLibs();
-        BuildBaseEnv();
+        BuildBaseEnv(Client);
+        BuildBaseEnv(Server);
 
         g_console.id = "console";
-        g_console.envRef = CreateModEnv(g_console, -1);
+        CreateEnv(g_console, -1, Server);
 
         fs::path root = ModsDir();
         std::error_code ec;
@@ -731,8 +1101,6 @@ end
             {
                 mod.error = "duplicate id";
                 LOG_ERROR("[lua] mod '%s' skipped: id '%s' is already used", mod.folder.c_str(), mod.id.c_str());
-                g_mods.push_back(std::move(mod));
-                continue;
             }
             g_mods.push_back(std::move(mod));
         }
@@ -743,24 +1111,28 @@ end
             if (!mod.error.empty() || !mod.enabled)
                 continue;
 
-            mod.envRef = CreateModEnv(mod, static_cast<int>(i));
-            std::string code, error;
-            ReadFile(mod.files[ModuleKey(mod.entry)], &code);
-            if (!LoadChunk(code, "@" + mod.id + "/" + mod.entry, mod.envRef, &error))
-            {
-                mod.error = error;
-                LOG_ERROR("[lua] %s", error.c_str());
-                continue;
-            }
-            mod.loaded = Call(0, 0, mod.id);
-            if (!mod.loaded)
-                mod.error = "entry failed (see above)";
+            // Сначала server — он регистрирует правила, затем client.
+            bool ok = true;
+            for (int side : { Server, Client })
+                if (ok && !mod.entry[side].empty())
+                    ok = RunEntry(mod, static_cast<int>(i), side);
+
+            mod.loaded = ok;
+            if (!ok)
+                Detach(mod);
             else
-                LOG_INFO("[lua] loaded %s %s (%s)", mod.id.c_str(), mod.version.c_str(), mod.name.c_str());
+                LOG_INFO("[lua] loaded %s %s (%s) [%s]", mod.id.c_str(), mod.version.c_str(), mod.name.c_str(),
+                         mod.entry[Client].empty() ? "server" : mod.entry[Server].empty() ? "client" : "client+server");
         }
 
         size_t loaded = std::count_if(g_mods.begin(), g_mods.end(), [](const Mod& m) { return m.loaded; });
         LOG_INFO("[lua] %zu of %zu mod(s) loaded from %s", loaded, g_mods.size(), ToUtf8(root).c_str());
+    }
+
+    bool ModifiersMatch(const Bind& b)
+    {
+        auto down = [](int vk) { return (GetAsyncKeyState(vk) & 0x8000) != 0; };
+        return down(VK_CONTROL) == b.ctrl && down(VK_SHIFT) == b.shift && down(VK_MENU) == b.alt;
     }
 }
 
@@ -786,6 +1158,75 @@ void LuaHost::Shutdown()
     CloseHandle(done);
 }
 
+void LuaHost::OnNetMessage(char direction, const std::string& modId, const std::string& event, const std::string& data, int from)
+{
+    if (!L)
+        return;
+    int side = direction == 's' ? Server : Client;
+    if (side == Server && !Game::IsAuthority())
+        return;
+
+    for (auto& mod : g_mods)
+    {
+        if (!mod.loaded || mod.id != modId)
+            continue;
+        auto it = mod.netHandlers[side].find(event);
+        if (it == mod.netHandlers[side].end())
+        {
+            LOG_WARN("[%s] net message '%s' has no %s handler", Who(mod, side).c_str(), event.c_str(), SideName(side));
+            return;
+        }
+        std::vector<int> refs = it->second; // обработчик может добавить новые
+        for (int ref : refs)
+        {
+            lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
+            if (data.empty())
+                lua_pushnil(L);
+            else
+            {
+                size_t pos = 0;
+                if (!Decode(L, data, pos, 0) || pos != data.size())
+                {
+                    lua_pop(L, 1);
+                    LOG_WARN("[%s] net message '%s' from %d is malformed", Who(mod, side).c_str(), event.c_str(), from);
+                    return;
+                }
+            }
+            lua_pushinteger(L, from);
+            Call(2, 0, Who(mod, side));
+        }
+        return;
+    }
+    LOG_WARN("[lua] net message for mod '%s' which is not loaded here", modId.c_str());
+}
+
+void LuaHost::PollInput(bool active)
+{
+    if (!L)
+        return;
+    for (auto& mod : g_mods)
+    {
+        if (!mod.loaded)
+            continue;
+        for (size_t i = 0; i < mod.binds.size(); ++i)
+        {
+            Bind& b = mod.binds[i];
+            bool down = active && (GetAsyncKeyState(b.vk) & 0x8000) != 0 && ModifiersMatch(b);
+            if (down && !b.wasDown)
+            {
+                b.wasDown = true;
+                lua_rawgeti(L, LUA_REGISTRYINDEX, b.ref);
+                lua_pushstring(L, b.key.c_str());
+                Call(1, 0, Who(mod, Client));
+                if (i >= mod.binds.size())
+                    break; // обработчик мог перезагрузить моды
+            }
+            else if (!down)
+                b.wasDown = false;
+        }
+    }
+}
+
 void LuaHost::RunConsole(const std::string& code)
 {
     ScriptRunner::RunOnGameThread([code] {
@@ -797,8 +1238,8 @@ void LuaHost::RunConsole(const std::string& code)
         // Как REPL: сначала пробуем как выражение ("= 1 + 2"), потом как оператор.
         std::string error;
         int top = lua_gettop(L);
-        if (!LoadChunk("return " + code, "=console", g_console.envRef, &error) &&
-            !LoadChunk(code, "=console", g_console.envRef, &error))
+        int env = g_console.env[Server].envRef;
+        if (!LoadChunk("return " + code, "=console", env, &error) && !LoadChunk(code, "=console", env, &error))
         {
             LOG_ERROR("[lua] %s", error.c_str());
             return;
@@ -821,7 +1262,9 @@ std::vector<LuaHost::ModView> LuaHost::Mods()
     for (const auto& m : g_mods)
     {
         ModStatus status = m.loaded ? ModStatus::Loaded : !m.error.empty() ? ModStatus::Error : ModStatus::Disabled;
-        out.push_back({ m.folder, m.id, m.name, m.version, m.author, m.description, m.error, status });
+        std::string sides = !m.entry[Client].empty() && !m.entry[Server].empty() ? "client+server"
+                          : !m.entry[Server].empty() ? "server" : !m.entry[Client].empty() ? "client" : "";
+        out.push_back({ m.folder, m.id, m.name, m.version, m.author, m.description, m.error, sides, m.multiplayer, status });
     }
     return out;
 }
@@ -840,11 +1283,12 @@ void LuaHost::PrintMods()
     ScriptRunner::RunOnGameThread([] {
         if (g_mods.empty())
             Console::Print("  no mods in %s", ToUtf8(ModsDir()).c_str());
-        for (const auto& m : g_mods)
+        for (const auto& v : Mods())
         {
-            const char* status = m.loaded ? "\x1b[32mloaded\x1b[0m" : !m.error.empty() ? "\x1b[31merror\x1b[0m" : "disabled";
-            Console::Print("  %-20s %-10s %-8s %s%s%s", m.id.empty() ? m.folder.c_str() : m.id.c_str(), m.version.c_str(),
-                           status, m.name.c_str(), m.error.empty() ? "" : " — ", m.error.c_str());
+            const char* status = v.status == ModStatus::Loaded ? "\x1b[32mloaded\x1b[0m"
+                               : v.status == ModStatus::Error ? "\x1b[31merror\x1b[0m" : "disabled";
+            Console::Print("  %-20s %-10s %-8s %-14s %s%s%s", v.id.empty() ? v.folder.c_str() : v.id.c_str(), v.version.c_str(),
+                           status, v.sides.c_str(), v.name.c_str(), v.error.empty() ? "" : " — ", v.error.c_str());
         }
     });
 }
