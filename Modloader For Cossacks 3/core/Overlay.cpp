@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "Overlay.h"
+#include "GraphicsTab.h"
 #include "Console.h"
 #include "FrameStats.h"
 #include "LuaHost.h"
@@ -254,6 +255,11 @@ namespace
                 if (ImGui::BeginTabItem("Mods"))
                 {
                     DrawModsTab();
+                    ImGui::EndTabItem();
+                }
+                if (ImGui::BeginTabItem("Graphics"))
+                {
+                    GraphicsTab::Draw();
                     ImGui::EndTabItem();
                 }
                 ImGui::EndTabBar();
