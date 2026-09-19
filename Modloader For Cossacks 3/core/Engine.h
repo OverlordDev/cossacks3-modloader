@@ -5,6 +5,10 @@
 namespace Engine
 {
     uint8_t* ScriptEngine();                                // TXDMScript singleton
+    // Движок скриптов, только если игра его уже создала (иначе nullptr). ScriptEngine() создала бы его
+    // сама — раньше времени этого делать нельзя, поэтому готовность проверяем так.
+    uint8_t* ScriptEngineIfCreated();
+    bool Ready();                                           // движок и проект загружены — можно работать со скриптами
     uint8_t* GuiStateMachine();                             // TXStateMachine главного меню/интерфейса (menu.aix)
 
     int StateIndex(uint8_t* sm, const char* delphiName);    // -1, если нет

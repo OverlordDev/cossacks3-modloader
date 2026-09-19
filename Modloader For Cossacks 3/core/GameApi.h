@@ -27,7 +27,8 @@ namespace GameApi
         constexpr uintptr_t StateMachineExecuteState     = 0x6C3C08; // procedure (handle; state: String; taghandle: Integer) — компилирует при первом запуске
 
         // Внутренности скриптового движка (Delphi register: eax, edx, ecx).
-        constexpr uintptr_t ScriptEngine        = 0x705944; // TXDMScript singleton -> eax
+        constexpr uintptr_t ScriptEngine        = 0x705944; // TXDMScript singleton -> eax (СОЗДАЁТ его, если ещё нет)
+        constexpr uintptr_t ScriptEngineVar     = 0x905134; // сама переменная: nil, пока игра не создала движок
         constexpr uintptr_t SMStateIndexByName  = 0x863C3C; // (eax = TXStateMachine, edx = name) -> index или -1
         constexpr uintptr_t SMStateByIndex      = 0x863AA0; // (eax = TXStateMachine, edx = index) -> TXDWSState
         constexpr uintptr_t SMStateCount        = 0x863B54; // (eax = TXStateMachine) -> количество состояний

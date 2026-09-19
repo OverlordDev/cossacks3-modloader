@@ -4,5 +4,6 @@
     <Platform Name="x86" />
   </Configurations>
   <Project Path="Loader/Loader.vcxproj" Id="377b4178-4d7e-454f-ac32-dd0eb5fbffc6" />
+  <Project Path="Launcher/Launcher.vcxproj" Id="9f2c1ab4-6d55-4e21-9c30-1a7b8e45d012" />
   <Project Path="Modloader For Cossacks 3/Modloader For Cossacks 3.vcxproj" Id="68838970-70ae-4d34-a46b-f5209ebaaa19" />
 </Solution>

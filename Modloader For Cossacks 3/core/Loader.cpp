@@ -3,6 +3,7 @@
 #include "Checksum.h"
 #include "Console.h"
 #include "DevConsole.h"
+#include "Engine.h"
 #include "Events.h"
 #include "FrameStats.h"
 #include "Game.h"
@@ -28,25 +29,12 @@ namespace
         GetWindowThreadProcessId(GetForegroundWindow(), &pid);
         return pid == GetCurrentProcessId() && GetForegroundWindow() != GetConsoleWindow();
     }
-}
 
-DWORD WINAPI Loader::MainThread(LPVOID param)
-{
-    HMODULE self = static_cast<HMODULE>(param);
-
-    Console::Init(L"Cossacks 3 Modloader");
-    LOG_INFO("Cossackss 3 Modloader injected");
-    LOG_INFO("Game base: %p", GetModuleHandleW(nullptr));
-
-    ScriptRunner::Install();
-    ScriptRunner::Update();
-
-    if (Hooks::Init())
+    // Часть модлоадера, которой нужны скрипты игры: вставки в состояния интерфейса и моды.
+    // При автозагрузке мы стартуем раньше самой игры, поэтому ставится не сразу, а как только
+    // движок скриптов и интерфейс готовы (Engine::Ready). При инжекте в идущую игру это первый же такт.
+    void InstallScriptParts()
     {
-        if (!FrameStats::Install())
-            LOG_WARN("FrameStats failed to install");
-        if (!Checksum::Install()) // до вставок событий: лобби должно видеть хеш чистой игры
-            LOG_WARN("Checksum failed to install — multiplayer lobbies will reject this game");
         if (Events::Install())
         {
             // Отладка: первое срабатывание каждого события — в лог (дальше счётчики в .events).
@@ -63,27 +51,60 @@ DWORD WINAPI Loader::MainThread(LPVOID param)
         else
             LOG_WARN("Events failed to install");
 
-        // Регистрация модов.
         if (!ExampleMod::Install())
             LOG_WARN("ExampleMod failed to install");
+
+        ScriptLog::PrintBuildVersion();
+        LuaHost::Start();
+        LOG_INFO("Ready. F9 - set all resources to 100000, END (in game) or .unload - unload, .reload - reload build.");
+    }
+}
+
+DWORD WINAPI Loader::MainThread(LPVOID param)
+{
+    HMODULE self = static_cast<HMODULE>(param);
+
+    Console::Init(L"Cossacks 3 Modloader");
+    LOG_INFO("Cossackss 3 Modloader injected");
+    LOG_INFO("Game base: %p", GetModuleHandleW(nullptr));
+
+    ScriptRunner::Install();
+    ScriptRunner::Update();
+
+    // Перехваты кода ставятся сразу: адреса в exe постоянны, игра к ним ещё не обращалась.
+    bool hooks = Hooks::Init();
+    if (hooks)
+    {
+        if (!FrameStats::Install())
+            LOG_WARN("FrameStats failed to install");
+        if (!Checksum::Install()) // до вставок событий: лобби должно видеть хеш чистой игры
+            LOG_WARN("Checksum failed to install — multiplayer lobbies will reject this game");
         if (!ScriptLog::Install())
             LOG_WARN("ScriptLog failed to install");
     }
 
-    ScriptLog::PrintBuildVersion();
     DevConsole::Start();
-    LuaHost::Start();
-    LOG_INFO("Ready. F9 - set all resources to 100000, END (in game) or .unload - unload, .reload - reload build.");
+    bool scriptParts = false;
+    if (!Engine::Ready())
+        LOG_INFO("Waiting for the game to start...");
 
     // END срабатывает только когда активно окно игры — чтобы не выгрузиться, двигая курсор в консоли.
     DevConsole::ExitRequest exit = DevConsole::ExitRequest::None;
     while (exit == DevConsole::ExitRequest::None)
     {
         ScriptRunner::Update();
+        if (hooks && !scriptParts && Engine::Ready() && ScriptRunner::GameThreadId())
+        {
+            scriptParts = true;
+            InstallScriptParts();
+        }
         Console::PollInput();
         FrameStats::Update();
-        Events::Update();
-        Ui::Update();
+        if (scriptParts) // до установки трогать состояния игры нечем и незачем
+        {
+            Events::Update();
+            Ui::Update();
+        }
         Cheats::Update();
         Sleep(50);
 

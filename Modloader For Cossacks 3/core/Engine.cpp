@@ -47,6 +47,17 @@ uint8_t* Engine::ScriptEngine()
     return result;
 }
 
+uint8_t* Engine::ScriptEngineIfCreated()
+{
+    return *reinterpret_cast<uint8_t**>(GameApi::Addr(GameApi::Va::ScriptEngineVar));
+}
+
+bool Engine::Ready()
+{
+    uint8_t* engine = ScriptEngineIfCreated();
+    return engine && *reinterpret_cast<uint8_t**>(engine + GameApi::Off::ScriptProject);
+}
+
 uint8_t* Engine::GuiStateMachine()
 {
     auto getGuiSm = reinterpret_cast<GameApi::GetIntFn>(GameApi::Addr(GameApi::Va::StateMachineGetGUISMHandle));
