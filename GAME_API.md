@@ -5017,7 +5017,12 @@ local f = gfx.fog()                                    -- { enabled = true, dens
 gfx.preset{ saturation = 1.3, bloom = 0.12, vignetteInner = 0.6, lut = "grade.dds" }
 local all = gfx.preset()            -- все поля текущего пресета
 local count, current, name = gfx.presets()
+gfx.usePreset("mlCinematic")        -- переключиться на пресет (в т.ч. принесённый модом)
+local names = gfx.presetNames()     -- { [0] = "default", [1] = "winter", ... }
 ```
+
+`gfx.preset(values, i)` правит пресет номер `i`, но текущим его **не делает** — движок продолжит
+рисовать прежним. Переключает `gfx.usePreset` (он же `SetCurrentHDRIndex`).
 
 Путь к пресетам: движок скриптов → проект (+4Ch) → `TXProject.GetRenderTree` (0x7101F0) → +148h →
 +68h (`TXPHDRCollection`; +4 список, +8 номер текущего, +0Ch `TXPHDR`). Пресет по номеру —

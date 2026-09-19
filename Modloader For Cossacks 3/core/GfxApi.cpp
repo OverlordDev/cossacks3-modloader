@@ -349,6 +349,31 @@ function gfx.presets()
     return count, current, name
 end
 
+-- Список всех пресетов: { [0] = "default", [1] = "winter", ... } — вместе с теми, что принёс мод.
+function gfx.presetNames()
+    local names = {}
+    local count = gfx.fx.info()
+    for i = 0, count - 1 do names[i] = gfx.fx.name(i) end
+    return names
+end
+
+-- Переключиться на пресет по имени или номеру: gfx.usePreset("mlCinematic").
+-- Именно переключить, а не «перелить»: gfx.preset(values, i) правит пресет номер i, но текущим
+-- его не делает, и движок продолжит рисовать прежним.
+function gfx.usePreset(which)
+    local index = which
+    if type(which) == "string" then
+        index = nil
+        local count = gfx.fx.info()
+        for i = 0, count - 1 do
+            if gfx.fx.name(i) == which then index = i break end
+        end
+        if not index then error("gfx.usePreset: no preset named '" .. which .. "'", 2) end
+    end
+    gfx.SetCurrentHDRIndex(index)
+    return index
+end
+
 -- Снимок настроек: сохранить перед экспериментом и вернуть обратно через gfx.apply.
 -- Только то, что можно записать обратно (height, current и прочее «только чтение» сюда не попадает).
 function gfx.snapshot()

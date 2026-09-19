@@ -965,6 +965,13 @@ end
         return 3;
     }
 
+    // gfx.fx.name(номер) — имя пресета из posteffects.lib
+    int l_fxName(lua_State* L)
+    {
+        lua_pushstring(L, Text::AnsiToUtf8(PostFx::Name(FxIndex(L, 1))).c_str());
+        return 1;
+    }
+
     int l_fxGet(lua_State* L)
     {
         PostFx::Value value;
@@ -1149,6 +1156,7 @@ end
             lua_newtable(L); // gfx.fx — поля пресета пост-обработки (не нативы, прямой доступ)
             SetPlain("fields", l_fxFields);
             SetPlain("info", l_fxInfo);
+            SetPlain("name", l_fxName);
             SetPlain("get", l_fxGet);
             SetPlain("set", l_fxSet);
             SetPlain("apply", l_fxApply);
