@@ -196,6 +196,7 @@
 
     <ClInclude Include="core/Game.h" />
     <ClInclude Include="core/GfxApi.h" />
+    <ClInclude Include="core/PostFx.h" />
     <ClInclude Include="core/Ui.h" />
 
     <ClInclude Include="core/Net.h" />
@@ -238,6 +239,7 @@
 
     <ClCompile Include="core/Game.cpp" />
     <ClCompile Include="core/GfxApi.cpp" />
+    <ClCompile Include="core/PostFx.cpp" />
     <ClCompile Include="core/Ui.cpp" />
 
     <ClCompile Include="core/Net.cpp" />

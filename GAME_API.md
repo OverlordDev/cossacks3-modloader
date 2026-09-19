@@ -5008,6 +5008,27 @@ local f = gfx.fog()                                    -- { enabled = true, dens
 своим. Группы пишут оба места; вручную настройка доступна как `gfx.option(имя [, значение])`
 (полный список ключей — `_gui_GetSettingsValues` в `data/scripts/lib/gui.script`).
 
+#### Пресет пост-обработки живьём — `gfx.preset`
+
+Нативы умеют только выбрать пресет целиком по номеру. Сами параметры (`core/PostFx.cpp`) мы пишем
+прямо в объект пресета `TXPHDRItem` и просим движок перелить их в шейдеры, поэтому менять можно в бою:
+
+```lua
+gfx.preset{ saturation = 1.3, bloom = 0.12, vignetteInner = 0.6, lut = "grade.dds" }
+local all = gfx.preset()            -- все поля текущего пресета
+local count, current, name = gfx.presets()
+```
+
+Путь к пресетам: движок скриптов → проект (+4Ch) → `TXProject.GetRenderTree` (0x7101F0) → +148h →
++68h (`TXPHDRCollection`; +4 список, +8 номер текущего, +0Ch `TXPHDR`). Пресет по номеру —
+`sub_5D618C`, перелить в шейдеры — `sub_5D3FB8(пресет, TXPHDR, cl=1)`, имя LUT — `sub_5D56EC`.
+Имена и смещения полей сняты с загрузчика `.lib` (`sub_5D570C`), поэтому совпадают с
+`posteffects.lib` один в один: `ContrastBright/Saturate/Contrast`, `ContrastVignette*`, `TMBlurOpacity`,
+`TMHDRIntencity`, `TMMulColor`, `BlurOffset/NumPasses`, `HDRNumPasses`, `HDRFilter*`, `DOFEnable`,
+`Focal*`, `SSAO*`, `Gamma*`. Короткие псевдонимы: `brightness`, `saturation`, `contrast`, `bloom`,
+`hdr`, `tint`, `vignetteInner/Outer/Fade`, `dof`, `focal`, `ssao`, `ssaoRange/Power/Cap/Color`,
+`fxaa`, `gamma`, `lut`. Сырой доступ — `gfx.fx.fields/info/get/set/apply`.
+
 Сверх групп: `gfx.pfx.brightness/gamma(менеджер [, значение])`, `gfx.highlight{...}`, `gfx.vsync([вкл])`,
 `gfx.snapshot()` — снимок всего, что можно записать обратно, и `gfx.apply(профиль)` — применить целиком.
 Опечатка в ключе и запись в поле «только чтение» дают ошибку сразу, а не молча ничего не делают.

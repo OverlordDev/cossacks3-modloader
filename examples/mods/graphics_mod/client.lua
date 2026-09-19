@@ -19,6 +19,9 @@ local profiles = {
         clouds  = { visible = true, speed = 1.4, fog = 0.7 },
         sky     = { visible = true, flareAngle = 30 },
         render  = { fxaa = true },
+        -- preset — то, чего нет в настройках игры: сила bloom, насыщенность, виньетка.
+        preset  = { bloom = 0.12, hdr = 1.8, saturation = 1.25, contrast = 1.05,
+                    vignetteInner = 0.65, vignetteOuter = 1.5 },
     } },
     { name = "battle", settings = {
         -- Чёткая картинка без размытия: в бою важнее читаемость, чем красота.
@@ -28,6 +31,9 @@ local profiles = {
         shadows = { enabled = true, size = 2048 },
         clouds  = { speed = 0.6, fog = 0.2 },
         render  = { fxaa = true },
+        -- в бою — чуть резче и без виньетки, чтобы по краям экрана всё было видно
+        preset  = { bloom = 0.04, hdr = 1.4, saturation = 1.1, contrast = 1.0,
+                    vignetteInner = 0.9, vignetteOuter = 1.9 },
     } },
     { name = "winter", settings = {
         post    = { preset = 1, ssao = true, dof = false },
@@ -43,24 +49,31 @@ local profiles = {
         shadows = { enabled = false },
         clouds  = { active = false },
         render  = { fxaa = false },
+        preset  = { bloom = 0, ssao = false, dof = false },
     } },
 }
 
-local vanilla  -- снимок настроек до вмешательства (снимается один раз за партию)
+local vanilla, vanillaPreset  -- снимок настроек до вмешательства (один раз за партию)
 local current = 0
 
 local function apply(index)
     local p = profiles[index]
-    gfx.apply(p.settings)
+    local settings = {}
+    for group, options in pairs(p.settings) do
+        if group ~= "preset" then settings[group] = options end
+    end
+    gfx.apply(settings)
+    if p.settings.preset then gfx.preset(p.settings.preset) end
     log.info("graphics: " .. p.name)
 end
 
 events.on("game.start", function()
-    vanilla = gfx.snapshot() -- чтобы было куда вернуться
+    vanilla = gfx.snapshot()      -- чтобы было куда вернуться
+    vanillaPreset = gfx.preset()  -- пост-обработка хранится отдельно
     current = 0
 end)
 
-events.on("game.end", function() vanilla = nil end)
+events.on("game.end", function() vanilla, vanillaPreset = nil, nil end)
 
 -- F7 — следующий профиль по кругу.
 input.bind("F7", function()
@@ -73,6 +86,7 @@ end)
 input.bind("F8", function()
     if not vanilla then return end
     gfx.apply(vanilla)
+    gfx.preset(vanillaPreset)
     current = 0
     log.info("graphics: vanilla restored")
 end)

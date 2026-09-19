@@ -292,6 +292,63 @@ function gfx.vsync(on)
     gfx.SetVSyncMode(on and "vsmSync" or "vsmNoSync")
 end
 
+-- Пресет пост-обработки живьём: bloom, насыщенность, виньетка, SSAO, DOF, цветокоррекция по LUT.
+-- Этого нет в настройках игры и нет в нативах: нативы умеют только выбрать пресет по номеру.
+-- Имена полей — ровно как в data/posteffects/posteffects.lib, плюс короткие псевдонимы ниже.
+local alias = {
+    brightness    = "ContrastBright",
+    saturation    = "ContrastSaturate",
+    contrast      = "ContrastContrast",
+    vignetteInner = "ContrastVignetteInner",
+    vignetteOuter = "ContrastVignetteOuter",
+    vignetteFade  = "ContrastVignetteAdjust",
+    bloom         = "TMBlurOpacity",
+    bloomPasses   = "HDRNumPasses",
+    blurPasses    = "BlurNumPasses",
+    blurOffset    = "BlurOffset",
+    hdr           = "TMHDRIntencity",
+    brightMax     = "TMBrightMax",
+    tint          = "TMMulColor",
+    dof           = "DOFEnable",
+    focal         = "FocalLength",
+    focalNear     = "FocalDNear",
+    focalFar      = "FocalDFar",
+    ssao          = "SSAOEnable",
+    ssaoRange     = "SSAORange",
+    ssaoPower     = "SSAOMultiplier",
+    ssaoCap       = "SSAOCap",
+    ssaoColor     = "SSAOColor",
+    fxaa          = "FXAAEnable",
+    gamma         = "GammaEnabled",
+    gammaFade     = "GammaFade",
+    lut           = "GammaTexName",   -- текстура цветокоррекции
+    enabled       = "Enabled",
+}
+
+local function fxName(key)
+    return alias[key] or key
+end
+
+-- gfx.preset{ saturation = 1.3, bloom = 0.1 }   — изменить текущий пресет и показать сразу
+-- gfx.preset()                                  — прочитать все поля текущего
+-- Вторым аргументом можно указать номер пресета: gfx.preset({...}, 1)
+function gfx.preset(values, index)
+    if values == nil then
+        local out = {}
+        for _, f in ipairs(gfx.fx.fields()) do out[f.name] = gfx.fx.get(f.name, index) end
+        return out
+    end
+    for key, value in pairs(values) do gfx.fx.set(fxName(key), value, index) end
+    gfx.fx.apply(index)
+    return gfx
+end
+
+-- Сколько пресетов, какой сейчас и как называется.
+function gfx.presets()
+    local count, current, name = gfx.fx.info()
+    return count, current, name
+end
+
 -- Снимок настроек: сохранить перед экспериментом и вернуть обратно через gfx.apply.
 -- Только то, что можно записать обратно (height, current и прочее «только чтение» сюда не попадает).
 function gfx.snapshot()

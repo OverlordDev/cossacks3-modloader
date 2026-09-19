@@ -6,6 +6,7 @@
 #include "GfxApi.h"
 #include "NativeCall.h"
 #include "Net.h"
+#include "PostFx.h"
 #include "ScriptRunner.h"
 #include "Text.h"
 #include "Ui.h"
@@ -913,6 +914,110 @@ end
         return 1;
     }
 
+    // ---------- API: gfx.fx (поля пресета пост-обработки) ----------
+
+    int FxIndex(lua_State* L, int arg)
+    {
+        return lua_isnoneornil(L, arg) ? -1 : static_cast<int>(luaL_checkinteger(L, arg));
+    }
+
+    void PushFxValue(lua_State* L, const PostFx::Value& v)
+    {
+        switch (v.type)
+        {
+        case PostFx::Type::Bool:   lua_pushboolean(L, v.boolean); break;
+        case PostFx::Type::String: lua_pushstring(L, Text::AnsiToUtf8(v.text).c_str()); break;
+        case PostFx::Type::Vector:
+            lua_newtable(L);
+            for (size_t i = 0; i < v.vector.size(); ++i)
+            {
+                lua_pushnumber(L, v.vector[i]);
+                lua_rawseti(L, -2, static_cast<int>(i) + 1);
+            }
+            break;
+        default: lua_pushnumber(L, v.number); break;
+        }
+    }
+
+    // gfx.fx.fields() -> { {name=, type=, count=}, ... }
+    int l_fxFields(lua_State* L)
+    {
+        static const char* kTypeName[] = { "float", "int", "bool", "string", "vector" };
+        lua_newtable(L);
+        int i = 1;
+        for (const PostFx::Field& f : PostFx::Fields())
+        {
+            lua_newtable(L);
+            lua_pushstring(L, f.name);                              lua_setfield(L, -2, "name");
+            lua_pushstring(L, kTypeName[static_cast<int>(f.type)]); lua_setfield(L, -2, "type");
+            lua_pushinteger(L, f.count);                            lua_setfield(L, -2, "count");
+            lua_rawseti(L, -2, i++);
+        }
+        return 1;
+    }
+
+    // gfx.fx.info() -> количество, номер текущего, имя текущего
+    int l_fxInfo(lua_State* L)
+    {
+        lua_pushinteger(L, PostFx::Count());
+        lua_pushinteger(L, PostFx::Current());
+        lua_pushstring(L, Text::AnsiToUtf8(PostFx::Name(-1)).c_str());
+        return 3;
+    }
+
+    int l_fxGet(lua_State* L)
+    {
+        PostFx::Value value;
+        std::string error;
+        if (!PostFx::Get(FxIndex(L, 2), luaL_checkstring(L, 1), &value, &error))
+            return luaL_error(L, "gfx.fx.get: %s", error.c_str());
+        PushFxValue(L, value);
+        return 1;
+    }
+
+    int l_fxSet(lua_State* L)
+    {
+        const char* name = luaL_checkstring(L, 1);
+        PostFx::Value value;
+        switch (lua_type(L, 2))
+        {
+        case LUA_TBOOLEAN:
+            value.type = PostFx::Type::Bool;
+            value.boolean = lua_toboolean(L, 2) != 0;
+            break;
+        case LUA_TSTRING:
+            value.type = PostFx::Type::String;
+            value.text = Text::Utf8ToAnsi(lua_tostring(L, 2));
+            break;
+        case LUA_TTABLE:
+            value.type = PostFx::Type::Vector;
+            for (lua_Integer i = 1; i <= luaL_len(L, 2); ++i)
+            {
+                lua_rawgeti(L, 2, i);
+                value.vector.push_back(static_cast<float>(lua_tonumber(L, -1)));
+                lua_pop(L, 1);
+            }
+            break;
+        default:
+            value.type = PostFx::Type::Float;
+            value.number = luaL_checknumber(L, 2);
+            break;
+        }
+
+        std::string error;
+        if (!PostFx::Set(FxIndex(L, 3), name, value, &error))
+            return luaL_error(L, "gfx.fx.set: %s", error.c_str());
+        return 0;
+    }
+
+    int l_fxApply(lua_State* L)
+    {
+        std::string error;
+        if (!PostFx::Apply(FxIndex(L, 1), &error))
+            return luaL_error(L, "gfx.fx.apply: %s", error.c_str());
+        return 0;
+    }
+
     // Обёртки поверх game/native на Lua (исполняются в базовом окружении каждой стороны).
     const char* kPrelude = R"lua(
 local RES = { food = 1, wood = 2, stone = 3, gold = 4, iron = 5, coal = 6 }
@@ -1040,6 +1145,15 @@ end
             lua_pushcfunction(L, l_gfxIndex);
             lua_setfield(L, -2, "__index");
             lua_setmetatable(L, -2);
+
+            lua_newtable(L); // gfx.fx — поля пресета пост-обработки (не нативы, прямой доступ)
+            SetPlain("fields", l_fxFields);
+            SetPlain("info", l_fxInfo);
+            SetPlain("get", l_fxGet);
+            SetPlain("set", l_fxSet);
+            SetPlain("apply", l_fxApply);
+            lua_setfield(L, -2, "fx");
+
             lua_setfield(L, -2, "gfx");
         }
 
