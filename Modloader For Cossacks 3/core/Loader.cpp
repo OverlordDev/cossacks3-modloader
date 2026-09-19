@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "Loader.h"
+#include "Assets.h"
 #include "Checksum.h"
 #include "Console.h"
 #include "DevConsole.h"
@@ -79,6 +80,8 @@ DWORD WINAPI Loader::MainThread(LPVOID param)
             LOG_WARN("FrameStats failed to install");
         if (!Checksum::Install()) // до вставок событий: лобби должно видеть хеш чистой игры
             LOG_WARN("Checksum failed to install — multiplayer lobbies will reject this game");
+        if (!Assets::Install()) // как можно раньше: игра читает шейдеры и текстуры на старте
+            LOG_WARN("Assets failed to install — mods cannot replace game files");
         if (!ScriptLog::Install())
             LOG_WARN("ScriptLog failed to install");
     }

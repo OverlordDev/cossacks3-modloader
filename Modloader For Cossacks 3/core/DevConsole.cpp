@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "DevConsole.h"
+#include "Assets.h"
 #include "Checksum.h"
 #include "Console.h"
 #include "Engine.h"
@@ -242,6 +243,8 @@ namespace
                 Checksum::Print();
             else if (cmd == "mods")
                 LuaHost::PrintMods();
+            else if (cmd == "assets")
+                Assets::Print();
             else if (cmd == "lua")
             {
                 if (arg == "reload")

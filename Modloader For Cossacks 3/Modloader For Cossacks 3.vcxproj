@@ -201,6 +201,7 @@
 
     <ClInclude Include="core/Net.h" />
     <ClInclude Include="core/Checksum.h" />
+    <ClInclude Include="core/Assets.h" />
 
     <None Include="core/FunctionsTable.inc" />
 
@@ -244,6 +245,7 @@
 
     <ClCompile Include="core/Net.cpp" />
     <ClCompile Include="core/Checksum.cpp" />
+    <ClCompile Include="core/Assets.cpp" />
 
     <ClCompile Include="core/GameApi.cpp" />
     <ClCompile Include="$(SolutionDir)external/minhook/src/buffer.c"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>

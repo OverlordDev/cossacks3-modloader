@@ -1,0 +1,94 @@
+section.begin
+   CurrentHDRIndex = 0
+   Items : struct.begin
+      [0] : struct.begin
+         Name = default
+         Enabled = True
+         BlurOffset = 0.00392156885936856
+         BlurNumPasses = 5
+         HDRNumPasses = 5
+         ContrastBright = 1
+         ContrastSaturate = 1
+         ContrastContrast = 0.95
+         ContrastAvgLumR = 0.5
+         ContrastAvgLumG = 0.5
+         ContrastAvgLumB = 0.5
+         ContrastAfterBlur = 0
+         ContrastVignetteInner = 0.9
+         ContrastVignetteOuter = 1.9
+         ContrastVignetteAdjust = 1
+         TMBlurOpacity = 0.0390625
+         TMHDRIntencity = 1.5
+         TMMulColor : struct.begin
+            X = 1
+            Y = 1
+            Z = 1
+            W = 1
+         struct.end
+         TMBrightMax = 1
+         DOFEnable = False
+         FocalLength = 128
+         FocalDNear = 256
+         FocalDFar = 256
+         SSAOEnable = False
+         SSAODepthMul = 0.25
+         SSAODepthTolerance = 0
+         SSAOCap = 0.75
+         SSAOMultiplier = 5000
+         SSAORange = 20
+         SSAOToneHDRIntMul = 1.35
+         SSAOColor : struct.begin
+            X = 0
+            Y = 0
+            Z = 0
+         struct.end
+         HDRFilterColor : struct.begin
+            X = 1
+            Y = 1
+            Z = 1
+            W = 1
+         struct.end
+         HDRFilterStart = 0
+         HDRFilterEnd = 1
+         HDRSmoothStart = 0
+         HDRSmoothEnd = 1
+         ContrastEnabled = True
+         TwoSideHDREnabled = False
+         SecondHDRIndex = -1
+         GammaEnabled = False
+         GammaFade = 1
+         GammaTexName = 
+      struct.end
+      [1] : struct.begin {refkey=.Items[0]}
+         Name = winter
+         ContrastBright = 1.0
+         ContrastContrast = 0.8
+         ContrastAvgLumB = 0.9
+      struct.end
+      [2] : struct.begin {refkey=.Items[0]}
+         Name = desaturate
+         ContrastSaturate = 0.9
+      struct.end
+      [3] : struct.begin {refkey=.Items[0]}
+         Name = mlCinematic
+         ContrastSaturate = 1.25
+         ContrastContrast = 1.05
+         ContrastVignetteInner = 0.65
+         ContrastVignetteOuter = 1.5
+         TMBlurOpacity = 0.12
+         TMHDRIntencity = 1.8
+         SSAOEnable = True
+         SSAORange = 24
+      struct.end
+      [4] : struct.begin {refkey=.Items[0]}
+         Name = mlBattle
+         ContrastSaturate = 1.12
+         ContrastVignetteInner = 0.95
+         ContrastVignetteOuter = 1.9
+         TMBlurOpacity = 0.05
+         TMHDRIntencity = 1.4
+         SSAOEnable = True
+         SSAORange = 14
+      struct.end
+   struct.end
+section.end

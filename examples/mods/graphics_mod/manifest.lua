@@ -14,4 +14,10 @@ return {
 
     -- "optional" — другим игрокам этот мод не нужен, контрольная сумма лобби не меняется.
     multiplayer = "optional",
+
+    -- Папка assets повторяет расположение файлов в игре и подменяет их:
+    --   assets/data/posteffects/posteffects.lib  — свои пресеты пост-обработки (mlCinematic, mlBattle)
+    --   assets/data/shaders/tone/tonecont.frag   — свой шейдер: добавлена резкость
+    -- Эти файлы игра читает один раз при запуске, поэтому работает только с автозагрузкой
+    -- (Cossacks3Launcher.exe), а не при инжекте в уже идущую игру. Список — команда .assets.
 }
