@@ -77,7 +77,7 @@
       <PreprocessorDefinitions>WIN32;_DEBUG;MODLOADERFORCOSSACKS3_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)external/minhook/include;$(SolutionDir)external/lua;$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)external/minhook/include;$(SolutionDir)external/lua;$(SolutionDir)external/imgui;$(SolutionDir)external/imgui/backends;$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
@@ -100,7 +100,7 @@
       <PreprocessorDefinitions>WIN32;NDEBUG;MODLOADERFORCOSSACKS3_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)external/minhook/include;$(SolutionDir)external/lua;$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)external/minhook/include;$(SolutionDir)external/lua;$(SolutionDir)external/imgui;$(SolutionDir)external/imgui/backends;$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
@@ -121,7 +121,7 @@
       <PreprocessorDefinitions>_DEBUG;MODLOADERFORCOSSACKS3_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)external/minhook/include;$(SolutionDir)external/lua;$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)external/minhook/include;$(SolutionDir)external/lua;$(SolutionDir)external/imgui;$(SolutionDir)external/imgui/backends;$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
@@ -144,7 +144,7 @@
       <PreprocessorDefinitions>NDEBUG;MODLOADERFORCOSSACKS3_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)external/minhook/include;$(SolutionDir)external/lua;$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)external/minhook/include;$(SolutionDir)external/lua;$(SolutionDir)external/imgui;$(SolutionDir)external/imgui/backends;$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
@@ -184,10 +184,14 @@
 
     <ClInclude Include="core/Engine.h" />
 
-    <ClInclude Include="core/Events.h" />
-    <ClInclude Include="core/LuaHost.h" />
-    <ClInclude Include="core/NativeCall.h" />
-    <ClInclude Include="core/Text.h" />
+    <ClInclude Include="core/Events.h" />
+
+    <ClInclude Include="core/LuaHost.h" />
+
+    <ClInclude Include="core/NativeCall.h" />
+
+    <ClInclude Include="core/Text.h" />
+    <ClInclude Include="core/Overlay.h" />
 
     <None Include="core/FunctionsTable.inc" />
 
@@ -216,9 +220,12 @@
 
     <ClCompile Include="core/Engine.cpp" />
 
-    <ClCompile Include="core/Events.cpp" />
-    <ClCompile Include="core/LuaHost.cpp" />
-    <ClCompile Include="core/NativeCall.cpp" />
+    <ClCompile Include="core/Events.cpp" />
+
+    <ClCompile Include="core/LuaHost.cpp" />
+
+    <ClCompile Include="core/NativeCall.cpp" />
+    <ClCompile Include="core/Overlay.cpp" />
 
     <ClCompile Include="core/GameApi.cpp" />
     <ClCompile Include="$(SolutionDir)external/minhook/src/buffer.c"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
@@ -226,33 +233,67 @@
     <ClCompile Include="$(SolutionDir)external/minhook/src/trampoline.c"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
     <ClCompile Include="$(SolutionDir)external/minhook/src/hde/hde32.c"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
     <ClCompile Include="$(SolutionDir)external/minhook/src/hde/hde64.c"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
-    <ClCompile Include="$(SolutionDir)external/lua/lapi.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
-    <ClCompile Include="$(SolutionDir)external/lua/lauxlib.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
-    <ClCompile Include="$(SolutionDir)external/lua/lbaselib.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
-    <ClCompile Include="$(SolutionDir)external/lua/lcode.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
-    <ClCompile Include="$(SolutionDir)external/lua/lcorolib.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
-    <ClCompile Include="$(SolutionDir)external/lua/lctype.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
-    <ClCompile Include="$(SolutionDir)external/lua/ldebug.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
-    <ClCompile Include="$(SolutionDir)external/lua/ldo.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
-    <ClCompile Include="$(SolutionDir)external/lua/ldump.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
-    <ClCompile Include="$(SolutionDir)external/lua/lfunc.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
-    <ClCompile Include="$(SolutionDir)external/lua/lgc.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
-    <ClCompile Include="$(SolutionDir)external/lua/llex.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
-    <ClCompile Include="$(SolutionDir)external/lua/lmathlib.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
-    <ClCompile Include="$(SolutionDir)external/lua/lmem.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
-    <ClCompile Include="$(SolutionDir)external/lua/lobject.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
-    <ClCompile Include="$(SolutionDir)external/lua/lopcodes.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
-    <ClCompile Include="$(SolutionDir)external/lua/loslib.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
-    <ClCompile Include="$(SolutionDir)external/lua/lparser.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
-    <ClCompile Include="$(SolutionDir)external/lua/lstate.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
-    <ClCompile Include="$(SolutionDir)external/lua/lstring.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
-    <ClCompile Include="$(SolutionDir)external/lua/lstrlib.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
-    <ClCompile Include="$(SolutionDir)external/lua/ltable.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
-    <ClCompile Include="$(SolutionDir)external/lua/ltablib.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
-    <ClCompile Include="$(SolutionDir)external/lua/ltm.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
-    <ClCompile Include="$(SolutionDir)external/lua/lundump.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
-    <ClCompile Include="$(SolutionDir)external/lua/lutf8lib.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
-    <ClCompile Include="$(SolutionDir)external/lua/lvm.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/imgui/imgui.cpp"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/imgui/imgui_draw.cpp"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/imgui/imgui_tables.cpp"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/imgui/imgui_widgets.cpp"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/imgui/backends/imgui_impl_win32.cpp"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+    <ClCompile Include="$(SolutionDir)external/imgui/backends/imgui_impl_opengl2.cpp"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+
+    <ClCompile Include="$(SolutionDir)external/lua/lapi.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+
+    <ClCompile Include="$(SolutionDir)external/lua/lauxlib.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+
+    <ClCompile Include="$(SolutionDir)external/lua/lbaselib.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+
+    <ClCompile Include="$(SolutionDir)external/lua/lcode.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+
+    <ClCompile Include="$(SolutionDir)external/lua/lcorolib.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+
+    <ClCompile Include="$(SolutionDir)external/lua/lctype.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+
+    <ClCompile Include="$(SolutionDir)external/lua/ldebug.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+
+    <ClCompile Include="$(SolutionDir)external/lua/ldo.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+
+    <ClCompile Include="$(SolutionDir)external/lua/ldump.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+
+    <ClCompile Include="$(SolutionDir)external/lua/lfunc.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+
+    <ClCompile Include="$(SolutionDir)external/lua/lgc.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+
+    <ClCompile Include="$(SolutionDir)external/lua/llex.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+
+    <ClCompile Include="$(SolutionDir)external/lua/lmathlib.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+
+    <ClCompile Include="$(SolutionDir)external/lua/lmem.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+
+    <ClCompile Include="$(SolutionDir)external/lua/lobject.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+
+    <ClCompile Include="$(SolutionDir)external/lua/lopcodes.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+
+    <ClCompile Include="$(SolutionDir)external/lua/loslib.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+
+    <ClCompile Include="$(SolutionDir)external/lua/lparser.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+
+    <ClCompile Include="$(SolutionDir)external/lua/lstate.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+
+    <ClCompile Include="$(SolutionDir)external/lua/lstring.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+
+    <ClCompile Include="$(SolutionDir)external/lua/lstrlib.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+
+    <ClCompile Include="$(SolutionDir)external/lua/ltable.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+
+    <ClCompile Include="$(SolutionDir)external/lua/ltablib.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+
+    <ClCompile Include="$(SolutionDir)external/lua/ltm.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+
+    <ClCompile Include="$(SolutionDir)external/lua/lundump.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+
+    <ClCompile Include="$(SolutionDir)external/lua/lutf8lib.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+
+    <ClCompile Include="$(SolutionDir)external/lua/lvm.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+
     <ClCompile Include="$(SolutionDir)external/lua/lzio.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><CompileAs>CompileAsCpp</CompileAs><SDLCheck>false</SDLCheck><WarningLevel>TurnOffAllWarnings</WarningLevel><PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>

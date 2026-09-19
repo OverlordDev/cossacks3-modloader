@@ -6,6 +6,7 @@
 #include "FrameStats.h"
 #include "Hooks.h"
 #include "LuaHost.h"
+#include "Overlay.h"
 #include "Profiler.h"
 #include "ScriptRunner.h"
 
@@ -88,6 +89,7 @@ DWORD WINAPI Loader::MainThread(LPVOID param)
         Sleep(100);
     DevConsole::Stop();
     LuaHost::Shutdown(); // до Uninstall: Lua закрывается в главном потоке игры через нашу оконную процедуру
+    Overlay::Shutdown(); // до Hooks::Shutdown: освобождение идёт в хуке SwapBuffers
     ScriptRunner::Uninstall();
     Hooks::Shutdown();
     Sleep(200); // даём потокам выйти из наших detour-функций

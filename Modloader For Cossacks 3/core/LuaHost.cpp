@@ -50,6 +50,34 @@ namespace
         return fs::path(exe).parent_path() / L"modloader" / L"mods";
     }
 
+    // modloader/modstate.txt: строки "id=1" / "id=0" — переопределяют enabled из манифеста.
+    fs::path StateFile()
+    {
+        return ModsDir().parent_path() / L"modstate.txt";
+    }
+
+    std::map<std::string, bool> LoadModState()
+    {
+        std::map<std::string, bool> state;
+        std::ifstream in(StateFile());
+        std::string line;
+        while (std::getline(in, line))
+        {
+            size_t eq = line.find('=');
+            if (eq != std::string::npos && eq > 0)
+                state[line.substr(0, eq)] = line.compare(eq + 1, 1, "1") == 0;
+        }
+        return state;
+    }
+
+    void SaveModState(const std::map<std::string, bool>& state)
+    {
+        std::ofstream out(StateFile(), std::ios::trunc);
+        out << "# Cossacks 3 Modloader: mod on/off overrides (id=1 / id=0). Managed by the in-game menu.\n";
+        for (const auto& [id, on] : state)
+            out << id << '=' << (on ? 1 : 0) << '\n';
+    }
+
     bool ReadFile(const fs::path& path, std::string* out)
     {
         std::ifstream in(path, std::ios::binary);
@@ -683,6 +711,7 @@ end
                 dirs.push_back(e.path());
         std::sort(dirs.begin(), dirs.end()); // порядок загрузки — по имени папки
 
+        auto modState = LoadModState();
         g_mods.reserve(dirs.size());
         for (const auto& dir : dirs)
         {
@@ -695,7 +724,9 @@ end
                 g_mods.push_back(std::move(mod));
                 continue;
             }
-            bool duplicate = std::any_of(g_mods.begin(), g_mods.end(), [&](const Mod& m) { return m.loaded && m.id == mod.id; });
+            if (auto it = modState.find(mod.id); it != modState.end())
+                mod.enabled = it->second;
+            bool duplicate = std::any_of(g_mods.begin(), g_mods.end(), [&](const Mod& m) { return m.error.empty() && m.id == mod.id; });
             if (duplicate)
             {
                 mod.error = "duplicate id";
@@ -782,6 +813,26 @@ void LuaHost::RunConsole(const std::string& code)
         }
         lua_settop(L, top);
     });
+}
+
+std::vector<LuaHost::ModView> LuaHost::Mods()
+{
+    std::vector<ModView> out;
+    for (const auto& m : g_mods)
+    {
+        ModStatus status = m.loaded ? ModStatus::Loaded : !m.error.empty() ? ModStatus::Error : ModStatus::Disabled;
+        out.push_back({ m.folder, m.id, m.name, m.version, m.author, m.description, m.error, status });
+    }
+    return out;
+}
+
+void LuaHost::SetModEnabled(const std::string& id, bool enabled)
+{
+    auto state = LoadModState();
+    state[id] = enabled;
+    SaveModState(state);
+    LOG_INFO("[lua] mod '%s' %s — reloading Lua mods", id.c_str(), enabled ? "enabled" : "disabled");
+    Reload();
 }
 
 void LuaHost::PrintMods()

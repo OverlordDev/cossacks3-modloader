@@ -2,6 +2,7 @@
 #include "FrameStats.h"
 #include "Console.h"
 #include "Hooks.h"
+#include "Overlay.h"
 
 #include <algorithm>
 #include <mutex>
@@ -23,6 +24,7 @@ namespace
 
     BOOL WINAPI hkSwapBuffers(HDC dc)
     {
+        Overlay::OnSwapBuffers(dc); // меню рисуется поверх готового кадра
         BOOL result = oSwapBuffers(dc);
         LARGE_INTEGER now;
         QueryPerformanceCounter(&now);
