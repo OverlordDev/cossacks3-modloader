@@ -14,18 +14,30 @@ local config = {
     -- добавляются только недостающие — карта не превращается в свалку шахт.
     mines = { gold = 3, iron = 2, coal = 2 },
 
+    -- На каком расстоянии от лидера встают деревни союзников.
+    spacing = 30,
+
     -- Кольцо вокруг деревни, в которое кладутся шахты.
     radiusMin = 22,
     radiusMax = 48,
 }
 
--- Бейзнеймы шахт (data/scripts/dmscript.global: gc_basename_minegold и соседние).
-local BASE = { gold = "eurgol", iron = "euriro", coal = "eurcoa" }
+-- Бейзнеймы шахт берём из самой игры: gc_basename_minegold / mineiron / minecoal.
 
 -- Союзники к лидеру команды. Лидер — игрок с наименьшим номером в команде.
--- PlayerMoveToPlayerByHandle переносит всю стартовую деревню игрока к другому.
+--
+-- ВАЖНО: PlayerMoveToPlayerByHandle для этого не годится, хотя по имени и похоже. Он передаёт всё
+-- имущество одного игрока другому (проверено по дизассемблеру: перебирает объекты и меняет владельца),
+-- из-за чего бот считается погибшим, а его селяне оказываются чужими. Переносим честно: сдвигаем
+-- каждый объект игрока на разницу между его деревней и местом рядом с лидером.
 local function gatherTeams()
-    game.exec([[
+    game.exec(([[
+        const cSpacing = %d;
+
+        var memberCount : array [0..15] of Integer;
+        var t : Integer;
+        for t := 0 to 15 do memberCount[t] := 0;
+
         var i, j : Integer;
         for i := 0 to gc_MaxPlayerCount-1 do
         if (gMap.players[i].bexists) and (gMap.players[i].team > 0) then
@@ -34,14 +46,36 @@ local function gatherTeams()
             for j := 0 to i-1 do
             if (leader < 0) and (gMap.players[j].bexists) and (gMap.players[j].team = gMap.players[i].team) then
             leader := j;
+            if (leader < 0) then continue; // сам лидер — остаётся на месте
 
-            if (leader >= 0) then
+            var team : Integer = gMap.players[i].team;
+            if (team > 15) then continue;
+            memberCount[team] := memberCount[team] + 1;
+
+            var h : Integer = GetPlayerHandleByIndex(i);
+            var lx, lz, ox, oz : Float;
+            GetPlayerArmyPositionByHandle(GetPlayerHandleByIndex(leader), 0, False, lx, lz);
+            GetPlayerArmyPositionByHandle(h, 0, False, ox, oz);
+            if (ox = 0) and (oz = 0) then continue;
+
+            // Ставим соседние деревни по кругу вокруг лидера, чтобы они не наложились друг на друга.
+            var a : Float = memberCount[team] * 2.0944;
+            var dx : Float = lx + cos(a) * cSpacing - ox;
+            var dz : Float = lz + sin(a) * cSpacing - oz;
+
+            var moved : Integer = 0;
+            for j := GetPlayerGameObjectsCountByHandle(h)-1 downto 0 do
             begin
-                PlayerMoveToPlayerByHandle(GetPlayerHandleByIndex(i), GetPlayerHandleByIndex(leader));
-                Log('[team_spawn] player ' + IntToStr(i) + ' moved to ' + IntToStr(leader));
+                var g : Integer = GetGameObjectHandleByIndex(j, h);
+                var x : Float = GetGameObjectPositionXByHandle(g) + dx;
+                var z : Float = GetGameObjectPositionZByHandle(g) + dz;
+                SetGameObjectPositionByHandle(g, x, RayCastHeight(x, z), z);
+                moved := moved + 1;
             end;
+            Log('[team_spawn] player ' + IntToStr(i) + ' moved to team mate ' + IntToStr(leader) +
+                ' (' + IntToStr(moved) + ' objects)');
         end;
-    ]])
+    ]]):format(config.spacing))
 end
 
 -- Шахты вокруг каждой деревни: считаем, что уже есть, и докладываем недостающие.
