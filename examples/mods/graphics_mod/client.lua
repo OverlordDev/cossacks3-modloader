@@ -170,28 +170,32 @@ end)
 -- ---------------------------------------------------------------------------
 -- Камера
 -- ---------------------------------------------------------------------------
--- В ванили камера жёсткая: фокус 400 без зума, наклон всегда -32 градуса (data/cameras/camera.cfg).
--- Кинематографичная: чем ближе подлетаешь, тем положе угол и уже поле зрения — как в новых RTS.
-local cinematicCamera = false
+-- В ванили камера жёсткая (data/cameras/camera.cfg): фокус 400, наклон всегда -32 градуса.
+-- Причём игра возвращает эти значения сама при каждом OnResize и на старте партии, поэтому свои
+-- приходится повторять каждый такт, пока режим включён.
+local cinematic = { on = false, focal = 520, tilt = -18 }
+
+local function applyCamera()
+    gfx.camera{
+        focal = { cinematic.focal, cinematic.focal, 0.5 },
+        -- все четыре угла одинаковые — так же это делает сама игра в OnResize
+        freeRotation = { cinematic.tilt, cinematic.tilt, cinematic.tilt, cinematic.tilt, 1.0, 1, 10, 0.15 },
+    }
+end
+
+events.on("game.tick", function()
+    if cinematic.on then applyCamera() end
+end)
 
 input.bind("F12", function()
     if not game.isInGame() then return end
-    cinematicCamera = not cinematicCamera
-    if cinematicCamera then
-        gfx.camera{
-            -- {минимальный фокус, максимальный, степень} — появляется настоящий зум
-            focal = { 260, 900, 1.0 },
-            -- {угол при низкой камере (мин, макс), при высокой (мин, макс), степень,
-            --  мин. и макс. расстояние до цели, коэффициент высоты}
-            -- Внизу почти горизонт, вверху вид сверху — наклон меняется сам при зуме.
-            freeRotation = { -14, -14, -62, -62, 1.0, 1, 10, 0.15 },
-            zoomSpeed = 1.4,
-            dof = true,
-        }
-        gfx.camera.stop() -- на всякий случай: чтобы камера никуда не уезжала сама
-        log.info("камера: кинематографичная (F12 — вернуть обычную)")
+    cinematic.on = not cinematic.on
+    if cinematic.on then
+        applyCamera()
+        gfx.camera.stop() -- камера умеет ехать сама; убеждаемся, что стоит
+        log.info(("камера: кинематографичная (фокус %d, наклон %d°)"):format(cinematic.focal, cinematic.tilt))
     else
-        -- Вернуть ванильную: перечитать профиль камеры из файла игры — там все исходные значения.
+        -- Вернуть ванильную: перечитать профиль камеры из файла игры — там исходные значения.
         gfx.camera{ profile = gfx.camera().profile, dof = false }
         log.info("камера: обычная")
     end

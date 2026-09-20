@@ -6,4 +6,7 @@
 namespace GraphicsTab
 {
     void Draw();
+
+    // Каждый кадр (из Overlay): удерживает настройки камеры, которые игра сбрасывает сама.
+    void Tick();
 }

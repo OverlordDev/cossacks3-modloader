@@ -5062,7 +5062,13 @@ local names = gfx.presetNames()     -- { [0] = "default", [1] = "winter", ... }
 `fxaa`, `gamma`, `lut`. Сырой доступ — `gfx.fx.fields/info/get/set/apply`.
 
 Камера в ванили жёсткая (`data/cameras/camera.cfg`): фокус 400 без диапазона, наклон всегда -32° —
-поэтому зум не меняет поле зрения, а угол не зависит от высоты. `focal` и `freeRotation` это включают;
+поэтому зум не меняет поле зрения, а угол не зависит от высоты. **Игра возвращает эти значения сама**:
+состояние `OnResize` (`data/gui/menu.inc/onresize.inc`) при каждом изменении размера окна и на старте
+партии зовёт `SetCameraFocalLengthInfo(400, 400, ...)` и `SetCameraFreeRotationInfo(-32, ...)`. Значит,
+свои значения надо повторять — например, в обработчике `game.tick`. Зум по `+`/`-` игра делает через
+`SetCameraElasticDistance`, а Ctrl+колесо меняет фокус: это единственные два рычага, которые реально
+двигают картинку. `angle`/`distance` (elastic target) работают только когда камера привязана к юниту,
+в обычной игре они откатываются. `focal` и `freeRotation` это включают;
 `gfx.camera{ profile = gfx.camera().profile }` перечитывает cfg и возвращает как было. У геттеров
 `GetCameraFocalLengthInfo` / `GetCameraFreeRotationInfo` var-параметры, поэтому прочитать эти значения
 обратно нельзя — их надо помнить самому.

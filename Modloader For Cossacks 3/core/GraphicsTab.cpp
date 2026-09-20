@@ -111,10 +111,15 @@ namespace
         CallNative("SetProjectOptionAsBoolean", { name, on }, &r);
     }
 
-    // Фокус и углы наклона движок обратно не отдаёт (у геттеров var-параметры), поэтому помним их
-    // сами. Стартовые значения — как в data/cameras/camera.cfg: зума нет, наклон всегда -32.
-    float g_focalMin = 400.0f, g_focalMax = 400.0f;
-    float g_tiltLow = -32.0f, g_tiltHigh = -32.0f;
+    // Фокус и угол наклона движок обратно не отдаёт (у геттеров var-параметры), поэтому помним их
+    // сами. Значения по умолчанию — как ставит сама игра: фокус 400, наклон -32.
+    //
+    // Держать их приходится силой: состояние OnResize (data/gui/menu.inc/onresize.inc) при каждом
+    // изменении размера окна и на старте партии жёстко возвращает 400 и -32. Поэтому, если игрок
+    // что-то подвинул, повторяем установку каждый кадр (g_keepCamera).
+    float g_focal = 400.0f;
+    float g_tilt = -32.0f;
+    bool g_keepCamera = false;
 
     // ---------- поля пресета ----------
 
@@ -173,9 +178,9 @@ namespace
         s += std::string("gfx.render{ fxaa = ") + (GetOption("FXAAEnable") ? "true" : "false") + " }\n";
         s += std::string("gfx.shadows{ enabled = ") + (GetOption("ShadowMapEnabled") ? "true" : "false") +
              ", size = " + std::to_string(GetInt("GetShadowMapSize")) + " }\n";
-        s += "gfx.camera{ focal = { " + Num(g_focalMin) + ", " + Num(g_focalMax) + ", 1 }, freeRotation = { " +
-             Num(g_tiltLow) + ", " + Num(g_tiltLow) + ", " + Num(g_tiltHigh) + ", " + Num(g_tiltHigh) +
-             ", 1, 1, 10, 0.15 }, zoomSpeed = " + Num(GetFloat("GetCameraMouseDistanceSpeed")) + " }\n";
+        s += "gfx.camera{ focal = { " + Num(g_focal) + ", " + Num(g_focal) + ", 0.5 }, freeRotation = { " +
+             Num(g_tilt) + ", " + Num(g_tilt) + ", " + Num(g_tilt) + ", " + Num(g_tilt) +
+             ", 1, 1, 10, 0.15 } }\n";
         s += std::string("gfx.fog{ enabled = ") + (GetInt("GetFogEnable") ? "true" : "false") +
              ", density = " + Num(GetFloat("GetCameraDynFogDensity")) +
              ", power = " + Num(GetFloat("GetCameraDynFogPower")) + " }\n";
@@ -297,34 +302,33 @@ void GraphicsTab::Draw()
     // их сами. Стартовые значения — как в data/cameras/camera.cfg: зума нет, наклон всегда -32.
     ImGui::SeparatorText("Camera");
 
-    bool focalChanged = ImGui::SliderFloat("Zoom in (focal max)", &g_focalMax, 200.0f, 1200.0f, "%.0f");
-    focalChanged |= ImGui::SliderFloat("Zoom out (focal min)", &g_focalMin, 100.0f, 800.0f, "%.0f");
-    if (focalChanged)
-        SetFloats("SetCameraFocalLengthInfo", { g_focalMin, g_focalMax, 1.0f });
+    // Поле зрения. Игра меняет его так же (Ctrl+колесо — «скриншотный» зум).
+    if (ImGui::SliderFloat("Field of view (focal)", &g_focal, 150.0f, 900.0f, "%.0f"))
+    {
+        g_keepCamera = true;
+        SetFloats("SetCameraFocalLengthInfo", { g_focal, g_focal, 0.5f });
+    }
     if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("В ванили оба равны 400 — поэтому зум ничего не меняет.");
+        ImGui::SetTooltip("400 — как в игре. Меньше — шире обзор, больше — ближе и площе.");
 
-    bool tiltChanged = ImGui::SliderFloat("Tilt close", &g_tiltLow, -89.0f, -5.0f, "%.0f°");
-    tiltChanged |= ImGui::SliderFloat("Tilt far", &g_tiltHigh, -89.0f, -5.0f, "%.0f°");
-    if (tiltChanged)
-        SetFloats("SetCameraFreeRotationInfo", { g_tiltLow, g_tiltLow, g_tiltHigh, g_tiltHigh, 1.0f, 1.0f, 10.0f, 0.15f });
+    // Наклон. Игра ставит все четыре угла одинаковыми, делаем так же.
+    if (ImGui::SliderFloat("Tilt", &g_tilt, -85.0f, -5.0f, "%.0f°"))
+    {
+        g_keepCamera = true;
+        SetFloats("SetCameraFreeRotationInfo", { g_tilt, g_tilt, g_tilt, g_tilt, 1.0f, 1.0f, 10.0f, 0.15f });
+    }
     if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Угол камеры вблизи и вдали. В ванили оба -32, поэтому наклон не меняется.");
+        ImGui::SetTooltip("-32° — как в игре. Ближе к нулю — вид почти от земли.");
 
-    // Поворот вокруг цели и расстояние до неё — это движок отдаёт обратно, так что читаем как есть.
-    float yaw = GetFloat("GetCameraElasticTargetAngle");
-    if (ImGui::SliderFloat("Rotate (yaw)", &yaw, -180.0f, 180.0f, "%.0f°"))
-        SetFloat("SetCameraElasticTargetAngle", yaw);
-    float distance = GetFloat("GetCameraElasticTargetDistance");
-    if (ImGui::SliderFloat("Distance", &distance, 10.0f, 300.0f, "%.0f"))
-        SetFloat("SetCameraElasticTargetDistance", distance);
+    // Расстояние до земли: именно им игра зумит по + и -.
+    float distance = GetFloat("GetCameraElasticDistance");
+    if (ImGui::SliderFloat("Distance", &distance, 10.0f, 400.0f, "%.0f"))
+        SetFloat("SetCameraElasticDistance", distance);
 
-    float zoomSpeed = GetFloat("GetCameraMouseDistanceSpeed");
-    if (ImGui::SliderFloat("Zoom speed", &zoomSpeed, 0.1f, 5.0f, "%.2f"))
-        SetFloat("SetCameraMouseDistanceSpeed", zoomSpeed);
-    float rotateSpeed = GetFloat("GetCameraMouseRotateFactor");
-    if (ImGui::SliderFloat("Rotate speed", &rotateSpeed, 0.1f, 5.0f, "%.2f"))
-        SetFloat("SetCameraMouseRotateFactor", rotateSpeed);
+    ImGui::Checkbox("Keep against the game", &g_keepCamera);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Игра возвращает фокус 400 и наклон -32 при каждом OnResize.\n"
+                          "С галочкой модлоадер ставит их обратно каждый кадр.");
 
     if (ImGui::Button("Stop camera"))
     {
@@ -336,9 +340,10 @@ void GraphicsTab::Draw()
     ImGui::SameLine();
     if (ImGui::Button("Reset camera"))
     {
+        g_keepCamera = false;
+        g_focal = 400.0f;
+        g_tilt = -32.0f;
         SetString("SetCameraPropertiesFromFile", GetString("GetCameraPropertieFileName"));
-        g_focalMin = g_focalMax = 400.0f;
-        g_tiltLow = g_tiltHigh = -32.0f;
     }
     ImGui::SameLine();
     ImGui::TextDisabled("перечитать data/cameras/camera.cfg");
@@ -349,4 +354,13 @@ void GraphicsTab::Draw()
         ImGui::SetClipboardText(LuaSnippet().c_str());
     ImGui::SameLine();
     ImGui::TextDisabled("вставить в client.lua мода");
+}
+
+// Каждый кадр из Overlay: возвращаем свои значения после того, как игра их сбросила.
+void GraphicsTab::Tick()
+{
+    if (!g_keepCamera)
+        return;
+    SetFloats("SetCameraFocalLengthInfo", { g_focal, g_focal, 0.5f });
+    SetFloats("SetCameraFreeRotationInfo", { g_tilt, g_tilt, g_tilt, g_tilt, 1.0f, 1.0f, 10.0f, 0.15f });
 }

@@ -366,6 +366,8 @@ void Overlay::OnSwapBuffers(HDC dc)
         Init(hwnd);
     }
 
+    GraphicsTab::Tick();
+
     // Insert — открыть/закрыть (опрос, т.к. фокус клавиатуры может быть не у окна рендера).
     static bool insertWasDown = false;
     bool insertDown = (GetAsyncKeyState(VK_INSERT) & 0x8000) != 0;
