@@ -36,6 +36,8 @@ namespace
             // настоящий угол камеры: читаем позицию и точку взгляда, ставим свои
             "GetCameraAbsolutePosition", "GetCameraPosition", "GetCameraTargetPosition",
             "CameraInfoLoadWithProperties", "SetCameraInfoSmoothingTime", "SetCameraInfoSmoothingChange",
+            "AddCameraInfo", "DeleteCameraInfo", "CameraInfoSaveWithProperties", "CameraInfoLoadToCurrentView",
+            "CameraInfoNormalizeToElastic", "CameraInfoNormalizeToFreeRotation",
             "GetCameraAbsoluteHeightByXZ",
             "SetCameraElasticDistance", "GetCameraElasticDistance", "GetCameraDistanceToTargetObject",
             "SetCameraControlMode", "GetCameraControlMode", "SetCameraDistToGroups", "GetCameraDistToGroups",
@@ -239,10 +241,26 @@ defgroup("camera", {
         local distance = t.distance or v.distance
         local target = t.target or v.target
         local flat = math.cos(pitch) * distance
-        gfx.CameraInfoLoadWithProperties(target.x, target.y, target.z,
-                                         target.x + flat * math.sin(yaw),
-                                         target.y + math.sin(pitch) * distance,
-                                         target.z + flat * math.cos(yaw))
+        local cx = target.x + flat * math.sin(yaw)
+        local cy = target.y + math.sin(pitch) * distance
+        local cz = target.z + flat * math.cos(yaw)
+
+        -- Просто поставить камеру мало: движок считает «влево» и «вперёд» по своему внутреннему
+        -- состоянию камеры, и после разворота управление оказывалось зеркальным. Поэтому кладём вид
+        -- в именованную камеру, приводим его к тому виду, в котором движок его понимает
+        -- (Normalize...), и загружаем — так поворачивается и само состояние.
+        if not gfx.camera._slot then
+            gfx.AddCameraInfo("@modloader")
+            gfx.camera._slot = true
+        end
+        gfx.SetCameraInfoSmoothingChange(false) -- ставим каждый кадр, сглаживание тут только мешает
+        gfx.CameraInfoSaveWithProperties("@modloader", target.x, target.y, target.z, cx, cy, cz)
+        if gfx.GetCameraFreeRotationMode() then
+            gfx.CameraInfoNormalizeToFreeRotation("@modloader")
+        else
+            gfx.CameraInfoNormalizeToElastic("@modloader")
+        end
+        gfx.CameraInfoLoadToCurrentView("@modloader")
     end,
 })
 

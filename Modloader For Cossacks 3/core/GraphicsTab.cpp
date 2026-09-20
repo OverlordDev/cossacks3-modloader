@@ -173,11 +173,32 @@ namespace
             a.f = f;
             args.push_back(a);
         }
+        // Просто поставить камеру мало: движок считает «влево» и «вперёд» по своему внутреннему
+        // состоянию камеры, и после разворота управление оказывается зеркальным. Поэтому кладём вид
+        // в именованную камеру, приводим к понятному движку виду и загружаем — так поворачивается
+        // и состояние тоже.
+        static bool slotCreated = false;
+        NativeCall::Value slot;
+        slot.type = NativeCall::Type::String;
+        slot.s = "@modloader";
         NativeCall::Value r;
-        std::string error;
-        const NativeCall::Signature* sig = NativeCall::Find("CameraInfoLoadWithProperties");
-        if (sig && sig->error.empty())
-            NativeCall::Invoke(*sig, args, &r, &error);
+        if (!slotCreated)
+        {
+            CallNative("AddCameraInfo", { slot }, &r);
+            slotCreated = true;
+        }
+
+        NativeCall::Value smoothing;
+        smoothing.type = NativeCall::Type::Bool;
+        smoothing.b = false; // ставим каждый кадр, сглаживание тут только мешает
+        CallNative("SetCameraInfoSmoothingChange", { smoothing }, &r);
+
+        std::vector<NativeCall::Value> saveArgs{ slot };
+        saveArgs.insert(saveArgs.end(), args.begin(), args.end());
+        CallNative("CameraInfoSaveWithProperties", saveArgs, &r);
+        CallNative(GetInt("GetCameraFreeRotationMode") ? "CameraInfoNormalizeToFreeRotation"
+                                                       : "CameraInfoNormalizeToElastic", { slot }, &r);
+        CallNative("CameraInfoLoadToCurrentView", { slot }, &r);
     }
 
     // ---------- поля пресета ----------

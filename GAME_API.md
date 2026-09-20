@@ -5072,8 +5072,12 @@ local v = gfx.camera.view()                  -- { pitch, yaw, distance, target =
 gfx.camera.look{ pitch = 20, distance = 90 } -- что не указано — остаётся как есть
 ```
 
-`view` читает `GetCameraTargetPosition` и `GetCameraAbsolutePosition` (var-параметры, см. NativeCall),
-`look` считает положение камеры и ставит его через `CameraInfoLoadWithProperties`. Игра возвращает свой
+`view` читает `GetCameraTargetPosition` и `GetCameraAbsolutePosition` (var-параметры, см. NativeCall).
+`look` считает положение камеры, кладёт его в именованную камеру `@modloader`, приводит к виду, который
+понимает движок (`CameraInfoNormalizeToFreeRotation` или `...ToElastic` — по `GetCameraFreeRotationMode`),
+и загружает через `CameraInfoLoadToCurrentView`. Нормализация обязательна: движок считает «влево» и
+«вперёд» по своему состоянию камеры (`GetCameraAbsoluteLeftDirection` в `data/gui/menu.inc/oncamera.inc`),
+и если поставить только положение, после разворота управление станет зеркальным. Игра возвращает свой
 угол каждый кадр, поэтому `look` надо повторять — например, в `game.tick`.
 
 Камера в ванили жёсткая (`data/cameras/camera.cfg`): фокус 400 без диапазона, наклон всегда -32° —
