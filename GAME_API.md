@@ -5019,7 +5019,7 @@ local f = gfx.fog()                                    -- { enabled = true, dens
 | --- | --- |
 | `post` | `preset` (запись в posteffects.lib), `preset2`, `ssao`, `dof` |
 | `render` | `fxaa`, `antialiasing` (строка), `culling`, `objectCulling` |
-| `camera` | `dof`, `depth`, `dynamicFocal`, `focal {min,max,power}`, `freeRotation {8 углов}`, `restrict {9 границ}`, `sceneScale {x,y}`, `angle`, `distance`, `elasticDist`, `controlMode`, `distToGroups`, `rotateSpeed`, `zoomSpeed`, `smoothRotate`, `smoothTilt`, `smoothMove`, `bounded`, `autoRayCast`, `wheelRotate`, `wheelZoom`, `profile`, `height`/`toTarget`/`freeMode` (чтение); методы `fovOf`, `focalOf` |
+| `camera` | `dof`, `depth`, `dynamicFocal`, `focal {min,max,power}`, `freeRotation {8 углов}`, `restrict {9 границ}`, `sceneScale {x,y}`, `angle`, `distance`, `elasticDist`, `controlMode`, `distToGroups`, `rotateSpeed`, `zoomSpeed`, `bounded`, `autoRayCast`, `wheelRotate`, `wheelZoom`, `profile`, `height`/`toTarget`/`freeMode` (чтение); методы `fovOf`, `focalOf`, `spin`/`tiltBy`/`glide` (камера едет сама), `stop` |
 | `fog` | `enabled`, `density`, `power`, `start`, `finish`, `offset`, `depth` |
 | `clouds` | `visible`, `active`, `height`, `horizon`, `fog`, `speed` |
 | `sky` | `visible`, `active`, `flareAngle`, `flareZ`, `flare` |

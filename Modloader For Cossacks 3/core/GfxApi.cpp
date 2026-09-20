@@ -32,6 +32,7 @@ namespace
             "GetCameraHeightTarget",
             "SetCameraFreeRotationInfo", "GetCameraFreeRotationMode", "SetCameraRestrictInfo",
             "SetCameraElasticRotateFactor", "SetCameraElasticVRotateFactor", "SetCameraElasticMoveFactor",
+            "SetCameraElasticMoveTurnOff", "SetCameraElasticRotationTurnOff",
             "SetCameraElasticDistance", "GetCameraElasticDistance", "GetCameraDistanceToTargetObject",
             "SetCameraControlMode", "GetCameraControlMode", "SetCameraDistToGroups", "GetCameraDistToGroups",
             // туман
@@ -192,15 +193,21 @@ defgroup("camera", {
     -- {leftX, rightX, forwardY, backwardY, heightTargetMin, sphereHeight, sphereHeightMin,
     --  sphereLength, sphereLengthMin}
     restrict     = {                                              set = "SetCameraRestrictInfo", list = true },
-    smoothRotate = {                                              set = "SetCameraElasticRotateFactor" },
-    smoothTilt   = {                                              set = "SetCameraElasticVRotateFactor" },
-    smoothMove   = {                                              set = "SetCameraElasticMoveFactor" },
     height       = { get = "GetCameraHeightTarget" },
     toTarget     = { get = "GetCameraDistanceToTargetObject" },
     freeMode     = { get = "GetCameraFreeRotationMode" },
 }, {
     fovOf   = function(focal, dimension) return gfx.GetCameraFieldOfViewByFocalLength(focal, dimension) end,
     focalOf = function(fov, dimension)   return gfx.GetCameraFocalLengthByFieldOfView(fov, dimension) end,
+    -- Заставить камеру ехать/вращаться саму: это команды движения, а не «плавность».
+    -- Останавливают её stop-функции ниже.
+    spin    = function(factor)  gfx.SetCameraElasticRotateFactor(factor) end,
+    tiltBy  = function(factor)  gfx.SetCameraElasticVRotateFactor(factor) end,
+    glide   = function(factor)  gfx.SetCameraElasticMoveFactor(factor) end,
+    stop    = function()
+        gfx.SetCameraElasticMoveTurnOff()
+        gfx.SetCameraElasticRotationTurnOff()
+    end,
 })
 
 defgroup("fog", {

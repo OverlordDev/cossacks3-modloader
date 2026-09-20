@@ -311,6 +311,14 @@ void GraphicsTab::Draw()
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Угол камеры вблизи и вдали. В ванили оба -32, поэтому наклон не меняется.");
 
+    // Поворот вокруг цели и расстояние до неё — это движок отдаёт обратно, так что читаем как есть.
+    float yaw = GetFloat("GetCameraElasticTargetAngle");
+    if (ImGui::SliderFloat("Rotate (yaw)", &yaw, -180.0f, 180.0f, "%.0f°"))
+        SetFloat("SetCameraElasticTargetAngle", yaw);
+    float distance = GetFloat("GetCameraElasticTargetDistance");
+    if (ImGui::SliderFloat("Distance", &distance, 10.0f, 300.0f, "%.0f"))
+        SetFloat("SetCameraElasticTargetDistance", distance);
+
     float zoomSpeed = GetFloat("GetCameraMouseDistanceSpeed");
     if (ImGui::SliderFloat("Zoom speed", &zoomSpeed, 0.1f, 5.0f, "%.2f"))
         SetFloat("SetCameraMouseDistanceSpeed", zoomSpeed);
@@ -318,6 +326,14 @@ void GraphicsTab::Draw()
     if (ImGui::SliderFloat("Rotate speed", &rotateSpeed, 0.1f, 5.0f, "%.2f"))
         SetFloat("SetCameraMouseRotateFactor", rotateSpeed);
 
+    if (ImGui::Button("Stop camera"))
+    {
+        // Камера умеет ехать и вращаться сама; эти две останавливают.
+        NativeCall::Value r;
+        CallNative("SetCameraElasticMoveTurnOff", {}, &r);
+        CallNative("SetCameraElasticRotationTurnOff", {}, &r);
+    }
+    ImGui::SameLine();
     if (ImGui::Button("Reset camera"))
     {
         SetString("SetCameraPropertiesFromFile", GetString("GetCameraPropertieFileName"));
