@@ -312,12 +312,32 @@ local function addMines()
                config.gatherEveryone and "True" or "False"))
 end
 
+-- Снимок состояния мира: по нему видно, совпадают ли стороны в сетевой игре.
+-- GetMapNextUniqId — счётчик номеров объектов, тот самый, на который ругается leInvalidSynch.
+local function worldStamp(when)
+    game.exec(([[
+        var envHnd : Integer = GetPlayerHandleByIndex(gc_playerind_env);
+        var total, i : Integer;
+        total := 0;
+        for i := 0 to gc_MaxPlayerCount-1 do
+        if (gMap.players[i].bexists) then
+        total := total + GetPlayerGameObjectsCountByHandle(GetPlayerHandleByIndex(i));
+        Log('[team_spawn] %s: uid=' + IntToStr(GetMapNextUniqId) +
+            ' env=' + IntToStr(GetPlayerGameObjectsCountByHandle(envHnd)) +
+            ' players=' + IntToStr(total) +
+            ' seed=' + IntToStr(gMap.settings.gen.randkey0) + '/' + IntToStr(gMap.settings.gen.randkey1) +
+            ' lan=' + IntToStr(GetLanMode));
+    ]]):format(when))
+end
+
 local function setup(why)
     log.info("настраиваю партию (" .. why .. ")")
+    worldStamp("before")
     if config.gatherTeams or config.gatherEveryone then
         gatherTeams()
     end
     addMines()
+    worldStamp("after")
 end
 
 -- Ровно один проход на партию. Повторять по таймеру нельзя: у хоста и клиента он сработает в разные
