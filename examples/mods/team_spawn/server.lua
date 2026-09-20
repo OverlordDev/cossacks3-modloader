@@ -10,6 +10,10 @@ local config = {
     -- игроки без команды (team = 0) остаются там, где их поставил генератор.
     gatherTeams = true,
 
+    -- Собрать ВСЕХ в одно место, не глядя на команды. В обычной схватке с ботами команд нет
+    -- (у всех team = 0), и проверять нечего — вот для таких партий и для показа.
+    gatherEveryone = false,
+
     -- Сколько шахт каждого вида должно быть рядом с игроком. Уже стоящие рядом считаются,
     -- добавляются только недостающие — карта не превращается в свалку шахт.
     mines = { gold = 3, iron = 2, coal = 2 },
@@ -24,6 +28,9 @@ local config = {
 
 -- Бейзнеймы шахт берём из самой игры: gc_basename_minegold / mineiron / minecoal.
 
+-- Где стоит деревня игрока — это gMap.players[i].startx/starty, те же координаты, что у объектов.
+-- Натив GetPlayerArmyPositionByHandle не годится: игра им нигде не пользуется и он отдаёт нули.
+--
 -- Союзники к лидеру команды. Лидер — игрок с наименьшим номером в команде.
 --
 -- ВАЖНО: PlayerMoveToPlayerByHandle для этого не годится, хотя по имени и похоже. Он передаёт всё
@@ -33,49 +40,67 @@ local config = {
 local function gatherTeams()
     game.exec(([[
         const cSpacing = %d;
+        const cEveryone = %s;
 
-        var memberCount : array [0..15] of Integer;
+        var placed : array [0..15] of Integer;
         var t : Integer;
-        for t := 0 to 15 do memberCount[t] := 0;
+        for t := 0 to 15 do placed[t] := 0;
 
-        var i, j : Integer;
+        var i, j, moved, skipped : Integer;
+        moved := 0;
+        skipped := 0;
         for i := 0 to gc_MaxPlayerCount-1 do
-        if (gMap.players[i].bexists) and (gMap.players[i].team > 0) then
+        if (gMap.players[i].bexists) then
         begin
+            var team : Integer = gMap.players[i].team;
+            if (not cEveryone) and (team <= 0) then
+            begin
+                skipped := skipped + 1;
+                continue;
+            end;
+            if (cEveryone) then team := 1;
+            if (team > 15) then continue;
+
             var leader : Integer = -1;
             for j := 0 to i-1 do
-            if (leader < 0) and (gMap.players[j].bexists) and (gMap.players[j].team = gMap.players[i].team) then
-            leader := j;
+            if (leader < 0) and (gMap.players[j].bexists) then
+            begin
+                if (cEveryone) or (gMap.players[j].team = gMap.players[i].team) then
+                leader := j;
+            end;
             if (leader < 0) then continue; // сам лидер — остаётся на месте
 
-            var team : Integer = gMap.players[i].team;
-            if (team > 15) then continue;
-            memberCount[team] := memberCount[team] + 1;
+            placed[team] := placed[team] + 1;
+
+            // Деревни союзников ставим по кругу вокруг лидера, чтобы не налезали друг на друга.
+            var a : Float = placed[team] * 2.0944;
+            var tx : Float = gMap.players[leader].startx + cos(a) * cSpacing;
+            var tz : Float = gMap.players[leader].starty + sin(a) * cSpacing;
+            var dx : Float = tx - gMap.players[i].startx;
+            var dz : Float = tz - gMap.players[i].starty;
 
             var h : Integer = GetPlayerHandleByIndex(i);
-            var lx, lz, ox, oz : Float;
-            GetPlayerArmyPositionByHandle(GetPlayerHandleByIndex(leader), 0, False, lx, lz);
-            GetPlayerArmyPositionByHandle(h, 0, False, ox, oz);
-            if (ox = 0) and (oz = 0) then continue;
-
-            // Ставим соседние деревни по кругу вокруг лидера, чтобы они не наложились друг на друга.
-            var a : Float = memberCount[team] * 2.0944;
-            var dx : Float = lx + cos(a) * cSpacing - ox;
-            var dz : Float = lz + sin(a) * cSpacing - oz;
-
-            var moved : Integer = 0;
+            var count : Integer = 0;
             for j := GetPlayerGameObjectsCountByHandle(h)-1 downto 0 do
             begin
                 var g : Integer = GetGameObjectHandleByIndex(j, h);
                 var x : Float = GetGameObjectPositionXByHandle(g) + dx;
                 var z : Float = GetGameObjectPositionZByHandle(g) + dz;
                 SetGameObjectPositionByHandle(g, x, RayCastHeight(x, z), z);
-                moved := moved + 1;
+                count := count + 1;
             end;
-            Log('[team_spawn] player ' + IntToStr(i) + ' moved to team mate ' + IntToStr(leader) +
-                ' (' + IntToStr(moved) + ' objects)');
+
+            // Чтобы остальная игра тоже считала, что деревня теперь здесь.
+            gMap.players[i].startx := tx;
+            gMap.players[i].starty := tz;
+            moved := moved + 1;
+
+            Log('[team_spawn] player ' + IntToStr(i) + ' -> near player ' + IntToStr(leader) +
+                ' (' + IntToStr(count) + ' objects)');
         end;
-    ]]):format(config.spacing))
+        Log('[team_spawn] gathered ' + IntToStr(moved) + ' player(s), ' +
+            IntToStr(skipped) + ' without a team');
+    ]]):format(config.spacing, config.gatherEveryone and "True" or "False"))
 end
 
 -- Шахты вокруг каждой деревни: считаем, что уже есть, и докладываем недостающие.
@@ -116,10 +141,8 @@ local function addMines()
         for i := 0 to gc_MaxPlayerCount-1 do
         if (gMap.players[i].bexists) then
         begin
-            var h : Integer = GetPlayerHandleByIndex(i);
-            var px, pz : Float;
-            GetPlayerArmyPositionByHandle(h, 0, False, px, pz);
-            if (px = 0) and (pz = 0) then continue; // деревни нет — пропускаем
+            var px : Float = gMap.players[i].startx;
+            var pz : Float = gMap.players[i].starty;
 
             // Что уже стоит рядом.
             var have : array [0..2] of Integer;
@@ -153,7 +176,8 @@ local function addMines()
                 if (PlaceMine(envHnd, bn, px, pz) <> 0) then added := added + 1;
             end;
 
-            Log('[team_spawn] player ' + IntToStr(i) + ': mines ' +
+            Log('[team_spawn] player ' + IntToStr(i) +
+                ' at ' + IntToStr(round(px)) + ',' + IntToStr(round(pz)) + ': mines ' +
                 IntToStr(have[0]) + '/' + IntToStr(have[1]) + '/' + IntToStr(have[2]) +
                 ' + ' + IntToStr(added) + ' added');
         end;
@@ -162,11 +186,8 @@ local function addMines()
 end
 
 events.on("game.start", function()
-    if config.gatherTeams then
+    if config.gatherTeams or config.gatherEveryone then
         gatherTeams()
-        log.info("союзники собраны по командам")
     end
     addMines()
-    log.info(("шахты: золото %d, железо %d, уголь %d у каждого игрока")
-        :format(config.mines.gold, config.mines.iron, config.mines.coal))
 end)
