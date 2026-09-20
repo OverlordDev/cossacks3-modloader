@@ -30,6 +30,10 @@ namespace
             "SetCameraControlMouseWheelRotate", "GetCameraControlMouseWheelRotate",
             "SetCameraControlMouseWheelDistance", "GetCameraControlMouseWheelDistance",
             "GetCameraHeightTarget",
+            "SetCameraFreeRotationInfo", "GetCameraFreeRotationMode", "SetCameraRestrictInfo",
+            "SetCameraElasticRotateFactor", "SetCameraElasticVRotateFactor", "SetCameraElasticMoveFactor",
+            "SetCameraElasticDistance", "GetCameraElasticDistance", "GetCameraDistanceToTargetObject",
+            "SetCameraControlMode", "GetCameraControlMode", "SetCameraDistToGroups", "GetCameraDistToGroups",
             // туман
             "SetFogEnable", "GetFogEnable",
             "SetCameraDynFogDepth", "GetCameraDynFogDepth", "SetCameraDynFogStart", "GetCameraDynFogStart",
@@ -179,7 +183,21 @@ defgroup("camera", {
     wheelRotate  = { get = "GetCameraControlMouseWheelRotate",    set = "SetCameraControlMouseWheelRotate" },
     wheelZoom    = { get = "GetCameraControlMouseWheelDistance",  set = "SetCameraControlMouseWheelDistance" },
     profile      = { get = "GetCameraPropertieFileName",          set = "SetCameraPropertiesFromFile" },
+    controlMode  = { get = "GetCameraControlMode",                set = "SetCameraControlMode" },
+    distToGroups = { get = "GetCameraDistToGroups",               set = "SetCameraDistToGroups" },
+    elasticDist  = { get = "GetCameraElasticDistance",            set = "SetCameraElasticDistance" },
+    -- {minHeightMinAngle, minHeightMaxAngle, maxHeightMinAngle, maxHeightMaxAngle,
+    --  anglePower, minDistToTarget, maxDistToTarget, maxHeightLerp}
+    freeRotation = {                                              set = "SetCameraFreeRotationInfo", list = true },
+    -- {leftX, rightX, forwardY, backwardY, heightTargetMin, sphereHeight, sphereHeightMin,
+    --  sphereLength, sphereLengthMin}
+    restrict     = {                                              set = "SetCameraRestrictInfo", list = true },
+    smoothRotate = {                                              set = "SetCameraElasticRotateFactor" },
+    smoothTilt   = {                                              set = "SetCameraElasticVRotateFactor" },
+    smoothMove   = {                                              set = "SetCameraElasticMoveFactor" },
     height       = { get = "GetCameraHeightTarget" },
+    toTarget     = { get = "GetCameraDistanceToTargetObject" },
+    freeMode     = { get = "GetCameraFreeRotationMode" },
 }, {
     fovOf   = function(focal, dimension) return gfx.GetCameraFieldOfViewByFocalLength(focal, dimension) end,
     focalOf = function(fov, dimension)   return gfx.GetCameraFocalLengthByFieldOfView(fov, dimension) end,

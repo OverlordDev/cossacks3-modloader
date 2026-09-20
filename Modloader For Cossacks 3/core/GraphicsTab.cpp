@@ -51,6 +51,35 @@ namespace
         CallNative(name, { v }, &r);
     }
 
+    void SetFloats(const char* name, std::initializer_list<float> values)
+    {
+        std::vector<NativeCall::Value> args;
+        for (float f : values)
+        {
+            NativeCall::Value v;
+            v.type = NativeCall::Type::Float;
+            v.f = f;
+            args.push_back(v);
+        }
+        NativeCall::Value r;
+        CallNative(name, args, &r);
+    }
+
+    std::string GetString(const char* name)
+    {
+        NativeCall::Value r;
+        return CallNative(name, {}, &r) ? r.s : std::string();
+    }
+
+    void SetString(const char* name, const std::string& value)
+    {
+        NativeCall::Value v;
+        v.type = NativeCall::Type::String;
+        v.s = value;
+        NativeCall::Value r;
+        CallNative(name, { v }, &r);
+    }
+
     void SetBool(const char* name, bool value)
     {
         NativeCall::Value v;
@@ -81,6 +110,11 @@ namespace
         NativeCall::Value r;
         CallNative("SetProjectOptionAsBoolean", { name, on }, &r);
     }
+
+    // Фокус и углы наклона движок обратно не отдаёт (у геттеров var-параметры), поэтому помним их
+    // сами. Стартовые значения — как в data/cameras/camera.cfg: зума нет, наклон всегда -32.
+    float g_focalMin = 400.0f, g_focalMax = 400.0f;
+    float g_tiltLow = -32.0f, g_tiltHigh = -32.0f;
 
     // ---------- поля пресета ----------
 
@@ -139,6 +173,9 @@ namespace
         s += std::string("gfx.render{ fxaa = ") + (GetOption("FXAAEnable") ? "true" : "false") + " }\n";
         s += std::string("gfx.shadows{ enabled = ") + (GetOption("ShadowMapEnabled") ? "true" : "false") +
              ", size = " + std::to_string(GetInt("GetShadowMapSize")) + " }\n";
+        s += "gfx.camera{ focal = { " + Num(g_focalMin) + ", " + Num(g_focalMax) + ", 1 }, freeRotation = { " +
+             Num(g_tiltLow) + ", " + Num(g_tiltLow) + ", " + Num(g_tiltHigh) + ", " + Num(g_tiltHigh) +
+             ", 1, 1, 10, 0.15 }, zoomSpeed = " + Num(GetFloat("GetCameraMouseDistanceSpeed")) + " }\n";
         s += std::string("gfx.fog{ enabled = ") + (GetInt("GetFogEnable") ? "true" : "false") +
              ", density = " + Num(GetFloat("GetCameraDynFogDensity")) +
              ", power = " + Num(GetFloat("GetCameraDynFogPower")) + " }\n";
@@ -254,6 +291,41 @@ void GraphicsTab::Draw()
         if (ImGui::SliderFloat("Power", &power, 0.0f, 4.0f, "%.2f"))
             SetFloat("SetCameraDynFogPower", power);
     }
+
+    // ---------- камера ----------
+    // Фокус и углы наклона движок обратно не отдаёт (у геттеров var-параметры), поэтому помним
+    // их сами. Стартовые значения — как в data/cameras/camera.cfg: зума нет, наклон всегда -32.
+    ImGui::SeparatorText("Camera");
+
+    bool focalChanged = ImGui::SliderFloat("Zoom in (focal max)", &g_focalMax, 200.0f, 1200.0f, "%.0f");
+    focalChanged |= ImGui::SliderFloat("Zoom out (focal min)", &g_focalMin, 100.0f, 800.0f, "%.0f");
+    if (focalChanged)
+        SetFloats("SetCameraFocalLengthInfo", { g_focalMin, g_focalMax, 1.0f });
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("В ванили оба равны 400 — поэтому зум ничего не меняет.");
+
+    bool tiltChanged = ImGui::SliderFloat("Tilt close", &g_tiltLow, -89.0f, -5.0f, "%.0f°");
+    tiltChanged |= ImGui::SliderFloat("Tilt far", &g_tiltHigh, -89.0f, -5.0f, "%.0f°");
+    if (tiltChanged)
+        SetFloats("SetCameraFreeRotationInfo", { g_tiltLow, g_tiltLow, g_tiltHigh, g_tiltHigh, 1.0f, 1.0f, 10.0f, 0.15f });
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Угол камеры вблизи и вдали. В ванили оба -32, поэтому наклон не меняется.");
+
+    float zoomSpeed = GetFloat("GetCameraMouseDistanceSpeed");
+    if (ImGui::SliderFloat("Zoom speed", &zoomSpeed, 0.1f, 5.0f, "%.2f"))
+        SetFloat("SetCameraMouseDistanceSpeed", zoomSpeed);
+    float rotateSpeed = GetFloat("GetCameraMouseRotateFactor");
+    if (ImGui::SliderFloat("Rotate speed", &rotateSpeed, 0.1f, 5.0f, "%.2f"))
+        SetFloat("SetCameraMouseRotateFactor", rotateSpeed);
+
+    if (ImGui::Button("Reset camera"))
+    {
+        SetString("SetCameraPropertiesFromFile", GetString("GetCameraPropertieFileName"));
+        g_focalMin = g_focalMax = 400.0f;
+        g_tiltLow = g_tiltHigh = -32.0f;
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("перечитать data/cameras/camera.cfg");
 
     // ---------- перенос в мод ----------
     ImGui::SeparatorText("");

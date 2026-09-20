@@ -4992,7 +4992,7 @@ local f = gfx.fog()                                    -- { enabled = true, dens
 | --- | --- |
 | `post` | `preset` (запись в posteffects.lib), `preset2`, `ssao`, `dof` |
 | `render` | `fxaa`, `antialiasing` (строка), `culling`, `objectCulling` |
-| `camera` | `dof`, `depth`, `dynamicFocal`, `focal {min,max,power}`, `sceneScale {x,y}`, `angle`, `distance`, `rotateSpeed`, `zoomSpeed`, `bounded`, `autoRayCast`, `wheelRotate`, `wheelZoom`, `profile`, `height` (чтение); методы `fovOf`, `focalOf` |
+| `camera` | `dof`, `depth`, `dynamicFocal`, `focal {min,max,power}`, `freeRotation {8 углов}`, `restrict {9 границ}`, `sceneScale {x,y}`, `angle`, `distance`, `elasticDist`, `controlMode`, `distToGroups`, `rotateSpeed`, `zoomSpeed`, `smoothRotate`, `smoothTilt`, `smoothMove`, `bounded`, `autoRayCast`, `wheelRotate`, `wheelZoom`, `profile`, `height`/`toTarget`/`freeMode` (чтение); методы `fovOf`, `focalOf` |
 | `fog` | `enabled`, `density`, `power`, `start`, `finish`, `offset`, `depth` |
 | `clouds` | `visible`, `active`, `height`, `horizon`, `fog`, `speed` |
 | `sky` | `visible`, `active`, `flareAngle`, `flareZ`, `flare` |
@@ -5033,6 +5033,12 @@ local names = gfx.presetNames()     -- { [0] = "default", [1] = "winter", ... }
 `Focal*`, `SSAO*`, `Gamma*`. Короткие псевдонимы: `brightness`, `saturation`, `contrast`, `bloom`,
 `hdr`, `tint`, `vignetteInner/Outer/Fade`, `dof`, `focal`, `ssao`, `ssaoRange/Power/Cap/Color`,
 `fxaa`, `gamma`, `lut`. Сырой доступ — `gfx.fx.fields/info/get/set/apply`.
+
+Камера в ванили жёсткая (`data/cameras/camera.cfg`): фокус 400 без диапазона, наклон всегда -32° —
+поэтому зум не меняет поле зрения, а угол не зависит от высоты. `focal` и `freeRotation` это включают;
+`gfx.camera{ profile = gfx.camera().profile }` перечитывает cfg и возвращает как было. У геттеров
+`GetCameraFocalLengthInfo` / `GetCameraFreeRotationInfo` var-параметры, поэтому прочитать эти значения
+обратно нельзя — их надо помнить самому.
 
 Сверх групп: `gfx.pfx.brightness/gamma(менеджер [, значение])`, `gfx.highlight{...}`, `gfx.vsync([вкл])`,
 `gfx.snapshot()` — снимок всего, что можно записать обратно, и `gfx.apply(профиль)` — применить целиком.

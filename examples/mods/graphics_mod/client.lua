@@ -91,12 +91,110 @@ input.bind("F8", function()
     log.info("graphics: vanilla restored")
 end)
 
--- Плавная смена дня и ночи: light.presets содержит light0..light3, переход — за blendTime мс.
--- gfx.light.list() вернёт все доступные пресеты света.
-local night = false
+-- ---------------------------------------------------------------------------
+-- Время суток
+-- ---------------------------------------------------------------------------
+-- В data/env/lights/light.presets лежат готовые пресеты освещения (light0..light3), а движок умеет
+-- переходить между ними плавно: gfx.light{ blendTo = ..., blendTime = миллисекунды }.
+-- Берём их в том порядке, в каком их отдаёт игра, и под каждый подгоняем туман, облака и цвет.
+
+-- Настроение фаз: на сколько менять туман и картинку. Ключ — номер пресета света.
+local moods = {
+    [0] = { name = "полдень", fog = { density = 0.8, power = 1.0 }, clouds = { fog = 0.25, speed = 0.8 },
+            preset = { saturation = 1.2, hdr = 1.5, bloom = 0.08 } },
+    [1] = { name = "ночь",    fog = { density = 2.6, power = 1.5 }, clouds = { fog = 0.9,  speed = 1.6 },
+            preset = { saturation = 0.85, hdr = 1.1, bloom = 0.16 } },
+    [2] = { name = "рассвет", fog = { density = 1.8, power = 1.3 }, clouds = { fog = 0.6,  speed = 1.2 },
+            preset = { saturation = 1.3, hdr = 1.9, bloom = 0.18 } },
+    [3] = { name = "закат",   fog = { density = 1.4, power = 1.2 }, clouds = { fog = 0.5,  speed = 1.0 },
+            preset = { saturation = 1.35, hdr = 2.0, bloom = 0.2 } },
+}
+
+local cycle = { on = false, patterns = {}, index = 1, nextAt = 0, seconds = 40 }
+
+local function applyPhase(index, blendMs)
+    local pattern = cycle.patterns[index]
+    if not pattern then return end
+    gfx.light{ blendTime = blendMs, blendTo = pattern }
+
+    local mood = moods[index - 1]
+    if mood then
+        gfx.fog(mood.fog)
+        gfx.clouds(mood.clouds)
+        gfx.preset(mood.preset)
+        log.info(("время суток: %s (%s)"):format(mood.name, pattern))
+    else
+        log.info("время суток: " .. pattern)
+    end
+end
+
+local function nextPhase(blendMs)
+    cycle.index = cycle.index % #cycle.patterns + 1
+    cycle.nextAt = os.clock() + cycle.seconds
+    applyPhase(cycle.index, blendMs)
+end
+
+events.on("game.start", function()
+    cycle.patterns = gfx.light.list()
+    cycle.on = false
+    cycle.index = 1
+end)
+
+events.on("game.tick", function()
+    if cycle.on and #cycle.patterns > 0 and os.clock() >= cycle.nextAt then
+        nextPhase(cycle.seconds * 800) -- переход занимает почти всю фазу, поэтому смены не видно
+    end
+end)
+
+-- F10 — запустить или остановить смену времени суток.
 input.bind("F10", function()
     if not game.isInGame() then return end
-    night = not night
-    gfx.light{ blendTime = 4000, blendTo = night and "light1" or "light0" }
-    log.info("light: " .. (night and "night" or "day"))
+    if #cycle.patterns == 0 then
+        log.warn("нет пресетов света (data/env/lights/light.presets)")
+        return
+    end
+    cycle.on = not cycle.on
+    log.info("время суток: " .. (cycle.on and "идёт" or "остановлено"))
+    if cycle.on then -- начинаем с текущей фазы, а не с перескока на следующую
+        cycle.nextAt = os.clock() + cycle.seconds
+        applyPhase(cycle.index, 2000)
+    end
+end)
+
+-- F11 — следующая фаза сразу, переход за 2 секунды. Удобно показывать.
+input.bind("F11", function()
+    if not game.isInGame() or #cycle.patterns == 0 then return end
+    nextPhase(2000)
+end)
+
+-- ---------------------------------------------------------------------------
+-- Камера
+-- ---------------------------------------------------------------------------
+-- В ванили камера жёсткая: фокус 400 без зума, наклон всегда -32 градуса (data/cameras/camera.cfg).
+-- Кинематографичная: чем ближе подлетаешь, тем положе угол и уже поле зрения — как в новых RTS.
+local cinematicCamera = false
+
+input.bind("F12", function()
+    if not game.isInGame() then return end
+    cinematicCamera = not cinematicCamera
+    if cinematicCamera then
+        gfx.camera{
+            -- {минимальный фокус, максимальный, степень} — появляется настоящий зум
+            focal = { 260, 900, 1.0 },
+            -- {угол при низкой камере (мин, макс), при высокой (мин, макс), степень,
+            --  мин. и макс. расстояние до цели, коэффициент высоты}
+            -- Внизу почти горизонт, вверху вид сверху — наклон меняется сам при зуме.
+            freeRotation = { -14, -14, -62, -62, 1.0, 1, 10, 0.15 },
+            smoothRotate = 0.035,   -- вращение плавнее ванильного (0.05)
+            smoothTilt = 0.035,
+            zoomSpeed = 1.4,
+            dof = true,
+            depth = 200,
+        }
+        log.info("камера: кинематографичная (F12 — вернуть обычную)")
+    else
+        -- Вернуть ванильную: перечитать профиль камеры из файла игры — там все исходные значения.
+        gfx.camera{ profile = gfx.camera().profile, dof = false }
+        log.info("камера: обычная")
+    end
 end)
