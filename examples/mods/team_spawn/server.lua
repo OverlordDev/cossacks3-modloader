@@ -24,6 +24,10 @@ local config = {
     -- больше — их труднее разместить рядом с деревней.
     clearance = 7,
 
+    -- Насколько перепад высот вокруг точки считается горой. Шахту на склоне не построить,
+    -- поэтому такие места отбраковываются. Больше — разрешаем более наклонные места.
+    maxSlope = 2.0,
+
     -- Насколько держаться от края карты. Координаты идут от -GetMapWidth/2 до +GetMapWidth/2,
     -- и без этого отступа жилы уезжают за границу — они там видны, но толку от них нет.
     mapMargin = 24,
@@ -135,6 +139,7 @@ local function addMines()
         const cSpacing = %d;
         const cClear = %d;
         const cMargin = %d;
+        const cMaxSlope = %.2f;
         const cNeedGold = %d;
         const cNeedIron = %d;
         const cNeedCoal = %d;
@@ -155,6 +160,22 @@ local function addMines()
             var wo : Float;
             if (GetWaterExt(x, z, wo)) then exit;
             if (GetMapCollisionTagInRadius(x, z, round(clear), False) <> 0) then exit;
+
+            // Склон: сравниваем высоту в центре и по четырём сторонам. На горе шахту не поставить,
+            // а по столкновениям такое место проходит как свободное.
+            var h0 : Float = RayCastHeight(x, z);
+            var hmin : Float = h0;
+            var hmax : Float = h0;
+            var q : Integer;
+            for q := 0 to 3 do
+            begin
+                var ang : Float = q * 1.5708;
+                var h : Float = RayCastHeight(x + cos(ang) * clear, z + sin(ang) * clear);
+                if (h < hmin) then hmin := h;
+                if (h > hmax) then hmax := h;
+            end;
+            if (hmax - hmin > cMaxSlope) then exit;
+
             GetGameObjectsInRadius(x, z, clear, False, False, 0, -1, 0,
                                    False, False, False, False, False, False);
             if (GetGameObjectListCount > 0) then exit;
@@ -267,6 +288,7 @@ local function addMines()
                 ' + ' + IntToStr(added) + ' added, ' + IntToStr(failed) + ' no room');
         end;
     ]]):format(config.radiusMin, config.radiusMax, config.spacing, config.clearance, config.mapMargin,
+               config.maxSlope,
                config.minesPerPlayer.gold, config.minesPerPlayer.iron, config.minesPerPlayer.coal,
                config.gatherEveryone and "True" or "False"))
 end
