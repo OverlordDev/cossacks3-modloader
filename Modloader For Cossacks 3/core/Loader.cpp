@@ -14,6 +14,7 @@
 #include "Overlay.h"
 #include "Profiler.h"
 #include "ScriptRunner.h"
+#include "Settings.h"
 #include "Ui.h"
 
 #include <set>
@@ -76,11 +77,21 @@ DWORD WINAPI Loader::MainThread(LPVOID param)
     bool hooks = Hooks::Init();
     if (hooks)
     {
-        if (!FrameStats::Install())
+        // render = 0 в modloader\settings.txt — вообще не подключаться к отрисовке: ни меню, ни
+        // счётчик кадров. Нужно, когда на чужой машине драйвер не дружит с нашим меню.
+        if (!Settings::Enabled("render"))
+            LOG_WARN("[settings] render = 0 — the menu (Insert) and the frame counter are off");
+        else if (!FrameStats::Install())
             LOG_WARN("FrameStats failed to install");
-        if (!Checksum::Install()) // до вставок событий: лобби должно видеть хеш чистой игры
+
+        if (!Settings::Enabled("checksum"))
+            LOG_WARN("[settings] checksum = 0 — multiplayer lobbies will reject this game");
+        else if (!Checksum::Install()) // до вставок событий: лобби должно видеть хеш чистой игры
             LOG_WARN("Checksum failed to install — multiplayer lobbies will reject this game");
-        if (!Assets::Install()) // как можно раньше: игра читает шейдеры и текстуры на старте
+
+        if (!Settings::Enabled("assets"))
+            LOG_WARN("[settings] assets = 0 — mods do not replace game files");
+        else if (!Assets::Install()) // как можно раньше: игра читает шейдеры и текстуры на старте
             LOG_WARN("Assets failed to install — mods cannot replace game files");
         if (!ScriptLog::Install())
             LOG_WARN("ScriptLog failed to install");
