@@ -24,6 +24,10 @@ local config = {
     -- больше — их труднее разместить рядом с деревней.
     clearance = 9,
 
+    -- Насколько держаться от края карты. Координаты идут от -GetMapWidth/2 до +GetMapWidth/2,
+    -- и без этого отступа жилы уезжают за границу — они там видны, но толку от них нет.
+    mapMargin = 24,
+
     -- На каком расстоянии от лидера встают деревни союзников.
     spacing = 30,
 
@@ -129,6 +133,7 @@ local function addMines()
         const cRadMax = %d;
         const cSpacing = %d;
         const cClear = %d;
+        const cMargin = %d;
         const cNeedGold = %d;
         const cNeedIron = %d;
         const cNeedCoal = %d;
@@ -140,6 +145,12 @@ local function addMines()
         function SpotIsFree(x, z : Float) : Boolean;
         begin
             Result := False;
+
+            // За краем карты жила бесполезна: стоит в пустоте, шахту не поставить.
+            var halfW : Float = (GetMapWidth div 2) - cMargin;
+            var halfH : Float = (GetMapHeight div 2) - cMargin;
+            if (x < -halfW) or (x > halfW) or (z < -halfH) or (z > halfH) then exit;
+
             var wo : Float;
             if (GetWaterExt(x, z, wo)) then exit;
             if (GetMapCollisionTagInRadius(x, z, cClear, False) <> 0) then exit;
@@ -241,7 +252,7 @@ local function addMines()
                 IntToStr(have[0]) + '/' + IntToStr(have[1]) + '/' + IntToStr(have[2]) +
                 ' + ' + IntToStr(added) + ' added, ' + IntToStr(failed) + ' no room');
         end;
-    ]]):format(config.radiusMin, config.radiusMax, config.spacing, config.clearance,
+    ]]):format(config.radiusMin, config.radiusMax, config.spacing, config.clearance, config.mapMargin,
                config.minesPerPlayer.gold, config.minesPerPlayer.iron, config.minesPerPlayer.coal,
                config.gatherEveryone and "True" or "False"))
 end
