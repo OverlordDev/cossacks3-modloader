@@ -50,6 +50,10 @@ namespace
         std::string folder; // имя папки
         std::string id, name, version, author, description;
         std::string entry[2];            // client / server
+        // Код из shared = "..." грузится в серверное окружение, но работает и у клиента: в сетевой
+        // игре обе стороны считают партию сами, и всё, что меняет мир (создание объектов, их
+        // перемещение), должно произойти одинаково у всех, иначе расходятся номера объектов.
+        bool shared = false;
         std::string multiplayer = "required";
         std::map<std::string, fs::path> files; // имя модуля ("utils", "lib/math") -> путь
         bool enabled = true;
@@ -508,11 +512,12 @@ namespace
     // ---------- API: events ----------
 
     // Обработчик события из Lua (главный поток игры; L — глобальное состояние).
-    void CallEventHandler(int ref, int side, const std::string& who, const std::string& event, const std::string& payload)
+    void CallEventHandler(int ref, int side, bool everywhere, const std::string& who, const std::string& event,
+                          const std::string& payload)
     {
         if (!L)
             return;
-        if (side == Server && !Game::IsAuthority())
+        if (side == Server && !everywhere && !Game::IsAuthority())
             return; // серверная логика работает только там, где решается игра
         lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
         lua_pushstring(L, event.c_str());
@@ -530,8 +535,9 @@ namespace
         int ref = luaL_ref(L, LUA_REGISTRYINDEX);
         std::string who = Who(*mod, side);
 
-        int id = Events::Subscribe(event, [ref, side, who](const std::string& name, const std::string& payload) {
-            CallEventHandler(ref, side, who, name, payload);
+        bool everywhere = mod->shared;
+        int id = Events::Subscribe(event, [ref, side, everywhere, who](const std::string& name, const std::string& payload) {
+            CallEventHandler(ref, side, everywhere, who, name, payload);
         });
         mod->subscriptions.push_back(id);
         lua_pushinteger(L, id);
@@ -1365,6 +1371,7 @@ end
         mod.description = GetStringField(t, "description");
         mod.entry[Client] = GetStringField(t, "client");
         mod.entry[Server] = GetStringField(t, "server");
+        std::string sharedEntry = GetStringField(t, "shared");
         mod.multiplayer = GetStringField(t, "multiplayer", "required");
         std::string legacyEntry = GetStringField(t, "entry");
         lua_getfield(L, t, "enabled");
@@ -1388,6 +1395,13 @@ end
             return mod.error = "id is required: latin letters, digits and _", false;
         if (!legacyEntry.empty())
             return mod.error = "'entry' was replaced: use client = \"client.lua\" and/or server = \"server.lua\"", false;
+        if (!sharedEntry.empty())
+        {
+            if (!mod.entry[Server].empty())
+                return mod.error = "use either server = \"...\" or shared = \"...\", not both", false;
+            mod.entry[Server] = sharedEntry;
+            mod.shared = true;
+        }
         if (mod.entry[Client].empty() && mod.entry[Server].empty())
             return mod.error = "set client = \"...\" and/or server = \"...\"", false;
         if (mod.multiplayer != "required" && mod.multiplayer != "optional")
@@ -1540,7 +1554,7 @@ end
                 Detach(mod);
             else
                 LOG_INFO("[lua] loaded %s %s (%s) [%s]", mod.id.c_str(), mod.version.c_str(), mod.name.c_str(),
-                         mod.entry[Client].empty() ? "server" : mod.entry[Server].empty() ? "client" : "client+server");
+                         mod.shared ? "shared" : mod.entry[Client].empty() ? "server" : mod.entry[Server].empty() ? "client" : "client+server");
         }
 
         size_t loaded = std::count_if(g_mods.begin(), g_mods.end(), [](const Mod& m) { return m.loaded; });
@@ -1581,13 +1595,14 @@ void LuaHost::OnNetMessage(char direction, const std::string& modId, const std::
     if (!L)
         return;
     int side = direction == 's' ? Server : Client;
-    if (side == Server && !Game::IsAuthority())
-        return;
 
     for (auto& mod : g_mods)
     {
         if (!mod.loaded || mod.id != modId)
             continue;
+        // Серверная логика работает только там, где решается игра; shared-моды считают у всех.
+        if (side == Server && !mod.shared && !Game::IsAuthority())
+            return;
         auto it = mod.netHandlers[side].find(event);
         if (it == mod.netHandlers[side].end())
         {

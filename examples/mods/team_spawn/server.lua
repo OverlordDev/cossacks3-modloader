@@ -3,7 +3,11 @@
 -- Карту генерирует сам движок, влезать в генерацию не нужно: проще поправить результат сразу после
 -- того, как партия создана. Событие game.start приходит ровно в этот момент.
 --
--- Всё ниже — серверная сторона: оно меняет ход партии, поэтому работает в одиночной игре и у хоста.
+-- Мод объявлен как shared: код идёт у всех, включая клиентов сетевой игры. Иначе никак — он создаёт
+-- объекты и двигает юнитов, а в сетевой игре каждая сторона считает партию сама. Поэтому всё здесь
+-- обязано быть ОДИНАКОВЫМ у всех: тот же порядок игроков, те же координаты, та же случайность.
+-- Случайность берётся от зерна карты (gMap.settings.gen.randkey0/1), а не от RandomExt: у того своё
+-- состояние, которое к этому моменту у сторон уже разное.
 
 local config = {
     -- Собирать союзников в одно место. Команды берутся из лобби (gMap.players[i].team);
@@ -145,6 +149,18 @@ local function addMines()
         const cNeedCoal = %d;
         const cEveryone = %s;
 
+        // Свой генератор случайных чисел от зерна карты: у обеих сторон зерно одинаковое, значит
+        // и последовательность одинаковая, и жилы лягут в те же точки.
+        var rngState : Integer;
+        rngState := (gMap.settings.gen.randkey0 xor (gMap.settings.gen.randkey1 * 7919)) and $7FFFFFFF;
+        if (rngState = 0) then rngState := 12345;
+
+        function NextRand : Float;
+        begin
+            rngState := ((rngState * 1103515245) + 12345) and $7FFFFFFF;
+            Result := rngState / 2147483647.0;
+        end;
+
         // Годится ли точка под жилу: не вода, ничего не мешает и рядом ничего не стоит.
         // Без этой проверки жила спокойно появляется внутри скалы или дерева: работать она будет,
         // а построить на ней шахту нельзя.
@@ -192,8 +208,8 @@ local function addMines()
             var t : Integer;
             for t := 0 to 255 do
             begin
-                var a : Float = RandomExt * 6.28318;
-                var d : Float = cRadMin + RandomExt * (spread - cRadMin);
+                var a : Float = NextRand * 6.28318;
+                var d : Float = cRadMin + NextRand * (spread - cRadMin);
                 var x : Float = px + cos(a) * d;
                 var z : Float = pz + sin(a) * d;
                 if (not SpotIsFree(x, z, clear)) then continue;
@@ -304,21 +320,8 @@ local function setup(why)
     addMines()
 end
 
--- Оба шага можно спокойно повторять: перенос считает смещение от уже записанной позиции деревни
--- (второй раз оно нулевое), а жилы досыпаются только недостающие. Поэтому делаем ещё один заход
--- через пару секунд: карта иногда доезжает позже, и с первого раза переносить бывает нечего.
-local recheck
-
+-- Ровно один проход на партию. Повторять по таймеру нельзя: у хоста и клиента он сработает в разные
+-- моменты, объекты создадутся в разном порядке и номера разъедутся.
 events.on("game.start", function()
     setup("начало партии")
-    recheck = os.clock() + 2
 end)
-
-events.on("game.tick", function()
-    if recheck and os.clock() >= recheck then
-        recheck = nil
-        setup("повторная проверка")
-    end
-end)
-
-events.on("game.end", function() recheck = nil end)
