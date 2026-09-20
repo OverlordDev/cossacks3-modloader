@@ -92,10 +92,49 @@ namespace
         DeleteFileW(g_copyPath.c_str());
     }
 
+    // console = 0 в <игра>\modloader\settings.txt — окно консоли не открывать.
+    // Консоль создаёт загрузчик, поэтому настройку приходится читать и здесь.
+    bool ConsoleWanted()
+    {
+        wchar_t exe[MAX_PATH];
+        GetModuleFileNameW(nullptr, exe, MAX_PATH);
+        std::wstring path = exe;
+        path = path.substr(0, path.find_last_of(L"\/") + 1) + L"modloader\settings.txt";
+
+        HANDLE file = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
+        if (file == INVALID_HANDLE_VALUE)
+            return true;
+        char text[4096] = {};
+        DWORD read = 0;
+        ReadFile(file, text, sizeof(text) - 1, &read, nullptr);
+        CloseHandle(file);
+
+        std::string data(text, read);
+        for (char& c : data)
+            c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
+        // Ищем строку console = 0, не считая закомментированных.
+        for (size_t pos = 0; pos < data.size();)
+        {
+            size_t end = data.find('\n', pos);
+            if (end == std::string::npos)
+                end = data.size();
+            std::string line = data.substr(pos, end - pos);
+            pos = end + 1;
+            size_t first = line.find_first_not_of(" \t");
+            if (first == std::string::npos || line[first] == '#' || line[first] == ';')
+                continue;
+            if (line.find("console") != std::string::npos && line.find('=') != std::string::npos &&
+                (line.find('0') != std::string::npos || line.find("false") != std::string::npos ||
+                 line.find("off") != std::string::npos || line.find("no") != std::string::npos))
+                return false;
+        }
+        return true;
+    }
+
     DWORD WINAPI BootThread(LPVOID)
     {
         // Консоль принадлежит загрузчику — переживает перезагрузки основной DLL.
-        g_ownsConsole = AllocConsole() != FALSE;
+        g_ownsConsole = ConsoleWanted() && AllocConsole() != FALSE;
         Log("Cossacks3Loader started");
 
         CleanOldCopies();
