@@ -1,6 +1,9 @@
 #include "pch.h"
 #include "WebUi.h"
 #include "Console.h"
+#include "LuaHost.h"
+#include "ScriptRunner.h"
+#include "Ui.h"
 
 #include <algorithm>
 #include <atomic>
@@ -20,6 +23,7 @@
 #include "include/cef_app.h"
 #include "include/cef_client.h"
 #include "include/wrapper/cef_library_loader.h"
+#include "include/wrapper/cef_message_router.h"
 
 #pragma comment(lib, "opengl32.lib")
 
@@ -73,26 +77,131 @@ namespace
     // ---------- CEF ----------
 
     std::atomic<bool> g_reportFrame{ true };
+    CefRefPtr<CefMessageRouterBrowserSide> g_router;
+    bool g_localPage = true; // страница загружена с диска — ей можно доверять Lua
+
+    // Код, который получает страница: обёртка над cefQuery с промисами.
+    constexpr char kBridgeJs[] = R"js(
+window.game = {
+  send(request) {
+    return new Promise((resolve, reject) => {
+      window.cefQuery({
+        request: String(request),
+        onSuccess: resolve,
+        onFailure: (code, message) => reject(new Error(message)),
+      });
+    });
+  },
+  // Нажать родную кнопку игры: game.tag('EventMainMenu', 101)
+  tag(state, value) { return this.send('tag ' + state + ' ' + value); },
+  // Запустить состояние интерфейса игры: game.exec('ShowSettings')
+  exec(state) { return this.send('exec ' + state); },
+  // Выполнить код мода: game.lua('print(gfx.presets())')
+  lua(code) { return this.send('lua ' + code); },
+  log(text) { return this.send('log ' + text); },
+  // Убрать страницу с экрана и вернуть управление игре.
+  close() { return this.send('close'); },
+};
+)js";
+
+    // "tag EventMainMenu 101" -> ("tag", "EventMainMenu 101")
+    std::pair<std::string, std::string> SplitCommand(const std::string& request)
+    {
+        size_t space = request.find(' ');
+        if (space == std::string::npos)
+            return { request, {} };
+        return { request.substr(0, space), request.substr(space + 1) };
+    }
+
+    class Bridge : public CefMessageRouterBrowserSide::Handler
+    {
+    public:
+        bool OnQuery(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, int64_t, const CefString& request,
+                     bool, CefRefPtr<Callback> callback) override
+        {
+            auto [cmd, arg] = SplitCommand(request.ToString());
+
+            // Состояния игры трогаем в её потоке, а не в потоке браузера.
+            if (cmd == "tag")
+            {
+                size_t space = arg.rfind(' ');
+                if (space == std::string::npos)
+                    return callback->Failure(1, "expected: tag <State> <number>"), true;
+                std::string state = arg.substr(0, space);
+                int value = atoi(arg.c_str() + space + 1);
+                ScriptRunner::RunOnGameThread([state, value] { Ui::SendTag(state, value); });
+            }
+            else if (cmd == "exec")
+            {
+                std::string state = arg;
+                ScriptRunner::RunOnGameThread([state] { Ui::ExecuteState(state); });
+            }
+            else if (cmd == "lua")
+            {
+                // Код мода — только со страниц с диска: у Lua полные права, и пускать туда
+                // произвольный сайт нельзя.
+                if (!g_localPage)
+                    return callback->Failure(2, "lua is only allowed for local pages"), true;
+                std::string code = arg;
+                ScriptRunner::RunOnGameThread([code] { LuaHost::RunConsole(code); });
+            }
+            else if (cmd == "close")
+            {
+                WebUi::RequestClose(); // страница сама убирает себя с экрана
+            }
+            else if (cmd == "log")
+            {
+                LOG_INFO("[36m[web:js][0m %s", arg.c_str());
+            }
+            else
+            {
+                return callback->Failure(3, "unknown command: " + cmd), true;
+            }
+
+            callback->Success("ok");
+            return true;
+        }
+    };
+
+    Bridge g_bridge;
 
     class Handler : public CefClient,
                     public CefRenderHandler,
                     public CefLifeSpanHandler,
                     public CefDisplayHandler,
-                    public CefLoadHandler
+                    public CefLoadHandler,
+                    public CefRequestHandler
     {
     public:
         CefRefPtr<CefRenderHandler> GetRenderHandler() override { return this; }
         CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
         CefRefPtr<CefDisplayHandler> GetDisplayHandler() override { return this; }
         CefRefPtr<CefLoadHandler> GetLoadHandler() override { return this; }
+        CefRefPtr<CefRequestHandler> GetRequestHandler() override { return this; }
 
         void OnLoadEnd(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame, int status) override
         {
-            if (frame->IsMain())
-            {
-                LOG_INFO("[web] loaded (%d) %s", status, frame->GetURL().ToString().c_str());
-                g_reportFrame = true;
-            }
+            if (!frame->IsMain())
+                return;
+            std::string url = frame->GetURL().ToString();
+            g_localPage = url.rfind("file://", 0) == 0;
+            LOG_INFO("[web] loaded (%d) %s", status, url.c_str());
+            frame->ExecuteJavaScript(kBridgeJs, url, 0); // window.game появляется здесь
+            g_reportFrame = true;
+        }
+
+        // Ответы моста приходят из процесса страницы — их разбирает роутер.
+        bool OnProcessMessageReceived(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
+                                      CefProcessId source, CefRefPtr<CefProcessMessage> message) override
+        {
+            return g_router && g_router->OnProcessMessageReceived(browser, frame, source, message);
+        }
+
+        void OnRenderProcessTerminated(CefRefPtr<CefBrowser> browser, TerminationStatus,
+                                       int, const CefString&) override
+        {
+            if (g_router)
+                g_router->OnRenderProcessTerminated(browser);
         }
 
         void OnLoadError(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame, ErrorCode code,
@@ -149,9 +258,14 @@ namespace
             LOG_INFO("[web] browser ready");
         }
 
-        void OnBeforeClose(CefRefPtr<CefBrowser>) override
+        void OnBeforeClose(CefRefPtr<CefBrowser> browser) override
         {
+            if (g_router)
+                g_router->OnBeforeClose(browser);
             g_browser = nullptr;
+            std::lock_guard lock(g_frameMutex);
+            g_pixels.clear(); // иначе на экране застынет последний кадр
+            g_frameDirty = false;
         }
 
         // console.log страницы — в консоль модлоадера
@@ -231,6 +345,10 @@ namespace
             LOG_ERROR("[web] CefInitialize failed — see modloader/cef.log");
             return false;
         }
+        CefMessageRouterConfig routerConfig; // в JS это window.cefQuery
+        g_router = CefMessageRouterBrowserSide::Create(routerConfig);
+        g_router->AddHandler(&g_bridge, false);
+
         LOG_INFO("[web] CEF started (software rendering)");
         return true;
     }
@@ -302,6 +420,11 @@ namespace
                 CefDoMessageLoopWork();
                 Sleep(5);
             }
+        }
+        if (g_router)
+        {
+            g_router->RemoveHandler(&g_bridge);
+            g_router = nullptr;
         }
         g_handler = nullptr;
         g_app = nullptr;
@@ -447,10 +570,20 @@ void WebUi::OnFrame(HWND window)
     if (g_state.load() != State::Running)
         return;
 
+    if (!g_browser && open) // вкладку закрывали, а CEF остался поднятым — открываем заново
+    {
+        LOG_INFO("[web] opening %s", url.c_str());
+        CreateBrowser(window, url);
+        return;
+    }
+
     if (g_browser)
     {
         if (open && !url.empty())
+        {
+            LOG_INFO("[web] opening %s", url.c_str());
             g_browser->GetMainFrame()->LoadURL(url);
+        }
         if (reload)
             g_browser->ReloadIgnoreCache();
         if (close)

@@ -2,9 +2,9 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<title>CEF test</title>
+<title>CEF bridge test</title>
 <style>
-  /* Фон прозрачный — под страницей должна быть видна игра. */
+  /* Фон прозрачный — под страницей видна игра. */
   html, body {
     margin: 0;
     height: 100%;
@@ -14,33 +14,20 @@
     overflow: hidden;
   }
 
-  body {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
+  body { display: flex; align-items: center; justify-content: center; }
 
   .panel {
-    width: 460px;
-    padding: 32px 36px;
-    background: linear-gradient(160deg, rgba(28, 24, 18, .92), rgba(12, 10, 8, .92));
+    width: 480px;
+    padding: 30px 34px;
+    background: linear-gradient(160deg, rgba(28, 24, 18, .93), rgba(12, 10, 8, .93));
     border: 2px solid #6b5636;
     border-radius: 10px;
     box-shadow: 0 18px 60px rgba(0, 0, 0, .65);
     text-align: center;
   }
 
-  h1 {
-    margin: 0 0 6px;
-    font-size: 30px;
-    letter-spacing: .04em;
-  }
-
-  .sub {
-    margin: 0 0 22px;
-    font-size: 14px;
-    color: #a8988a;
-  }
+  h1 { margin: 0 0 4px; font-size: 27px; letter-spacing: .04em; }
+  .sub { margin: 0 0 20px; font-size: 13px; color: #a8988a; }
 
   button {
     display: block;
@@ -54,56 +41,79 @@
     border: 1px solid #6b5636;
     border-radius: 6px;
     cursor: pointer;
-    transition: background .18s ease, transform .12s ease, box-shadow .18s ease;
+    transition: background .18s ease, box-shadow .18s ease, transform .1s ease;
   }
-
-  /* То самое "затемнение при наведении", ради которого всё затевалось. */
   button:hover {
     background: linear-gradient(180deg, #6a5637, #3b2f21);
     box-shadow: 0 0 14px rgba(255, 200, 120, .25);
   }
-
   button:active { transform: translateY(1px); }
+  button.quiet { font-size: 14px; padding: 9px; opacity: .8; }
 
-  .row {
-    margin-top: 20px;
+  .status {
+    margin-top: 18px;
+    min-height: 18px;
     font-size: 13px;
     color: #8f8073;
   }
-
-  #clock { color: #ffdcaa; }
+  .status.bad { color: #d98a72; }
 </style>
 </head>
 <body>
   <div class="panel">
-    <h1>CEF работает</h1>
-    <p class="sub">страница нарисована Chromium и выведена в OpenGL игры</p>
+    <h1>Мост в игру</h1>
+    <p class="sub">кнопки ниже дёргают настоящие состояния Cossacks 3</p>
 
-    <button onclick="hit('Кампания')">Кампания</button>
-    <button onclick="hit('Сетевая игра')">Сетевая игра</button>
-    <button onclick="hit('Настройки')">Настройки</button>
+    <button onclick="menu('Кампания', 101)">Кампания</button>
+    <button onclick="menu('Сетевая игра', 103)">Сетевая игра</button>
+    <button onclick="menu('Настройки', 104)">Настройки</button>
 
-    <div class="row">
-      время в странице: <span id="clock">—</span><br>
-      нажатий: <span id="count">0</span>
-    </div>
+    <button class="quiet" onclick="runLua()">Выполнить Lua в игре</button>
+    <button class="quiet" onclick="game.close()">Закрыть страницу</button>
+
+    <div class="status" id="status">готово</div>
   </div>
 
 <script>
-  let count = 0;
+  const status = document.getElementById('status');
 
-  function hit(name) {
-    count += 1;
-    document.getElementById('count').textContent = count;
-    // Уходит в консоль модлоадера через OnConsoleMessage.
-    console.log('нажата кнопка: ' + name);
+  function say(text, bad) {
+    status.textContent = text;
+    status.className = bad ? 'status bad' : 'status';
   }
 
-  setInterval(() => {
-    document.getElementById('clock').textContent = new Date().toLocaleTimeString('ru-RU');
-  }, 250);
+  // Нажимает родную кнопку главного меню и убирает страницу, чтобы не мешать игре.
+  async function menu(name, tag) {
+    try {
+      say('отправляю: ' + name);
+      await game.tag('EventMainMenu', tag);
+      await game.close();
+    } catch (e) {
+      say('ошибка: ' + e.message, true);
+    }
+  }
 
-  console.log('страница загружена, JS живой');
+  async function runLua() {
+    try {
+      await game.lua('log.info("привет из браузера")');
+      say('Lua выполнен, смотри консоль модлоадера');
+    } catch (e) {
+      say('ошибка: ' + e.message, true);
+    }
+  }
+
+  // window.game модлоадер впрыскивает после загрузки страницы, то есть уже после события load,
+  // поэтому не проверяем разово, а ждём появления.
+  let waited = 0;
+  const wait = setInterval(() => {
+    if (typeof window.game === 'object') {
+      clearInterval(wait);
+      say('мост подключён');
+    } else if ((waited += 100) > 3000) {
+      clearInterval(wait);
+      say('мост не найден', true);
+    }
+  }, 100);
 </script>
 </body>
 </html>
