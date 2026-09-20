@@ -14,9 +14,15 @@ local config = {
     -- (у всех team = 0), и проверять нечего — вот для таких партий и для показа.
     gatherEveryone = false,
 
-    -- Сколько жил каждого вида должно быть рядом с игроком (шахту на них строит уже игрок).
+    -- Сколько жил каждого вида должно приходиться НА ИГРОКА (шахту на них строит уже игрок).
+    -- Команда стоит в одном месте, поэтому норма считается на всю деревню сразу: втроём с
+    -- настройкой ниже вокруг общего лагеря будет 9 золотых жил, а не 3.
     -- Уже стоящие рядом считаются, добавляются только недостающие.
-    mines = { gold = 3, iron = 2, coal = 2 },
+    minesPerPlayer = { gold = 3, iron = 3, coal = 3 },
+
+    -- Сколько свободного места нужно жиле. Меньше — жилы будут лезть в камни и деревья,
+    -- больше — их труднее разместить рядом с деревней.
+    clearance = 9,
 
     -- На каком расстоянии от лидера встают деревни союзников.
     spacing = 30,
@@ -53,6 +59,14 @@ local function gatherTeams()
         var i, j, moved, skipped : Integer;
         moved := 0;
         skipped := 0;
+
+        // Сначала показываем, что мод вообще видит: кто есть и в какой команде.
+        for i := 0 to gc_MaxPlayerCount-1 do
+        if (gMap.players[i].bexists) then
+        Log('[team_spawn] player ' + IntToStr(i) + ': team=' + IntToStr(gMap.players[i].team) +
+            ' ai=' + BoolToStr(gMap.players[i].bai) +
+            ' start=' + IntToStr(round(gMap.players[i].startx)) + ',' + IntToStr(round(gMap.players[i].starty)) +
+            ' objects=' + IntToStr(GetPlayerGameObjectsCountByHandle(GetPlayerHandleByIndex(i))));
         for i := 0 to gc_MaxPlayerCount-1 do
         if (gMap.players[i].bexists) then
         begin
@@ -113,40 +127,84 @@ local function addMines()
     game.exec(([[
         const cRadMin = %d;
         const cRadMax = %d;
+        const cSpacing = %d;
+        const cClear = %d;
         const cNeedGold = %d;
         const cNeedIron = %d;
         const cNeedCoal = %d;
+        const cEveryone = %s;
+
+        // Годится ли точка под жилу: не вода, ничего не мешает и рядом ничего не стоит.
+        // Без этой проверки жила спокойно появляется внутри скалы или дерева: работать она будет,
+        // а построить на ней шахту нельзя.
+        function SpotIsFree(x, z : Float) : Boolean;
+        begin
+            Result := False;
+            var wo : Float;
+            if (GetWaterExt(x, z, wo)) then exit;
+            if (GetMapCollisionTagInRadius(x, z, cClear, False) <> 0) then exit;
+            GetGameObjectsInRadius(x, z, cClear, False, False, 0, -1, 0,
+                                   False, False, False, False, False, False);
+            if (GetGameObjectListCount > 0) then exit;
+            Result := True;
+        end;
 
         // Жилы принадлежат игроку окружения и живут в расе env.
-        function PlaceVein(plHnd : Integer; const bn : String; px, pz : Float) : Integer;
+        function PlaceVein(plHnd : Integer; const bn : String; px, pz, spread : Float) : Integer;
         begin
             Result := 0;
             var t : Integer;
-            for t := 0 to 63 do
+            for t := 0 to 255 do
             begin
                 var a : Float = RandomExt * 6.28318;
-                var d : Float = cRadMin + RandomExt * (cRadMax - cRadMin);
+                var d : Float = cRadMin + RandomExt * (spread - cRadMin);
                 var x : Float = px + cos(a) * d;
                 var z : Float = pz + sin(a) * d;
-                var y : Float = RayCastHeight(x, z);
+                if (not SpotIsFree(x, z)) then continue;
 
-                Result := CreatePlayerGameObjectHandleByHandle(plHnd, gc_racename_env, bn, x, y, z);
+                Result := CreatePlayerGameObjectHandleByHandle(plHnd, gc_racename_env, bn, x, RayCastHeight(x, z), z);
                 if (Result <> 0) then exit;
             end;
         end;
 
-        var envHnd : Integer = GetPlayerHandleByIndex(gc_playerind_env);
-        var i, k : Integer;
+        // Кто с кем стоит: союзники после переселения сидят вокруг лидера, поэтому считаем жилы
+        // один раз на весь лагерь и умножаем норму на число игроков в нём.
+        var clusterOf : array [0..15] of Integer;
+        var members : array [0..15] of Integer;
+        var i, j, k : Integer;
+        for i := 0 to 15 do
+        begin
+            clusterOf[i] := -1;
+            members[i] := 0;
+        end;
+
         for i := 0 to gc_MaxPlayerCount-1 do
         if (gMap.players[i].bexists) then
+        begin
+            var c : Integer = i;
+            if (cEveryone) or (gMap.players[i].team > 0) then
+            for j := 0 to i-1 do
+            if (c = i) and (gMap.players[j].bexists) then
+            begin
+                if (cEveryone) or (gMap.players[j].team = gMap.players[i].team) then
+                c := j;
+            end;
+            clusterOf[i] := c;
+            members[c] := members[c] + 1;
+        end;
+
+        var envHnd : Integer = GetPlayerHandleByIndex(gc_playerind_env);
+        var spread : Float = cRadMax + cSpacing; // лагерь шире одной деревни
+
+        for i := 0 to gc_MaxPlayerCount-1 do
+        if (members[i] > 0) then
         begin
             var px : Float = gMap.players[i].startx;
             var pz : Float = gMap.players[i].starty;
 
-            // Что уже стоит рядом.
             var have : array [0..2] of Integer;
             have[0] := 0; have[1] := 0; have[2] := 0;
-            GetGameObjectsInRadius(px, pz, cRadMax, False, False, 0, -1, 0,
+            GetGameObjectsInRadius(px, pz, spread, False, False, 0, -1, 0,
                                    False, False, False, False, False, False);
             for k := GetGameObjectListCount-1 downto 0 do
             begin
@@ -157,11 +215,13 @@ local function addMines()
             end;
 
             var need : array [0..2] of Integer;
-            need[0] := cNeedGold - have[0];
-            need[1] := cNeedIron - have[1];
-            need[2] := cNeedCoal - have[2];
+            need[0] := cNeedGold * members[i] - have[0];
+            need[1] := cNeedIron * members[i] - have[1];
+            need[2] := cNeedCoal * members[i] - have[2];
 
-            var added : Integer = 0;
+            var added, failed : Integer;
+            added := 0;
+            failed := 0;
             for k := 0 to 2 do
             begin
                 var bn : String;
@@ -172,16 +232,18 @@ local function addMines()
                 end;
                 var n : Integer;
                 for n := 1 to need[k] do
-                if (PlaceVein(envHnd, bn, px, pz) <> 0) then added := added + 1;
+                if (PlaceVein(envHnd, bn, px, pz, spread) <> 0) then added := added + 1
+                else failed := failed + 1;
             end;
 
-            Log('[team_spawn] player ' + IntToStr(i) +
-                ' at ' + IntToStr(round(px)) + ',' + IntToStr(round(pz)) + ': veins ' +
+            Log('[team_spawn] camp at ' + IntToStr(round(px)) + ',' + IntToStr(round(pz)) +
+                ' for ' + IntToStr(members[i]) + ' player(s): veins ' +
                 IntToStr(have[0]) + '/' + IntToStr(have[1]) + '/' + IntToStr(have[2]) +
-                ' + ' + IntToStr(added) + ' added');
+                ' + ' + IntToStr(added) + ' added, ' + IntToStr(failed) + ' no room');
         end;
-    ]]):format(config.radiusMin, config.radiusMax,
-               config.mines.gold, config.mines.iron, config.mines.coal))
+    ]]):format(config.radiusMin, config.radiusMax, config.spacing, config.clearance,
+               config.minesPerPlayer.gold, config.minesPerPlayer.iron, config.minesPerPlayer.coal,
+               config.gatherEveryone and "True" or "False"))
 end
 
 events.on("game.start", function()

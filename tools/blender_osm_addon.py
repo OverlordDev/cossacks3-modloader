@@ -60,15 +60,19 @@ def _read_osm(path):
 
 def _write_osm(path, tris_data):
     """tris_data: list of ((x,y,z)*3, (u,v)*3). Builds split verts/STs, writes file."""
-    vtab, stab, tris = {}, {}, []
+    vtab, stab, tris = {}, {}, []  # key -> [index, original values]
     for (poss, uvs) in tris_data:
         vi, si = [], []
         for p in poss:
             key = (round(p[0], 6), round(p[1], 6), round(p[2], 6))
-            vi.append(vtab.setdefault(key, len(vtab)))
+            if key not in vtab:
+                vtab[key] = [len(vtab), (p[0], p[1], p[2])]
+            vi.append(vtab[key][0])
         for t in uvs:
             key = (round(t[0], 6), round(t[1], 6))
-            si.append(stab.setdefault(key, len(stab)))
+            if key not in stab:
+                stab[key] = [len(stab), (t[0], t[1])]
+            si.append(stab[key][0])
         tris.append((vi, si))
     n_verts, n_st, n_tris = len(vtab), len(stab), len(tris)
     frame_size = 16 + n_verts * 16
@@ -76,8 +80,8 @@ def _write_osm(path, tris_data):
     off_tris = off_st + n_st * 8
     off_frames = off_tris + n_tris * 24
     end = off_frames + frame_size
-    inv_v = {v: k for k, v in vtab.items()}
-    inv_s = {v: k for k, v in stab.items()}
+    inv_v = {v[0]: v[1] for v in vtab.values()}
+    inv_s = {v[0]: v[1] for v in stab.values()}
     with open(path, "wb") as f:
         f.write(struct.pack("<17i", MAGIC, VERSION, 256, 256, frame_size,
                             1, n_verts, n_st, n_tris, 0, 1,
