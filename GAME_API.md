@@ -4975,6 +4975,33 @@
 
 Крутилки картинки из консоли. Пост-эффекты: `data/posteffects/posteffects.lib` (пресеты `default/winter/desaturate`, `DOF/SSAO/Gamma` по дефолту `False`), шейдеры `data/shaders/tone/*.frag`, свет `data/env/lights/light.cfg`, камеры `data/cameras/camera.cfg`. Рендер — OpenGL, точка хука кадра — `gdi32.SwapBuffers`.
 
+### world — параметры создаваемой карты
+
+Игра читает настройки генерации в начале состояния `DoNewGame` (`data/gui/menu.inc/donewgame.inc`),
+а мы вставляем туда своё событие `game.prepare` — значит, в его обработчике поля ещё можно переписать,
+и карта сгенерируется по-нашему. Поля живут в `gMap.settings.gen`, пишет их только серверная сторона.
+
+```lua
+events.on("game.prepare", function()
+    world{ size = 2, mines = 3, resources = 2, seed0 = 42, seed1 = 42 }
+end)
+local current = world()   -- прочитать всё
+```
+
+| Ключ | Поле игры | Значения |
+| --- | --- | --- |
+| `size` | mapsize | 0 = 320, 1 = 480, 2 = 640, 3 = 256 клеток |
+| `season` | season | 0 лето, 2 зима, 3 пустыня; < 0 — игра выберет сама |
+| `terrain` | terraintype | 0..5, больше — случайный |
+| `relief` | relieftype | 0..4, больше — случайный |
+| `mines` | resourcemines | плотность шахт |
+| `resources` | resourcestart | 0 = 1000, 1 = 4000, 2 = 5000, иначе 1000000 каждого ресурса |
+| `seed0`, `seed1` | randkey0/1 | зерно генератора: одинаковое зерно — одинаковая карта |
+
+Сама генерация идёт в состояниях `InitMapGen` и `DoGenerate` (`data/scripts/common.inc`) — это другая
+машина состояний, не интерфейсная, наши вставки туда пока не умеют. Если понадобится влезть в сам
+процесс (свои шахты, свой рельеф), надо будет научиться внедряться и в неё.
+
 ### gfx — графика из Lua
 
 Клиентским скриптам и консоли доступна таблица `gfx` (`core/GfxApi.*`): нативы графики из белого списка

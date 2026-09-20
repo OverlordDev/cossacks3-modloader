@@ -1068,6 +1068,43 @@ function game.playerIndexOf(from)
     return game.evalInt("_misc_GetMapPlayerIndexByLanID(" .. math.tointeger(from) .. ")")
 end
 
+-- Параметры будущей карты: игра читает их в самом начале создания партии (состояние DoNewGame,
+-- data/gui/menu.inc/donewgame.inc), поэтому менять их надо в обработчике события game.prepare —
+-- оно приходит ровно перед тем, как игра ими воспользуется.
+--   world{ size = 2, mines = 3 }   -- записать (только сервер: это правила партии)
+--   world()                        -- прочитать всё
+local GEN = {
+    size      = "mapsize",       -- 0 = 320, 1 = 480, 2 = 640, 3 = 256 клеток
+    season    = "season",        -- 0 лето, 2 зима, 3 пустыня; меньше 0 — игра выберет сама
+    terrain   = "terraintype",   -- 0..5, больше — случайный
+    relief    = "relieftype",    -- 0..4, больше — случайный
+    mines     = "resourcemines", -- плотность шахт
+    resources = "resourcestart", -- 0 = 1000, 1 = 4000, 2 = 5000, иначе 1000000 каждого
+    seed0     = "randkey0",      -- зерно генератора: одинаковое зерно — одинаковая карта
+    seed1     = "randkey1",
+}
+
+local function worldRead()
+    local out = {}
+    for key, field in pairs(GEN) do
+        out[key] = game.evalInt("gMap.settings.gen." .. field)
+    end
+    return out
+end
+
+local function worldWrite(values)
+    if not game.exec then serverOnly("world settings") end
+    for key, value in pairs(values) do
+        local field = GEN[key] or error("world: unknown setting '" .. tostring(key) .. "'", 3)
+        game.exec("gMap.settings.gen." .. field .. " := StrToInt(ML_ARG);", tostring(math.floor(value)))
+    end
+end
+
+world = setmetatable({}, { __call = function(_, values)
+    if values == nil then return worldRead() end
+    worldWrite(values)
+end })
+
 -- player() — игрок за этим компьютером, player(i) — по индексу
 function player(index)
     if index == nil then
