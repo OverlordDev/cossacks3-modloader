@@ -14,8 +14,8 @@ local config = {
     -- (у всех team = 0), и проверять нечего — вот для таких партий и для показа.
     gatherEveryone = false,
 
-    -- Сколько шахт каждого вида должно быть рядом с игроком. Уже стоящие рядом считаются,
-    -- добавляются только недостающие — карта не превращается в свалку шахт.
+    -- Сколько жил каждого вида должно быть рядом с игроком (шахту на них строит уже игрок).
+    -- Уже стоящие рядом считаются, добавляются только недостающие.
     mines = { gold = 3, iron = 2, coal = 2 },
 
     -- На каком расстоянии от лидера встают деревни союзников.
@@ -26,7 +26,11 @@ local config = {
     radiusMax = 48,
 }
 
--- Бейзнеймы шахт берём из самой игры: gc_basename_minegold / mineiron / minecoal.
+-- Ставим ЖИЛУ, а не здание шахты. Жила — объект расы env: minegold / mineiron / minecoal
+-- (data/objects/env/*.prop, CategorieName = resources). Её состояние Initial само назначает тип
+-- ресурса и ставит её в ресурсную сетку (data/scripts/env/env.inc/initial.inc), поэтому достаточно
+-- создать объект. Крупные варианты — с 's' на конце: minegolds / mineirons / minecoals.
+-- А gc_basename_minegold ('eurgol') — это ЗДАНИЕ шахты, которое игрок строит поверх жилы.
 
 -- Где стоит деревня игрока — это gMap.players[i].startx/starty, те же координаты, что у объектов.
 -- Натив GetPlayerArmyPositionByHandle не годится: игра им нигде не пользуется и он отдаёт нули.
@@ -113,9 +117,8 @@ local function addMines()
         const cNeedIron = %d;
         const cNeedCoal = %d;
 
-        // Раса шахт в разных сборках лежит по-разному, поэтому пробуем по очереди,
-        // пока движок не вернёт хендл.
-        function PlaceMine(plHnd : Integer; const bn : String; px, pz : Float) : Integer;
+        // Жилы принадлежат игроку окружения и живут в расе env.
+        function PlaceVein(plHnd : Integer; const bn : String; px, pz : Float) : Integer;
         begin
             Result := 0;
             var t : Integer;
@@ -127,11 +130,7 @@ local function addMines()
                 var z : Float = pz + sin(a) * d;
                 var y : Float = RayCastHeight(x, z);
 
-                Result := CreatePlayerGameObjectHandleByHandle(plHnd, gc_racename_buildings, bn, x, y, z);
-                if (Result = 0) then
                 Result := CreatePlayerGameObjectHandleByHandle(plHnd, gc_racename_env, bn, x, y, z);
-                if (Result = 0) then
-                Result := CreatePlayerGameObjectHandleByHandle(plHnd, GetPlayerRaceNameByHandle(plHnd), bn, x, y, z);
                 if (Result <> 0) then exit;
             end;
         end;
@@ -152,9 +151,9 @@ local function addMines()
             for k := GetGameObjectListCount-1 downto 0 do
             begin
                 var bn : String = GetGameObjectBaseNameByHandle(GetGameObjectListByIndex(k));
-                if (bn = gc_basename_minegold) then have[0] := have[0] + 1
-                else if (bn = gc_basename_mineiron) then have[1] := have[1] + 1
-                else if (bn = gc_basename_minecoal) then have[2] := have[2] + 1;
+                if (bn = 'minegold') or (bn = 'minegolds') then have[0] := have[0] + 1
+                else if (bn = 'mineiron') or (bn = 'mineirons') then have[1] := have[1] + 1
+                else if (bn = 'minecoal') or (bn = 'minecoals') then have[2] := have[2] + 1;
             end;
 
             var need : array [0..2] of Integer;
@@ -167,17 +166,17 @@ local function addMines()
             begin
                 var bn : String;
                 case k of
-                    0 : bn := gc_basename_minegold;
-                    1 : bn := gc_basename_mineiron;
-                    2 : bn := gc_basename_minecoal;
+                    0 : bn := 'minegold';
+                    1 : bn := 'mineiron';
+                    2 : bn := 'minecoal';
                 end;
                 var n : Integer;
                 for n := 1 to need[k] do
-                if (PlaceMine(envHnd, bn, px, pz) <> 0) then added := added + 1;
+                if (PlaceVein(envHnd, bn, px, pz) <> 0) then added := added + 1;
             end;
 
             Log('[team_spawn] player ' + IntToStr(i) +
-                ' at ' + IntToStr(round(px)) + ',' + IntToStr(round(pz)) + ': mines ' +
+                ' at ' + IntToStr(round(px)) + ',' + IntToStr(round(pz)) + ': veins ' +
                 IntToStr(have[0]) + '/' + IntToStr(have[1]) + '/' + IntToStr(have[2]) +
                 ' + ' + IntToStr(added) + ' added');
         end;
