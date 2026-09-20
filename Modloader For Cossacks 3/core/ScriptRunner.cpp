@@ -214,11 +214,8 @@ namespace
 // оконную процедуру поверх нашей.
 void ScriptRunner::Update()
 {
-    // Обычно идём за окном, в котором игра рисует. Если отрисовку не трогаем вовсе
-    // (settings.txt: render = 0) или кадров ещё не было, ищем окно по признакам — и продолжаем
-    // искать каждый раз, потому что в начале запуска подходящим выглядит и служебное окно.
     HWND want = Overlay::RenderWindow();
-    if (!want)
+    if (!want && !g_wnd) // кадров ещё не было (игра свёрнута?) — берём по признакам
         EnumWindows(FindGameWindow, reinterpret_cast<LPARAM>(&want));
     if (!want || !IsWindow(want))
         return;

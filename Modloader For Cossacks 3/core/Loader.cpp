@@ -14,7 +14,6 @@
 #include "Overlay.h"
 #include "Profiler.h"
 #include "ScriptRunner.h"
-#include "Settings.h"
 #include "Ui.h"
 
 #include <set>
@@ -37,14 +36,6 @@ namespace
     // движок скриптов и интерфейс готовы (Engine::Ready). При инжекте в идущую игру это первый же такт.
     void InstallScriptParts()
     {
-        // events = 0 — не вставлять свои строки в состояния интерфейса игры. Без этого не работает
-        // почти ничего (события, моды, сеть, интерфейс), но игра остаётся полностью нетронутой.
-        if (!Settings::Enabled("events"))
-        {
-            LOG_WARN("[settings] events = 0 — no script hooks: no events, no mods, no UI");
-            return;
-        }
-
         if (Events::Install())
         {
             // Отладка: первое срабатывание каждого события — в лог (дальше счётчики в .events).
@@ -61,14 +52,11 @@ namespace
         else
             LOG_WARN("Events failed to install");
 
-        if (Settings::Enabled("examplemod") && !ExampleMod::Install())
+        if (!ExampleMod::Install())
             LOG_WARN("ExampleMod failed to install");
 
         ScriptLog::PrintBuildVersion();
-        if (Settings::Enabled("mods"))
-            LuaHost::Start();
-        else
-            LOG_WARN("[settings] mods = 0 — Lua mods are not loaded");
+        LuaHost::Start();
         LOG_INFO("Ready. F9 - set all resources to 100000, END (in game) or .unload - unload, .reload - reload build.");
     }
 }
@@ -88,27 +76,13 @@ DWORD WINAPI Loader::MainThread(LPVOID param)
     bool hooks = Hooks::Init();
     if (hooks)
     {
-        // render = 0 в modloader\settings.txt — вообще не подключаться к отрисовке: ни меню, ни
-        // счётчик кадров. Нужно, когда на чужой машине драйвер не дружит с нашим меню.
-        if (!Settings::Enabled("render"))
-            LOG_WARN("[settings] render = 0 — the menu (Insert) and the frame counter are off");
-        else if (!FrameStats::Install())
+        if (!FrameStats::Install())
             LOG_WARN("FrameStats failed to install");
-
-        if (!Settings::Enabled("checksum"))
-            LOG_WARN("[settings] checksum = 0 — multiplayer lobbies will reject this game");
-        else if (!Checksum::Install()) // до вставок событий: лобби должно видеть хеш чистой игры
+        if (!Checksum::Install()) // до вставок событий: лобби должно видеть хеш чистой игры
             LOG_WARN("Checksum failed to install — multiplayer lobbies will reject this game");
-
-        if (!Settings::Enabled("assets"))
-            LOG_WARN("[settings] assets = 0 — mods do not replace game files");
-        else if (!Assets::Install()) // как можно раньше: игра читает шейдеры и текстуры на старте
+        if (!Assets::Install()) // как можно раньше: игра читает шейдеры и текстуры на старте
             LOG_WARN("Assets failed to install — mods cannot replace game files");
-        // scriptlog = 0 — не перехватывать логи движка. Тогда в консоли не будет строк [script]
-        // и [engine], зато мы не трогаем функции, через которые игра пишет всё подряд.
-        if (!Settings::Enabled("scriptlog"))
-            LOG_WARN("[settings] scriptlog = 0 — game and engine messages will not be shown");
-        else if (!ScriptLog::Install())
+        if (!ScriptLog::Install())
             LOG_WARN("ScriptLog failed to install");
     }
 

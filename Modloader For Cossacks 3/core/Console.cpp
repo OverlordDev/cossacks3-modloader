@@ -1,8 +1,5 @@
 #include "pch.h"
 #include "Console.h"
-#include "Settings.h"
-
-#include <filesystem>
 
 #include <cstdarg>
 #include <mutex>
@@ -10,22 +7,6 @@
 
 namespace
 {
-    // <игра>\\modloader\\modloader.log — перезаписывается при каждом запуске.
-    FILE* LogFile()
-    {
-        static FILE* file = []() -> FILE* {
-            wchar_t exe[MAX_PATH];
-            GetModuleFileNameW(nullptr, exe, MAX_PATH);
-            std::filesystem::path dir = std::filesystem::path(exe).parent_path() / L"modloader";
-            std::error_code ec;
-            std::filesystem::create_directories(dir, ec);
-            FILE* f = nullptr;
-            _wfopen_s(&f, (dir / L"modloader.log").c_str(), L"w, ccs=UTF-8");
-            return f;
-        }();
-        return file;
-    }
-
     FILE* g_out = nullptr;
     FILE* g_err = nullptr;
     bool g_ownsConsole = false;
@@ -52,23 +33,17 @@ namespace
         vsnprintf(msg, sizeof(msg), fmt, args);
 
         std::lock_guard lock(g_writeMutex);
-        SYSTEMTIME t;
-        GetLocalTime(&t);
         if (tag)
-            std::printf("\x1b[90m[%02d:%02d:%02d]\x1b[0m %s[%s]\x1b[0m %s\n", t.wHour, t.wMinute, t.wSecond, color, tag, msg);
-        else
-            std::printf("%s\n", msg);
-        std::fflush(stdout);
-
-        // То же самое — в файл: окно консоли можно выключить, а лог всё равно нужен.
-        if (FILE* log = LogFile())
         {
-            if (tag)
-                fprintf(log, "[%02d:%02d:%02d] [%s] %s\n", t.wHour, t.wMinute, t.wSecond, tag, msg);
-            else
-                fprintf(log, "%s\n", msg);
-            fflush(log);
+            SYSTEMTIME t;
+            GetLocalTime(&t);
+            std::printf("\x1b[90m[%02d:%02d:%02d]\x1b[0m %s[%s]\x1b[0m %s\n", t.wHour, t.wMinute, t.wSecond, color, tag, msg);
         }
+        else
+        {
+            std::printf("%s\n", msg);
+        }
+        std::fflush(stdout);
     }
 
     std::string WideToUtf8(const wchar_t* w, int len)
@@ -104,14 +79,6 @@ namespace
 
 bool Console::Init(const wchar_t* title)
 {
-    // console = 0 в settings.txt: окно не открываем. В полноэкранной игре чужое окно поверх неё —
-    // сама по себе причина чёрного экрана, а лог всё равно пишется в modloader\\modloader.log.
-    if (!Settings::Enabled("console"))
-    {
-        LOG_WARN("[settings] console = 0 — writing to the log file only");
-        return false;
-    }
-
     g_ownsConsole = AllocConsole() != FALSE;
     if (!g_ownsConsole && !AttachConsole(ATTACH_PARENT_PROCESS) && !GetConsoleWindow())
         return false;

@@ -173,7 +173,6 @@
     <ClInclude Include="core/GameApi.h" />
 
     <ClInclude Include="core/ScriptRunner.h" />
-    <ClInclude Include="core/Settings.h" />
 
     <ClInclude Include="core/DevConsole.h" />
 
@@ -221,7 +220,6 @@
     <ClCompile Include="mods/Cheats.cpp" />
 
     <ClCompile Include="core/ScriptRunner.cpp" />
-    <ClCompile Include="core/Settings.cpp" />
 
     <ClCompile Include="core/DevConsole.cpp" />
 

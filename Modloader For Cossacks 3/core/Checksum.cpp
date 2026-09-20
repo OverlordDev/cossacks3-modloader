@@ -119,57 +119,9 @@ namespace
         }
     }
 
-    // Без объектов с деструкторами внутри __try: иначе MSVC не разрешает SEH.
-    void ComputeInto(uint8_t* project, std::string* out)
-    {
-        *out = ComputeChecksum(project, true);
-    }
-
-    bool ComputeSafe(uint8_t* project, std::string* out)
-    {
-        __try
-        {
-            ComputeInto(project, out);
-            return true;
-        }
-        __except (EXCEPTION_EXECUTE_HANDLER)
-        {
-            return false;
-        }
-    }
-
-    // Хеш чистой игры за сессию не меняется (наши строки мы и так отбрасываем), а считается он по
-    // всем скриптам сразу — поэтому считаем один раз. Игра спрашивает его на каждом создании меню.
-    std::string g_vanilla;
-
     void __cdecl OnLibChecksum(uint8_t* project, char** result)
     {
-        if (g_vanilla.empty())
-        {
-            DWORD started = GetTickCount();
-            if (!ComputeSafe(project, &g_vanilla) || g_vanilla.empty())
-            {
-                // Не смогли повторить алгоритм движка — пусть игра посчитает сама. В лобби после
-                // этого не пустит, но игра хотя бы не останется без ответа.
-                static bool warned = false;
-                if (!warned)
-                {
-                    warned = true;
-                    LOG_ERROR("Checksum: failed to compute the vanilla hash — falling back to the engine "
-                              "(multiplayer lobbies will reject this game)");
-                }
-                void* fn = oLibChecksum;
-                __asm
-                {
-                    mov eax, project
-                    mov edx, result
-                    call fn
-                }
-                return;
-            }
-            LOG_INFO("Checksum: vanilla hash %s (%lu ms)", g_vanilla.c_str(), GetTickCount() - started);
-        }
-        AssignDelphiString(result, g_vanilla);
+        AssignDelphiString(result, ComputeChecksum(project, true));
     }
 
     // Delphi register: eax = project, edx = var result. Полностью заменяем оригинал.
