@@ -161,16 +161,19 @@ local function addMines()
             if (GetWaterExt(x, z, wo)) then exit;
             if (GetMapCollisionTagInRadius(x, z, round(clear), False) <> 0) then exit;
 
-            // Склон: сравниваем высоту в центре и по четырём сторонам. На горе шахту не поставить,
-            // а по столкновениям такое место проходит как свободное.
+            // Рельеф: шахта занимает место шире самой жилы, поэтому щупаем высоту по всей площадке —
+            // три кольца по восемь точек плюс центр. Четырёх точек мало: узкий разлом или уступ
+            // проходит между ними, а построить рядом с ним уже нельзя.
             var h0 : Float = RayCastHeight(x, z);
             var hmin : Float = h0;
             var hmax : Float = h0;
-            var q : Integer;
-            for q := 0 to 3 do
+            var ring, q : Integer;
+            for ring := 1 to 3 do
+            for q := 0 to 7 do
             begin
-                var ang : Float = q * 1.5708;
-                var h : Float = RayCastHeight(x + cos(ang) * clear, z + sin(ang) * clear);
+                var ang : Float = q * 0.7854;
+                var r : Float = clear * ring * 0.5;
+                var h : Float = RayCastHeight(x + cos(ang) * r, z + sin(ang) * r);
                 if (h < hmin) then hmin := h;
                 if (h > hmax) then hmax := h;
             end;
