@@ -296,9 +296,29 @@ local function addMines()
                config.gatherEveryone and "True" or "False"))
 end
 
-events.on("game.start", function()
+local function setup(why)
+    log.info("настраиваю партию (" .. why .. ")")
     if config.gatherTeams or config.gatherEveryone then
         gatherTeams()
     end
     addMines()
+end
+
+-- Оба шага можно спокойно повторять: перенос считает смещение от уже записанной позиции деревни
+-- (второй раз оно нулевое), а жилы досыпаются только недостающие. Поэтому делаем ещё один заход
+-- через пару секунд: карта иногда доезжает позже, и с первого раза переносить бывает нечего.
+local recheck
+
+events.on("game.start", function()
+    setup("начало партии")
+    recheck = os.clock() + 2
 end)
+
+events.on("game.tick", function()
+    if recheck and os.clock() >= recheck then
+        recheck = nil
+        setup("повторная проверка")
+    end
+end)
+
+events.on("game.end", function() recheck = nil end)

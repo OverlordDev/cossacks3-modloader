@@ -9,8 +9,9 @@ namespace
 {
     bool g_inGame = false;
 
-    enum class Pending { None, Start, Menu };
+    enum class Pending { None, Resolve, Start, Menu };
     Pending g_pending = Pending::None;
+    int g_resolveTries = 0;
 
     int CallIntNative(const char* name)
     {
@@ -22,16 +23,19 @@ namespace
         return NativeCall::Invoke(*sig, {}, &result, &error) ? result.i : 0;
     }
 
-    bool EvalInGame()
+    // *ok — удалось ли вообще спросить игру. Во время создания карты скриптовый вызов может не
+    // пройти, и принимать это за «мы в меню» нельзя: партия тогда начнётся без game.start,
+    // и моды молча ничего не сделают.
+    bool EvalInGame(bool* ok)
     {
         std::string result;
-        return ScriptRunner::Call("if (gInterface.gamemode = gc_gamemode_game) then ML_RET('1') else ML_RET('0');", "", &result) &&
-               result == "1";
+        *ok = ScriptRunner::Call("if (gInterface.gamemode = gc_gamemode_game) then ML_RET('1') else ML_RET('0');", "", &result);
+        return *ok && result == "1";
     }
 
     void Leave()
     {
-        if (g_pending == Pending::Start)
+        if (g_pending == Pending::Start || g_pending == Pending::Resolve)
             g_pending = Pending::None; // партия закрылась, не успев начаться
         if (!g_inGame)
             return;
@@ -57,19 +61,29 @@ void Game::Install()
     // Наша вставка стоит в начале DoCreate — интерфейс ещё не построен (и дальше пересоздаётся), поэтому
     // game.start / game.menu откладываем до первого такта: к нему интерфейс уже готов и моды могут его менять.
     Events::Subscribe("gui.DoCreate", [](const std::string&, const std::string&) {
-        if (EvalInGame())
-        {
-            g_inGame = true;
-            g_pending = Pending::Start;
-        }
-        else
-        {
-            Leave();
-            g_pending = Pending::Menu;
-        }
+        g_pending = Pending::Resolve; // спросим на первом такте, когда игра уже отвечает
+        g_resolveTries = 0;
     });
 
     Events::Subscribe("gui.DoProgress", [](const std::string&, const std::string&) {
+        if (g_pending == Pending::Resolve)
+        {
+            bool ok = false;
+            bool inGame = EvalInGame(&ok);
+            if (!ok && ++g_resolveTries < 60)
+                return; // игра ещё грузится — спросим на следующем такте
+            if (inGame)
+            {
+                g_inGame = true;
+                g_pending = Pending::Start;
+            }
+            else
+            {
+                Leave();
+                g_pending = Pending::Menu;
+            }
+        }
+
         Pending pending = g_pending;
         g_pending = Pending::None;
         if (pending == Pending::Start)

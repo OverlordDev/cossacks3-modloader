@@ -21,7 +21,7 @@
 bl_info = {
     "name": "Cossacks 3 OSM static mesh",
     "author": "Cossacks 3 Modloader",
-    "version": (0, 1, 0),
+    "version": (0, 2, 0),
     "blender": (3, 0, 0),
     "category": "Import-Export",
 }
@@ -30,7 +30,7 @@ import struct
 
 import bpy
 from bpy_extras.io_utils import ExportHelper, ImportHelper
-from bpy.props import BoolProperty, FloatProperty, StringProperty
+from bpy.props import BoolProperty, EnumProperty, FloatProperty, StringProperty
 
 
 MAGIC = 0x32504449
@@ -119,6 +119,55 @@ def actor_snippet(base_name, directory, stages=(None, "1", "2", "3", "4"),
     return "\r\n".join(L) + "\r\n"
 
 
+def _collect_tris(obj, scale, flip_winding):
+    """Returns (tris_data, warnings). tris_data: list of ((x,y,z)*3, (u,v)*3)."""
+    from mathutils import Matrix
+    warnings = []
+    mesh = obj.to_mesh()
+    try:
+        mesh.calc_loop_triangles()
+        uv_layer = mesh.uv_layers.active
+        if uv_layer is None:
+            warnings.append(f"{obj.name}: no active UV layer, exporting zero UVs")
+        M = obj.matrix_world
+        det = M.determinant()
+        flip = flip_winding ^ (det < 0.0)  # mirrored objects already flip winding
+        if det < 0.0:
+            warnings.append(f"{obj.name}: negative scale/mirror detected, winding auto-corrected")
+        if abs(det) < 1e-9:
+            warnings.append(f"{obj.name}: degenerate transform (det=0)")
+        if len(mesh.loop_triangles) == 0:
+            warnings.append(f"{obj.name}: no triangles")
+        tris_data = []
+        for tri in mesh.loop_triangles:
+            loops = tri.loops
+            if flip:
+                loops = (loops[2], loops[1], loops[0])
+            poss, uvs = [], []
+            for li in loops:
+                v = mesh.vertices[mesh.loops[li].vertex_index]
+                p = M @ v.co
+                poss.append((p.x * scale, p.y * scale, p.z * scale))
+                if uv_layer is not None:
+                    uv = uv_layer.data[li].uv
+                    uvs.append((uv.x, uv.y))
+                else:
+                    uvs.append((0.0, 0.0))
+            tris_data.append((poss, uvs))
+    finally:
+        obj.to_mesh_clear()
+    if tris_data:
+        xs = [p[0] for t, _ in tris_data for p in t]
+        ys = [p[1] for t, _ in tris_data for p in t]
+        zs = [p[2] for t, _ in tris_data for p in t]
+        size = max(max(xs) - min(xs), max(ys) - min(ys), max(zs) - min(zs))
+        if size > 100.0:
+            warnings.append(f"{obj.name}: bbox {size:.1f} m is huge, check scale")
+        elif size < 0.01:
+            warnings.append(f"{obj.name}: bbox {size:.4f} m is tiny, check scale")
+    return tris_data, warnings
+
+
 class C3OSM_Export(bpy.types.Operator, ExportHelper):
     bl_idname = "export_scene.c3_osm"
     bl_label = "Export Cossacks 3 (.osm)"
@@ -137,30 +186,13 @@ class C3OSM_Export(bpy.types.Operator, ExportHelper):
         if obj is None or obj.type != "MESH":
             self.report({"ERROR"}, "select a MESH object")
             return {"CANCELLED"}
-        mesh = obj.to_mesh()
-        try:
-            mesh.calc_loop_triangles()
-            uv_layer = mesh.uv_layers.active
-            M = obj.matrix_world
-            tris_data = []
-            for tri in mesh.loop_triangles:
-                loops = tri.loops
-                if self.flip_winding:
-                    loops = (loops[2], loops[1], loops[0])
-                poss, uvs = [], []
-                for li in loops:
-                    v = mesh.vertices[mesh.loops[li].vertex_index]
-                    p = M @ v.co
-                    poss.append((p.x * self.scale, p.y * self.scale, p.z * self.scale))
-                    if uv_layer is not None:
-                        uv = uv_layer.data[li].uv
-                        uvs.append((uv.x, uv.y))
-                    else:
-                        uvs.append((0.0, 0.0))
-                tris_data.append((poss, uvs))
-        finally:
-            obj.to_mesh_clear()
+        tris_data, warnings = _collect_tris(obj, self.scale, self.flip_winding)
+        if not tris_data:
+            self.report({"ERROR"}, "no triangles to export")
+            return {"CANCELLED"}
         nv, ns, nt = _write_osm(self.filepath, tris_data)
+        for w in warnings:
+            self.report({"WARNING"}, w)
         if self.write_actor:
             import os
             base = os.path.splitext(os.path.basename(self.filepath))[0]
@@ -168,6 +200,77 @@ class C3OSM_Export(bpy.types.Operator, ExportHelper):
                       "w", encoding="utf-8", newline="") as f:
                 f.write(actor_snippet(base, r".\data\actors\buildings\commoneur\\"))
         self.report({"INFO"}, f"wrote {nv} verts, {ns} uvs, {nt} tris")
+        return {"FINISHED"}
+
+
+# Building-set suffixes in game order: base, construction stages, death variants.
+SET_SUFFIXES = ("", "_1", "_2", "_3", "_4", "_death1", "_death2")
+
+
+class C3OSM_ExportSet(bpy.types.Operator, ExportHelper):
+    bl_idname = "export_scene.c3_osm_set"
+    bl_label = "Export Cossacks 3 building set (.osm + .actor)"
+    filename_ext = ".actor"
+    filter_glob: StringProperty(default="*.actor", options={"HIDDEN"})
+    base_name: StringProperty(name="Base name",
+                              description="e.g. mymine -> mymine.osm, mymine_1.osm ... + mymine.actor",
+                              default="mymine")
+    ref_template: EnumProperty(name="Template",
+                               items=[("refbuilding", "Building", ""),
+                                      ("refunit", "Unit (static prop)", ""),
+                                      ("refobj", "Generic object", "")],
+                               default="refbuilding")
+    directory: StringProperty(name="Game directory",
+                              description="LoadFromFile prefix used in .actor",
+                              default=r".\data\actors\buildings\commoneur\\")
+    scale: FloatProperty(name="Scale", default=1.0)
+    flip_winding: BoolProperty(name="Flip winding", default=True)
+
+    def execute(self, context):
+        import os
+        objs = [o for o in context.selected_objects if o.type == "MESH"]
+        if not objs:
+            self.report({"ERROR"}, "select MESH objects named <base>, <base>_1.._4, <base>_death1/2")
+            return {"CANCELLED"}
+        by_name = {o.name: o for o in objs}
+        order, extras = [], []
+        for sfx in SET_SUFFIXES:
+            nm = self.base_name + sfx if sfx else self.base_name
+            if nm in by_name:
+                order.append((nm, by_name.pop(nm)))
+        extras = sorted(by_name.values(), key=lambda o: o.name)
+        outdir = os.path.dirname(self.filepath)
+        exported = []
+        for nm, o in order + [(o.name, o) for o in extras]:
+            tris_data, warnings = _collect_tris(o, self.scale, self.flip_winding)
+            for w in warnings:
+                self.report({"WARNING"}, w)
+            if not tris_data:
+                self.report({"ERROR"}, f"{nm}: no triangles, skipped")
+                continue
+            nv, ns, nt = _write_osm(os.path.join(outdir, nm + ".osm"), tris_data)
+            exported.append(nm)
+            self.report({"INFO"}, f"{nm}.osm: {nv} verts, {nt} tris")
+        # .actor: base mesh first, then stages/deaths in game order, then extras
+        L = [f"section.begin {{refurl=.\\data\\actors\\ref\\{self.ref_template}.actor}}"]
+        first = True
+        for nm, _ in order + [(o.name, o) for o in extras]:
+            meshname = nm + ".mesh"
+            meshfile = self.directory + nm + ".osm"
+            if first:
+                L.append(f"   ActorList.Items[0].Name = {meshname}")
+                L.append(f"   ActorList.Items[0].LODList.Items[0].MeshObjects.LoadFromFile = {meshfile}")
+                first = False
+            else:
+                L.append(f"   ActorList.Items[*] : struct.begin {{refurl=.\\data\\actors\\ref\\{self.ref_template}.actor; refkey=.ActorList.Items[0]}}")
+                L.append(f"      Name = {meshname}")
+                L.append(f"      LODList.Items[0].MeshObjects.LoadFromFile = {meshfile}")
+                L.append("   struct.end")
+        L.append("section.end")
+        actor_path = os.path.join(outdir, self.base_name + ".actor")
+        with open(actor_path, "w", encoding="utf-8", newline="") as f:
+            f.write("\r\n".join(L) + "\r\n")
+        self.report({"INFO"}, f"wrote {actor_path} ({len(exported)} meshes)")
         return {"FINISHED"}
 
 
@@ -207,6 +310,7 @@ class C3OSM_Import(bpy.types.Operator, ImportHelper):
 
 def menu_export(self, context):
     self.layout.operator(C3OSM_Export.bl_idname, text="Cossacks 3 (.osm)")
+    self.layout.operator(C3OSM_ExportSet.bl_idname, text="Cossacks 3 building set (.osm + .actor)")
 
 
 def menu_import(self, context):
@@ -215,6 +319,7 @@ def menu_import(self, context):
 
 def register():
     bpy.utils.register_class(C3OSM_Export)
+    bpy.utils.register_class(C3OSM_ExportSet)
     bpy.utils.register_class(C3OSM_Import)
     bpy.types.TOPBAR_MT_file_export.append(menu_export)
     bpy.types.TOPBAR_MT_file_import.append(menu_import)
@@ -224,6 +329,7 @@ def unregister():
     bpy.types.TOPBAR_MT_file_export.remove(menu_export)
     bpy.types.TOPBAR_MT_file_import.remove(menu_import)
     bpy.utils.unregister_class(C3OSM_Import)
+    bpy.utils.unregister_class(C3OSM_ExportSet)
     bpy.utils.unregister_class(C3OSM_Export)
 
 
