@@ -37,6 +37,14 @@ namespace
     // движок скриптов и интерфейс готовы (Engine::Ready). При инжекте в идущую игру это первый же такт.
     void InstallScriptParts()
     {
+        // events = 0 — не вставлять свои строки в состояния интерфейса игры. Без этого не работает
+        // почти ничего (события, моды, сеть, интерфейс), но игра остаётся полностью нетронутой.
+        if (!Settings::Enabled("events"))
+        {
+            LOG_WARN("[settings] events = 0 — no script hooks: no events, no mods, no UI");
+            return;
+        }
+
         if (Events::Install())
         {
             // Отладка: первое срабатывание каждого события — в лог (дальше счётчики в .events).
@@ -53,11 +61,14 @@ namespace
         else
             LOG_WARN("Events failed to install");
 
-        if (!ExampleMod::Install())
+        if (Settings::Enabled("examplemod") && !ExampleMod::Install())
             LOG_WARN("ExampleMod failed to install");
 
         ScriptLog::PrintBuildVersion();
-        LuaHost::Start();
+        if (Settings::Enabled("mods"))
+            LuaHost::Start();
+        else
+            LOG_WARN("[settings] mods = 0 — Lua mods are not loaded");
         LOG_INFO("Ready. F9 - set all resources to 100000, END (in game) or .unload - unload, .reload - reload build.");
     }
 }
@@ -93,7 +104,11 @@ DWORD WINAPI Loader::MainThread(LPVOID param)
             LOG_WARN("[settings] assets = 0 — mods do not replace game files");
         else if (!Assets::Install()) // как можно раньше: игра читает шейдеры и текстуры на старте
             LOG_WARN("Assets failed to install — mods cannot replace game files");
-        if (!ScriptLog::Install())
+        // scriptlog = 0 — не перехватывать логи движка. Тогда в консоли не будет строк [script]
+        // и [engine], зато мы не трогаем функции, через которые игра пишет всё подряд.
+        if (!Settings::Enabled("scriptlog"))
+            LOG_WARN("[settings] scriptlog = 0 — game and engine messages will not be shown");
+        else if (!ScriptLog::Install())
             LOG_WARN("ScriptLog failed to install");
     }
 
