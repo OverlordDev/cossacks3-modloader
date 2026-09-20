@@ -1,4 +1,4 @@
-# Blender addon: Cossacks 3 static mesh (.osm) import/export + .actor snippet.
+# Blender addon: Cossacks 3 static mesh (.osm) import/export + one-click game package.
 #
 # Format (reversed from GSC .osm, MD2 heritage, all little-endian):
 #   i32 magic = 0x32504449 ("IDP2"), i32 version = 8
@@ -12,21 +12,30 @@
 #   struct tri { i32 v[3]; i32 st[3]; }  (32-bit indices; winding CW = reversed vs Blender)
 #   struct frame { byte head[16] (constant stamp); struct vert { float x,y,z; i32 flag=1; } }
 #
+# One-click flow ("Cossacks 3 building set"): select meshes named
+#   <base>, <base>_1.._4, <base>_death1/2  ->  .osm set + .dds (via texconv)
+#   + .actor + .mat snippet + INSTALL.txt, all staged in a folder that mirrors
+#   data/. Copy staged files into the game (as admin), back up originals.
+#   Needs texconv.exe (DirectXTex, free from Microsoft) for DDS DXT5 + mipmaps.
+#
+# Import flow: File -> Import -> Cossacks 3 actor (.actor + texture).
+#   Pick e.g. data/actors/buildings/commoneur/eurgol.actor, set Game folder
+#   (C:\...\Cossacks 3), get the mesh with its .dds on Base Color.
+#   The .mat database (data/materials/**/*.mat) resolves mesh name -> texture.
+#
 # Install: Blender -> Edit -> Preferences -> Add-ons -> Install -> select this file,
-# enable "Cossacks 3 OSM static mesh". File -> Import/Export -> Cossacks 3 (.osm).
-# Test in game: back up the original .osm, drop the exported file under the same name
-# into data/actors/..., load a map containing that object. Z is up (as in Blender),
-# units are meters. If faces look inside-out, toggle "Flip winding" on export.
+# enable "Cossacks 3 OSM static mesh". File -> Import/Export -> Cossacks 3 (...).
 
 bl_info = {
     "name": "Cossacks 3 OSM static mesh",
     "author": "Cossacks 3 Modloader",
-    "version": (0, 2, 0),
+    "version": (0, 4, 0),
     "blender": (3, 0, 0),
     "category": "Import-Export",
 }
 
 import struct
+import pathlib
 
 import bpy
 from bpy_extras.io_utils import ExportHelper, ImportHelper
@@ -74,14 +83,20 @@ def _write_osm(path, tris_data):
                 stab[key] = [len(stab), (t[0], t[1])]
             si.append(stab[key][0])
         tris.append((vi, si))
-    n_verts, n_st, n_tris = len(vtab), len(stab), len(tris)
+    n_verts, n_tris = len(vtab), len(tris)
+    inv_v = {v[0]: v[1] for v in vtab.values()}
+    inv_s = {v[0]: v[1] for v in stab.values()}
+    # Invariant seen in every shipped file: numST >= numVerts
+    # (the engine indexes the ST table by vertex in at least one path).
+    # Pad with (0,0) if dedup produced fewer.
+    while len(inv_s) < n_verts:
+        inv_s[len(inv_s)] = (0.0, 0.0)
+    n_st = len(inv_s)
     frame_size = 16 + n_verts * 16
     off_skins, off_st = 68, 132
     off_tris = off_st + n_st * 8
     off_frames = off_tris + n_tris * 24
     end = off_frames + frame_size
-    inv_v = {v[0]: v[1] for v in vtab.values()}
-    inv_s = {v[0]: v[1] for v in stab.values()}
     with open(path, "wb") as f:
         f.write(struct.pack("<17i", MAGIC, VERSION, 256, 256, frame_size,
                             1, n_verts, n_st, n_tris, 0, 1,
@@ -95,6 +110,61 @@ def _write_osm(path, tris_data):
         for i in range(n_verts):
             f.write(struct.pack("<3fi", *inv_v[i], 1))
     return n_verts, n_st, n_tris
+
+
+def mat_section(base_name, mat_subdir):
+    return (
+        "section.begin {refurl=.\\data\\materials\\ref\\refbuilding.mat}\r\n"
+        f"   Material.Name = {base_name}\r\n"
+        f"   Material.Texture.image = .\\data\\materials\\buildings\\{mat_subdir}\\{base_name}.dds\r\n"
+        "section.end\r\n"
+    )
+
+
+def install_text(base_name, actors_subdir, mat_subdir, osm_files):
+    L = [f"Install package '{base_name}' into Cossacks 3 (run file manager as admin):",
+         "",
+         "1. Back up everything you overwrite!",
+         "",
+         "2. Meshes + actor -> game actors dir:"]
+    for fn in osm_files:
+        L.append(f"   {fn}  ->  data\\actors\\{actors_subdir}\\{fn}")
+    L.append(f"   {base_name}.actor  ->  data\\actors\\{actors_subdir}\\{base_name}.actor")
+    L += ["",
+          "3. Texture -> game materials dir:",
+          f"   {base_name}.dds  ->  data\\materials\\buildings\\{mat_subdir}\\{base_name}.dds",
+          "",
+          "4. Material registration: open data\\materials\\buildings\\buildings.mat,",
+          "   append the content of mat_add.txt at the end, save.",
+          "",
+          "5. Register the object in the game (so peasants use it, it has HP, etc.):",
+          "   country.script _country_AddMember(...) with the new basename,",
+          "   or replace an existing basename to skip this step.",
+          ""]
+    return "\r\n".join(L)
+
+
+def convert_png_to_dds(png_path, dds_path, texconv="texconv.exe"):
+    """texconv (DirectXTex) -> DDS DXT5 + full mipmap chain. Returns (ok, log)."""
+    import shutil
+    import subprocess
+    exe = texconv if "\\" in texconv or "/" in texconv else (shutil.which(texconv) or texconv)
+    try:
+        r = subprocess.run([exe, "-f", "DXT5", "-m", "0", "-y",
+                            "-o", str(pathlib.Path(dds_path).parent),
+                            str(png_path)],
+                           capture_output=True, text=True, timeout=120)
+    except FileNotFoundError:
+        return False, f"texconv not found: {exe}"
+    except Exception as e:  # noqa: BLE001
+        return False, str(e)
+    # texconv names output after the input basename
+    produced = pathlib.Path(dds_path).parent / (pathlib.Path(png_path).stem + ".dds")
+    if r.returncode != 0 or not produced.exists():
+        return False, (r.stdout + r.stderr)[-500:]
+    if produced.resolve() != pathlib.Path(dds_path).resolve():
+        produced.replace(dds_path)
+    return True, f"DXT5 + mipmaps, {pathlib.Path(dds_path).stat().st_size} bytes"
 
 
 def actor_snippet(base_name, directory, stages=(None, "1", "2", "3", "4"),
@@ -223,8 +293,33 @@ class C3OSM_ExportSet(bpy.types.Operator, ExportHelper):
     directory: StringProperty(name="Game directory",
                               description="LoadFromFile prefix used in .actor",
                               default=r".\data\actors\buildings\commoneur\\")
+    actors_subdir: StringProperty(name="Actors subfolder",
+                                  description="data\\actors\\... destination in INSTALL.txt",
+                                  default=r"buildings\commoneur")
+    mat_subdir: StringProperty(name="Materials subfolder",
+                               description="data\\materials\\buildings\\... destination in INSTALL.txt",
+                               default="commoneur")
+    texture_mode: EnumProperty(name="Texture",
+                               items=[("MATERIAL", "Active material image", "take Base Color image from first mesh"),
+                                      ("FILE", "PNG file", "use the file below"),
+                                      ("SKIP", "Skip", "no .dds, meshes only")],
+                               default="MATERIAL")
+    texture_file: StringProperty(name="Texture PNG", subtype="FILE_PATH", default="")
+    texconv: StringProperty(name="texconv.exe",
+                            description="DirectXTex converter (PATH name or full path)",
+                            default="texconv.exe")
     scale: FloatProperty(name="Scale", default=1.0)
     flip_winding: BoolProperty(name="Flip winding", default=True)
+
+    @staticmethod
+    def _active_image(obj):
+        for m in obj.data.materials:
+            if m is None or m.node_tree is None:
+                continue
+            for n in m.node_tree.nodes:
+                if n.type == "TEX_IMAGE" and n.image is not None:
+                    return n.image
+        return None
 
     def execute(self, context):
         import os
@@ -233,13 +328,15 @@ class C3OSM_ExportSet(bpy.types.Operator, ExportHelper):
             self.report({"ERROR"}, "select MESH objects named <base>, <base>_1.._4, <base>_death1/2")
             return {"CANCELLED"}
         by_name = {o.name: o for o in objs}
-        order, extras = [], []
+        order = []
         for sfx in SET_SUFFIXES:
             nm = self.base_name + sfx if sfx else self.base_name
             if nm in by_name:
                 order.append((nm, by_name.pop(nm)))
         extras = sorted(by_name.values(), key=lambda o: o.name)
         outdir = os.path.dirname(self.filepath)
+        # .actor always points into the real game tree, not the staging dir
+        game_dir = f".\\data\\actors\\{self.actors_subdir}\\\\"
         exported = []
         for nm, o in order + [(o.name, o) for o in extras]:
             tris_data, warnings = _collect_tris(o, self.scale, self.flip_winding)
@@ -256,7 +353,7 @@ class C3OSM_ExportSet(bpy.types.Operator, ExportHelper):
         first = True
         for nm, _ in order + [(o.name, o) for o in extras]:
             meshname = nm + ".mesh"
-            meshfile = self.directory + nm + ".osm"
+            meshfile = game_dir + nm + ".osm"
             if first:
                 L.append(f"   ActorList.Items[0].Name = {meshname}")
                 L.append(f"   ActorList.Items[0].LODList.Items[0].MeshObjects.LoadFromFile = {meshfile}")
@@ -271,7 +368,143 @@ class C3OSM_ExportSet(bpy.types.Operator, ExportHelper):
         with open(actor_path, "w", encoding="utf-8", newline="") as f:
             f.write("\r\n".join(L) + "\r\n")
         self.report({"INFO"}, f"wrote {actor_path} ({len(exported)} meshes)")
+        # texture -> DDS DXT5 + mipmaps
+        if self.texture_mode != "SKIP":
+            png = None
+            if self.texture_mode == "FILE" and self.texture_file:
+                png = bpy.path.abspath(self.texture_file)
+            else:
+                img = None
+                for _, o in order + [(o.name, o) for o in extras]:
+                    img = self._active_image(o)
+                    if img is not None:
+                        break
+                if img is not None:
+                    png = os.path.join(outdir, self.base_name + "_tex.png")
+                    img.filepath_raw = png
+                    img.file_format = "PNG"
+                    img.save()
+            if png and os.path.exists(png):
+                ok, log = convert_png_to_dds(
+                    png, os.path.join(outdir, self.base_name + ".dds"), self.texconv)
+                self.report({"INFO" if ok else "WARNING"}, f"DDS: {log}")
+                if ok and self.texture_mode == "MATERIAL":
+                    try:
+                        os.remove(png)
+                    except OSError:
+                        pass
+            else:
+                self.report({"WARNING"}, "no texture found (need material image or PNG file), .dds skipped")
+        # .mat snippet + INSTALL.txt
+        with open(os.path.join(outdir, self.base_name + ".mat_add.txt"),
+                  "w", encoding="utf-8", newline="") as f:
+            f.write(mat_section(self.base_name, self.mat_subdir))
+        with open(os.path.join(outdir, "INSTALL_" + self.base_name + ".txt"),
+                  "w", encoding="utf-8", newline="") as f:
+            f.write(install_text(self.base_name, self.actors_subdir, self.mat_subdir,
+                                 [nm + ".osm" for nm, _ in order + [(o.name, o) for o in extras]]))
+        self.report({"INFO"}, "package ready: .osm set + .dds + .actor + .mat_add.txt + INSTALL.txt")
         return {"FINISHED"}
+
+
+_MAT_CACHE = {}  # game_root -> {material_name: image_relpath}
+
+
+def _game_path(game_root, rel):
+    """'.\\data\\materials\\x\\y.dds' -> absolute path under game_root."""
+    p = rel.replace("\\", "/").lstrip("./")
+    if p.lower().startswith("data/"):
+        p = p[5:]
+    return pathlib.Path(game_root) / "data" / p
+
+
+def _load_mat_db(game_root):
+    """Scans data/materials/**/*.mat once per game_root: name -> texture relpath."""
+    global _MAT_CACHE
+    if game_root in _MAT_CACHE:
+        return _MAT_CACHE[game_root]
+    import re
+    db = {}
+    matdir = pathlib.Path(game_root) / "data" / "materials"
+    if matdir.is_dir():
+        for f in sorted(matdir.rglob("*.mat")):
+            try:
+                txt = f.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            for m in re.finditer(
+                    r"Material\.Name\s*=\s*(\S+)\s*\r?\n\s*Material\.Texture\.image\s*=\s*(\S+)",
+                    txt):
+                db.setdefault(m.group(1), m.group(2))
+    _MAT_CACHE[game_root] = db
+    return db
+
+
+def _resolve_texture(game_root, mesh_base):
+    """mesh_base like 'eurgol' -> absolute .dds path or None."""
+    if not game_root:
+        return None
+    db = _load_mat_db(game_root)
+    rel = db.get(mesh_base)
+    if rel is None:
+        return None
+    p = _game_path(game_root, rel)
+    return str(p) if p.is_file() else None
+
+
+def _apply_texture(obj, dds_path, mat_name):
+    """Creates Blender material with the DDS on Base Color. Returns log string."""
+    try:
+        if dds_path in bpy.data.images:
+            img = bpy.data.images[dds_path]
+        else:
+            img = bpy.data.images.load(dds_path)
+        img.name = mat_name
+    except Exception as e:  # noqa: BLE001
+        return f"texture load failed: {e}"
+    mat = bpy.data.materials.get(mat_name) or bpy.data.materials.new(mat_name)
+    mat.use_nodes = True
+    bsdf = mat.node_tree.nodes.get("Principled BSDF")
+    tex = mat.node_tree.nodes.new("ShaderNodeTexImage")
+    tex.image = img
+    tex.location = (-400, 300)
+    if bsdf is not None:
+        mat.node_tree.links.new(bsdf.inputs["Base Color"], tex.outputs["Color"])
+    if obj.data.materials:
+        obj.data.materials[0] = mat
+    else:
+        obj.data.materials.append(mat)
+    return f"texture applied: {dds_path}"
+
+
+def _parse_actor(actor_path):
+    """Returns (mesh_base, mesh_relpath) of the first ActorList item."""
+    import re
+    txt = pathlib.Path(actor_path).read_text(encoding="utf-8", errors="replace")
+    m = re.search(r"Name\s*=\s*(\S+?)\.mesh", txt)
+    base = m.group(1) if m else None
+    m2 = re.search(r"MeshObjects\.LoadFromFile\s*=\s*(\S+)", txt)
+    return base, (m2.group(1) if m2 else None)
+
+
+def _build_object(context, name, verts, st, tris):
+    me = bpy.data.meshes.new(name)
+    # expand split verts: one mesh vert per tri corner (keeps UV seams exact)
+    V, UV, F = [], [], []
+    for (v0, v1, v2, s0, s1, s2) in tris:
+        base = len(V)
+        V += [verts[v0], verts[v1], verts[v2]]
+        UV += [st[s0], st[s1], st[s2]]
+        F.append((base + 2, base + 1, base))  # un-flip CW back to Blender CCW
+    me.from_pydata(V, [], F)
+    uv = me.uv_layers.new(name="UVMap")
+    for poly in me.polygons:
+        for li in poly.loop_indices:
+            uv.data[li].uv = UV[li]
+    me.update()
+    ob = bpy.data.objects.new(name, me)
+    context.collection.objects.link(ob)
+    return ob
 
 
 class C3OSM_Import(bpy.types.Operator, ImportHelper):
@@ -279,6 +512,10 @@ class C3OSM_Import(bpy.types.Operator, ImportHelper):
     bl_label = "Import Cossacks 3 (.osm)"
     filename_ext = ".osm"
     filter_glob: StringProperty(default="*.osm", options={"HIDDEN"})
+    game_root: StringProperty(name="Game folder",
+                              description="Cossacks 3 folder (the one with data/); enables auto-texture",
+                              subtype="DIR_PATH", default="")
+    with_texture: BoolProperty(name="Load texture", default=True)
 
     def execute(self, context):
         import os
@@ -288,23 +525,58 @@ class C3OSM_Import(bpy.types.Operator, ImportHelper):
             self.report({"ERROR"}, str(e))
             return {"CANCELLED"}
         name = os.path.splitext(os.path.basename(self.filepath))[0]
-        me = bpy.data.meshes.new(name)
-        # expand split verts: one mesh vert per tri corner (keeps UV seams exact)
-        V, UV, F = [], [], []
-        for (v0, v1, v2, s0, s1, s2) in tris:
-            base = len(V)
-            V += [verts[v0], verts[v1], verts[v2]]
-            UV += [st[s0], st[s1], st[s2]]
-            F.append((base + 2, base + 1, base))  # un-flip CW back to Blender CCW
-        me.from_pydata(V, [], F)
-        uv = me.uv_layers.new(name="UVMap")
-        for poly in me.polygons:
-            for li in poly.loop_indices:
-                uv.data[li].uv = UV[li]
-        me.update()
-        ob = bpy.data.objects.new(name, me)
-        context.collection.objects.link(ob)
-        self.report({"INFO"}, f"imported {len(verts)} verts, {len(tris)} tris")
+        ob = _build_object(context, name, verts, st, tris)
+        msg = f"imported {len(verts)} verts, {len(tris)} tris"
+        if self.with_texture:
+            dds = _resolve_texture(bpy.path.abspath(self.game_root), name)
+            if dds:
+                msg += "; " + _apply_texture(ob, dds, name)
+            else:
+                msg += "; texture not found (set Game folder)"
+        self.report({"INFO"}, msg)
+        return {"FINISHED"}
+
+
+class C3OSM_ImportActor(bpy.types.Operator, ImportHelper):
+    bl_idname = "import_scene.c3_actor"
+    bl_label = "Import Cossacks 3 actor (.actor + texture)"
+    filename_ext = ".actor"
+    filter_glob: StringProperty(default="*.actor", options={"HIDDEN"})
+    game_root: StringProperty(name="Game folder",
+                              description="Cossacks 3 folder (the one with data/)",
+                              subtype="DIR_PATH", default="")
+    with_texture: BoolProperty(name="Load texture", default=True)
+
+    def execute(self, context):
+        import os
+        try:
+            mesh_base, mesh_rel = _parse_actor(self.filepath)
+        except OSError as e:
+            self.report({"ERROR"}, f"can't read .actor: {e}")
+            return {"CANCELLED"}
+        if not mesh_rel:
+            self.report({"ERROR"}, "no MeshObjects.LoadFromFile in .actor")
+            return {"CANCELLED"}
+        root = bpy.path.abspath(self.game_root)
+        mesh_path = _game_path(root, mesh_rel) if root else None
+        if mesh_path is None or not mesh_path.is_file():
+            # fall back: mesh next to the .actor
+            mesh_path = pathlib.Path(self.filepath).parent / (pathlib.Path(mesh_rel).name if mesh_rel else "")
+        try:
+            verts, st, tris = _read_osm(str(mesh_path))
+        except (ValueError, OSError) as e:
+            self.report({"ERROR"}, f"mesh load failed: {e}")
+            return {"CANCELLED"}
+        name = mesh_base or os.path.splitext(os.path.basename(str(mesh_path)))[0]
+        ob = _build_object(context, name, verts, st, tris)
+        msg = f"imported {name}: {len(verts)} verts, {len(tris)} tris"
+        if self.with_texture:
+            dds = _resolve_texture(root, name)
+            if dds:
+                msg += "; " + _apply_texture(ob, dds, name)
+            else:
+                msg += "; texture not found"
+        self.report({"INFO"}, msg)
         return {"FINISHED"}
 
 
@@ -315,12 +587,14 @@ def menu_export(self, context):
 
 def menu_import(self, context):
     self.layout.operator(C3OSM_Import.bl_idname, text="Cossacks 3 (.osm)")
+    self.layout.operator(C3OSM_ImportActor.bl_idname, text="Cossacks 3 actor (.actor + texture)")
 
 
 def register():
     bpy.utils.register_class(C3OSM_Export)
     bpy.utils.register_class(C3OSM_ExportSet)
     bpy.utils.register_class(C3OSM_Import)
+    bpy.utils.register_class(C3OSM_ImportActor)
     bpy.types.TOPBAR_MT_file_export.append(menu_export)
     bpy.types.TOPBAR_MT_file_import.append(menu_import)
 
@@ -328,6 +602,7 @@ def register():
 def unregister():
     bpy.types.TOPBAR_MT_file_export.remove(menu_export)
     bpy.types.TOPBAR_MT_file_import.remove(menu_import)
+    bpy.utils.unregister_class(C3OSM_ImportActor)
     bpy.utils.unregister_class(C3OSM_Import)
     bpy.utils.unregister_class(C3OSM_ExportSet)
     bpy.utils.unregister_class(C3OSM_Export)

@@ -1,4 +1,4 @@
-// Cossacks3Launcher.exe — запускает игру с уже поднятым модлоадером.
+﻿// Cossacks3Launcher.exe — запускает игру с уже поднятым модлоадером.
 //
 // Зачем: часть игры (шейдеры, текстуры, конфиги) читается один раз при старте. Инжект в идущую игру
 // для этого поздно. Лаунчер создаёт процесс игры приостановленным, грузит в него Cossacks3Loader.dll
@@ -23,6 +23,13 @@ namespace
     void Fail(const std::wstring& text)
     {
         MessageBoxW(nullptr, text.c_str(), L"Cossacks 3 Modloader", MB_ICONERROR | MB_OK);
+    }
+
+    std::wstring SelfPath()
+    {
+        wchar_t path[MAX_PATH];
+        GetModuleFileNameW(nullptr, path, MAX_PATH);
+        return path;
     }
 
     std::wstring LauncherDir()
@@ -117,7 +124,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, LPWSTR, int)
     if (GetFileAttributesW(exe.c_str()) == INVALID_FILE_ATTRIBUTES)
     {
         Fail(L"Не найдена игра:\n" + exe +
-             L"\n\nВ параметрах запуска Steam должно быть:\n\"" + LauncherDir() + kLoaderDll + L"\" %command%");
+             L"\n\nЛаунчер сам игру не ищет — его запускает Steam."
+             L"\nВ свойствах игры, в параметрах запуска, должна быть строка:\n\n\"" + SelfPath() +
+             L"\" %command%"
+             L"\n\nЛибо положите лаунчер прямо в папку игры, рядом с cossacks.exe.");
         return 1;
     }
     std::wstring workDir = DirOf(exe);
