@@ -77,12 +77,14 @@
       <PreprocessorDefinitions>WIN32;_DEBUG;MODLOADERFORCOSSACKS3_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)external/minhook/include;$(SolutionDir)external/lua;$(SolutionDir)external/imgui;$(SolutionDir)external/imgui/backends;$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)external/cef;$(SolutionDir)external/minhook/include;$(SolutionDir)external/lua;$(SolutionDir)external/imgui;$(SolutionDir)external/imgui/backends;$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
     </ClCompile>
     <Link>
+      <AdditionalDependencies>crypt32.lib;wintrust.lib;$(SolutionDir)external/cef/lib/libcef.lib;$(SolutionDir)Win32/$(Configuration)/libcef_dll_wrapper.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <DelayLoadDLLs>libcef.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
@@ -100,12 +102,14 @@
       <PreprocessorDefinitions>WIN32;NDEBUG;MODLOADERFORCOSSACKS3_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)external/minhook/include;$(SolutionDir)external/lua;$(SolutionDir)external/imgui;$(SolutionDir)external/imgui/backends;$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)external/cef;$(SolutionDir)external/minhook/include;$(SolutionDir)external/lua;$(SolutionDir)external/imgui;$(SolutionDir)external/imgui/backends;$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
     </ClCompile>
     <Link>
+      <AdditionalDependencies>crypt32.lib;wintrust.lib;$(SolutionDir)external/cef/lib/libcef.lib;$(SolutionDir)Win32/$(Configuration)/libcef_dll_wrapper.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <DelayLoadDLLs>libcef.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
@@ -121,12 +125,14 @@
       <PreprocessorDefinitions>_DEBUG;MODLOADERFORCOSSACKS3_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)external/minhook/include;$(SolutionDir)external/lua;$(SolutionDir)external/imgui;$(SolutionDir)external/imgui/backends;$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)external/cef;$(SolutionDir)external/minhook/include;$(SolutionDir)external/lua;$(SolutionDir)external/imgui;$(SolutionDir)external/imgui/backends;$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
     </ClCompile>
     <Link>
+      <AdditionalDependencies>crypt32.lib;wintrust.lib;$(SolutionDir)external/cef/lib/libcef.lib;$(SolutionDir)Win32/$(Configuration)/libcef_dll_wrapper.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <DelayLoadDLLs>libcef.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
@@ -144,12 +150,14 @@
       <PreprocessorDefinitions>NDEBUG;MODLOADERFORCOSSACKS3_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)external/minhook/include;$(SolutionDir)external/lua;$(SolutionDir)external/imgui;$(SolutionDir)external/imgui/backends;$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)external/cef;$(SolutionDir)external/minhook/include;$(SolutionDir)external/lua;$(SolutionDir)external/imgui;$(SolutionDir)external/imgui/backends;$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
     </ClCompile>
     <Link>
+      <AdditionalDependencies>crypt32.lib;wintrust.lib;$(SolutionDir)external/cef/lib/libcef.lib;$(SolutionDir)Win32/$(Configuration)/libcef_dll_wrapper.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <DelayLoadDLLs>libcef.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
@@ -199,8 +207,10 @@
     <ClInclude Include="core/GraphicsTab.h" />
     <ClInclude Include="core/PostFx.h" />
     <ClInclude Include="core/Ui.h" />
+    <ClInclude Include="core/WebUi.h" />
 
-    <ClInclude Include="core/Net.h" />
+    <ClInclude Include="core/Net.h" />
+
     <ClInclude Include="core/Checksum.h" />
     <ClInclude Include="core/Assets.h" />
 
@@ -244,8 +254,10 @@
     <ClCompile Include="core/GraphicsTab.cpp" />
     <ClCompile Include="core/PostFx.cpp" />
     <ClCompile Include="core/Ui.cpp" />
+    <ClCompile Include="core/WebUi.cpp" />
 
-    <ClCompile Include="core/Net.cpp" />
+    <ClCompile Include="core/Net.cpp" />
+
     <ClCompile Include="core/Checksum.cpp" />
     <ClCompile Include="core/Assets.cpp" />
 
@@ -329,6 +341,11 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../CefWrapper/libcef_dll_wrapper.vcxproj">
+      <Project>{7c4e1b90-3a55-4e2c-9d61-0b8f2a63d410}</Project>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

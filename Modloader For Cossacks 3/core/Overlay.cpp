@@ -4,6 +4,7 @@
 #include "Console.h"
 #include "FrameStats.h"
 #include "LuaHost.h"
+#include "WebUi.h"
 
 #include "imgui.h"
 #include "imgui_impl_opengl2.h"
@@ -60,6 +61,10 @@ namespace
 
     LRESULT CALLBACK WndProc(HWND wnd, UINT msg, WPARAM wp, LPARAM lp)
     {
+        // Пока открыт веб-интерфейс, ввод достаётся ему, а не игре. Меню модлоадера важнее обоих.
+        if (!g_open && WebUi::OnWndProc(wnd, msg, wp, lp))
+            return msg == WM_SETCURSOR ? TRUE : 0;
+
         if (g_open && g_initialized)
         {
             ImGui_ImplWin32_WndProcHandler(wnd, msg, wp, lp);
@@ -326,7 +331,18 @@ namespace
         ImGui_ImplWin32_NewFrame();
         ImGui::NewFrame();
         ImGui::GetIO().MouseDrawCursor = true; // курсор игры может быть своим/скрытым
-        DrawUi();
+
+        // Кадр браузера — в самый низ списка отрисовки, под меню модлоадера. Рисуем его здесь,
+        // а не своим кодом: тут состояние OpenGL уже приведено в порядок и будет восстановлено.
+        int webW = 0, webH = 0;
+        if (unsigned int tex = WebUi::Present(&webW, &webH))
+        {
+            ImVec2 size = ImGui::GetIO().DisplaySize;
+            ImGui::GetBackgroundDrawList()->AddImage(static_cast<ImTextureID>(tex), ImVec2(0, 0), size);
+        }
+
+        if (g_open)
+            DrawUi();
         ImGui::Render();
         ImGui_ImplOpenGL2_RenderDrawData(ImGui::GetDrawData());
 
@@ -368,6 +384,9 @@ void Overlay::OnSwapBuffers(HDC dc)
 
     GraphicsTab::Tick();
 
+    // Веб-слой рисуется под меню модлоадера: оно должно оставаться сверху.
+    WebUi::OnFrame(g_hwnd.load());
+
     // Insert — открыть/закрыть (опрос, т.к. фокус клавиатуры может быть не у окна рендера).
     static bool insertWasDown = false;
     bool insertDown = (GetAsyncKeyState(VK_INSERT) & 0x8000) != 0;
@@ -378,7 +397,7 @@ void Overlay::OnSwapBuffers(HDC dc)
     // Бинды клиентских Lua-скриптов: только когда играют, а не работают с меню.
     LuaHost::PollInput(!g_open && GameInForeground());
 
-    if (g_open)
+    if (g_open || WebUi::HasFrame())
         RenderFrame();
 }
 

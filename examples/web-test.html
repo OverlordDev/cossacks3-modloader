@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>CEF test</title>
+<style>
+  /* Фон прозрачный — под страницей должна быть видна игра. */
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: transparent;
+    font-family: Georgia, "Times New Roman", serif;
+    color: #ffdcaa;
+    overflow: hidden;
+  }
+
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .panel {
+    width: 460px;
+    padding: 32px 36px;
+    background: linear-gradient(160deg, rgba(28, 24, 18, .92), rgba(12, 10, 8, .92));
+    border: 2px solid #6b5636;
+    border-radius: 10px;
+    box-shadow: 0 18px 60px rgba(0, 0, 0, .65);
+    text-align: center;
+  }
+
+  h1 {
+    margin: 0 0 6px;
+    font-size: 30px;
+    letter-spacing: .04em;
+  }
+
+  .sub {
+    margin: 0 0 22px;
+    font-size: 14px;
+    color: #a8988a;
+  }
+
+  button {
+    display: block;
+    width: 100%;
+    margin: 8px 0;
+    padding: 13px;
+    font: inherit;
+    font-size: 17px;
+    color: #ffdcaa;
+    background: linear-gradient(180deg, #4a3b26, #2a2118);
+    border: 1px solid #6b5636;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background .18s ease, transform .12s ease, box-shadow .18s ease;
+  }
+
+  /* То самое "затемнение при наведении", ради которого всё затевалось. */
+  button:hover {
+    background: linear-gradient(180deg, #6a5637, #3b2f21);
+    box-shadow: 0 0 14px rgba(255, 200, 120, .25);
+  }
+
+  button:active { transform: translateY(1px); }
+
+  .row {
+    margin-top: 20px;
+    font-size: 13px;
+    color: #8f8073;
+  }
+
+  #clock { color: #ffdcaa; }
+</style>
+</head>
+<body>
+  <div class="panel">
+    <h1>CEF работает</h1>
+    <p class="sub">страница нарисована Chromium и выведена в OpenGL игры</p>
+
+    <button onclick="hit('Кампания')">Кампания</button>
+    <button onclick="hit('Сетевая игра')">Сетевая игра</button>
+    <button onclick="hit('Настройки')">Настройки</button>
+
+    <div class="row">
+      время в странице: <span id="clock">—</span><br>
+      нажатий: <span id="count">0</span>
+    </div>
+  </div>
+
+<script>
+  let count = 0;
+
+  function hit(name) {
+    count += 1;
+    document.getElementById('count').textContent = count;
+    // Уходит в консоль модлоадера через OnConsoleMessage.
+    console.log('нажата кнопка: ' + name);
+  }
+
+  setInterval(() => {
+    document.getElementById('clock').textContent = new Date().toLocaleTimeString('ru-RU');
+  }, 250);
+
+  console.log('страница загружена, JS живой');
+</script>
+</body>
+</html>

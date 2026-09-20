@@ -691,6 +691,42 @@ namespace
         return v;
     }
 
+    // align = "middle" / "parentMiddle" / { "parentMiddle", "parentTop" } / { h = ..., v = ... }.
+    // Значения — суффиксы констант игры. Их два семейства, и это легко перепутать:
+    //   left/middle/right, top/middle/bottom                 — отсчёт от ЭКРАНА;
+    //   parentLeft/parentMiddle/..., parentTop/parentBottom  — от родительского элемента.
+    // Всё, что лежит внутри контейнера, выравнивают parent*, иначе оно прилипнет к краю экрана.
+    Ui::Align ReadAlign(lua_State* L, int t)
+    {
+        Ui::Align a;
+        auto name = [](const char* prefix, const std::string& v) { return std::string(prefix) + char(toupper(v[0])) + v.substr(1); };
+        if (lua_getfield(L, t, "align") == LUA_TSTRING)
+        {
+            std::string v = lua_tostring(L, -1);
+            if (!v.empty())
+                a = { name("gc_hal", v), name("gc_val", v) };
+        }
+        else if (lua_type(L, -1) == LUA_TTABLE)
+        {
+            int at = lua_gettop(L);
+            auto part = [&](const char* key, int index) {
+                if (lua_getfield(L, at, key) != LUA_TSTRING)
+                {
+                    lua_pop(L, 1);
+                    lua_rawgeti(L, at, index);
+                }
+                std::string v = lua_isstring(L, -1) ? lua_tostring(L, -1) : "";
+                lua_pop(L, 1);
+                return v;
+            };
+            std::string h = part("h", 1), v = part("v", 2);
+            if (!h.empty()) a.h = name("gc_hal", h);
+            if (!v.empty()) a.v = name("gc_val", v);
+        }
+        lua_pop(L, 1);
+        return a;
+    }
+
     int PushElement(lua_State* L, int handle, const std::string& what, const std::string& name)
     {
         if (!handle)
@@ -715,17 +751,58 @@ namespace
         std::string name = StrField(L, 1, "name");
         return PushElement(L, Ui::CreateGameText(name, IntField(L, 1, "parent", 0), StrField(L, 1, "text"), IntField(L, 1, "x", 0),
                                              IntField(L, 1, "y", 0), IntField(L, 1, "w", 0), IntField(L, 1, "h", 0),
-                                             StrField(L, 1, "font", "gc_font_serif_15"), ReadColor(L, 1)), "text", name);
+                                             StrField(L, 1, "font", "gc_font_serif_15"), ReadColor(L, 1), ReadAlign(L, 1)),
+                          "text", name);
     }
 
-    // ui.button{ name=, parent=0, text=, x=, y=, material="btn.large", hint="", onClick=function(element) end }
+    // ui.container{ name=, parent=0, x=, y=, w=, h=, align= } — пустой элемент под остальные.
+    // Свой экран начинается с него: элемент, созданный прямо под верхним уровнем, движок прячет.
+    int l_uiContainer(lua_State* L)
+    {
+        luaL_checktype(L, 1, LUA_TTABLE);
+        std::string name = StrField(L, 1, "name");
+        return PushElement(L, Ui::CreateGameContainer(name, IntField(L, 1, "parent", 0), IntField(L, 1, "x", 0),
+                                                      IntField(L, 1, "y", 0), IntField(L, 1, "w", 0),
+                                                      IntField(L, 1, "h", 0), ReadAlign(L, 1)), "container", name);
+    }
+
+    // ui.image{ name=, parent=0, material="mainmenu_art", x=, y=, w=0, h=0, align= }
+    // w/h 0 — размер самой текстуры игры.
+    int l_uiImage(lua_State* L)
+    {
+        luaL_checktype(L, 1, LUA_TTABLE);
+        std::string name = StrField(L, 1, "name");
+        return PushElement(L, Ui::CreateGameImage(name, IntField(L, 1, "parent", 0), StrField(L, 1, "material"),
+                                                  IntField(L, 1, "x", 0), IntField(L, 1, "y", 0), IntField(L, 1, "w", 0),
+                                                  IntField(L, 1, "h", 0), ReadAlign(L, 1)), "image", name);
+    }
+
+    // ui.exec("ShowSettings") — запустить состояние интерфейса игры как есть.
+    int l_uiExec(lua_State* L)
+    {
+        Ui::ExecuteState(luaL_checkstring(L, 1));
+        return 0;
+    }
+
+    // ui.sendTag("EventMainMenu", 103) — то же, что нажатие родной кнопки с этим тэгом.
+    int l_uiSendTag(lua_State* L)
+    {
+        Ui::SendTag(luaL_checkstring(L, 1), static_cast<int>(luaL_checkinteger(L, 2)));
+        return 0;
+    }
+
+    // ui.button{ name=, parent=0, text=, x=, y=, w=0, h=0, material="btn.large", hint="", tag=0, align=,
+    //            onClick=function(element) end }
+    // w/h 0 — размер картинки материала; иначе картинка тянется под заданный размер.
     int l_uiButton(lua_State* L)
     {
         Mod* mod = ModFromUpvalue(L);
         luaL_checktype(L, 1, LUA_TTABLE);
         std::string name = StrField(L, 1, "name");
         int handle = Ui::CreateGameButton(name, IntField(L, 1, "parent", 0), StrField(L, 1, "text"), IntField(L, 1, "x", 0),
-                                      IntField(L, 1, "y", 0), StrField(L, 1, "material", "btn.large"), StrField(L, 1, "hint"), 0);
+                                      IntField(L, 1, "y", 0), IntField(L, 1, "w", 0), IntField(L, 1, "h", 0),
+                                      StrField(L, 1, "material", "btn.large"), StrField(L, 1, "hint"),
+                                      IntField(L, 1, "tag", 0), ReadAlign(L, 1));
         if (handle && lua_getfield(L, 1, "onClick") == LUA_TFUNCTION)
         {
             auto it = mod->clickHandlers.find(handle);
@@ -789,6 +866,43 @@ namespace
         return 0;
     }
 
+    // Обработчик ui.screen (главный поток игры, внутри перехваченного состояния; L — глобальное состояние).
+    void CallScreenHook(int ref, const std::string& who)
+    {
+        if (!L)
+            return;
+        lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
+        if (!Call(0, 1, who))
+            return; // ошибка в моде — блок не ставим, игра нарисует свой экран
+        bool keepOriginal = lua_isboolean(L, -1) && !lua_toboolean(L, -1);
+        lua_pop(L, 1);
+        if (!keepOriginal)
+            Events::RequestBlock();
+    }
+
+    // ui.screen("MainMenu", function() ... end) — рисовать экран самим.
+    // Игра строит экраны состояниями ShowMainMenu / ShowSettings / ShowHud и т.д.; мы перехватываем
+    // состояние целиком: родной код не выполняется, вместо него зовётся функция мода, и она создаёт
+    // элементы теми же ui.*. Вернуть false — построить своё И оставить родной экран.
+    // Ошибка в функции мода тоже оставляет родной экран: без интерфейса игрок не останется.
+    int l_uiScreen(lua_State* L)
+    {
+        Mod* mod = ModFromUpvalue(L);
+        std::string screen = luaL_checkstring(L, 1);
+        luaL_checktype(L, 2, LUA_TFUNCTION);
+        lua_pushvalue(L, 2);
+        int ref = luaL_ref(L, LUA_REGISTRYINDEX);
+        std::string who = Who(*mod, Client);
+        std::string state = screen.rfind("Show", 0) == 0 ? screen : "Show" + screen;
+
+        Ui::HookScreen(state);
+        int id = Events::Subscribe("guiscreen." + state, [ref, who](const std::string&, const std::string&) {
+            CallScreenHook(ref, who);
+        });
+        mod->subscriptions.push_back(id);
+        return 0;
+    }
+
     // Общие функции работы с элементами (базовое окружение клиента).
     const char* kClientPrelude = R"lua(
 ui = {}
@@ -807,7 +921,25 @@ function ui.setVisible(h, visible) native.SetGUIElementVisible(h, visible) end
 function ui.getPosition(h) return native.GetGUIElementPositionX(h), native.GetGUIElementPositionY(h) end
 function ui.setPosition(h, x, y) native.SetGUIElementPosition(h, x, y) end
 function ui.setHint(h, hint) native.SetGUIElementHint(h, hint) end
+-- Прозрачность элемента вместе с детьми: 1 — непрозрачный, 0 — невидимый.
+function ui.setBlend(h, alpha) native.SetGUIElementUserBlend(h, alpha) end
 function ui.remove(h) native.RemoveGUIElement(h) end
+-- Размер окна игры: свой экран надо раскладывать от него, разрешение меняется на лету.
+function ui.size() return native.GetViewerWidth(), native.GetViewerHeight() end
+-- Размер картинки из библиотек интерфейса ('mainmenu_art', 'logo_small').
+function ui.imageSize(material) return native.GetGUITextureWidth(material), native.GetGUITextureHeight(material) end
+-- Строка из локализации игры: ui.locale('gui', 'menu.btn.exit') — свой экран будет на языке игрока.
+function ui.locale(table, key) return native.GetLocaleTableListItemByID(table, key) end
+-- Отладка: что движок думает про элемент — имя, родитель, видимость, положение, размер, материал.
+function ui.dump(h)
+    if not h or h == 0 then return "nil" end
+    return string.format("%d '%s' parent=%d vis=%s pos=%d,%d size=%dx%d z=%d mat='%s'",
+        h, native.GetGUIElementNameByIndex(h), native.GetGUIElementParentByIndex(h),
+        tostring(native.GetGUIElementVisible(h)),
+        native.GetGUIElementPositionX(h), native.GetGUIElementPositionY(h),
+        native.GetGUIElementWidth(h), native.GetGUIElementHeight(h),
+        native.GetGUIElementZOrder(h), native.GetGUIElementMaterial(h))
+end
 function ui.children(h)
     local list = {}
     for i = 0, native.GetGUIElementChildrenCount(h) - 1 do
@@ -1252,6 +1384,10 @@ end
             lua_getfield(L, -1, "ui");
             SetPlain("window", l_uiWindow);
             SetPlain("text", l_uiText);
+            SetPlain("image", l_uiImage);
+            SetPlain("container", l_uiContainer);
+            SetPlain("exec", l_uiExec);
+            SetPlain("sendTag", l_uiSendTag);
             lua_pop(L, 2);
         }
     }
@@ -1293,6 +1429,7 @@ end
             SetFunc("button", l_uiButton, modIndex, side);
             SetFunc("onClick", l_uiOnClick, modIndex, side);
             SetFunc("hookState", l_uiHookState, modIndex, side);
+            SetFunc("screen", l_uiScreen, modIndex, side);
             lua_newtable(L);
             lua_rawgeti(L, LUA_REGISTRYINDEX, g_baseEnvRef[Client]);
             lua_getfield(L, -1, "ui");

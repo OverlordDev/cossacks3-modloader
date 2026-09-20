@@ -15,6 +15,7 @@
 #include "Profiler.h"
 #include "ScriptRunner.h"
 #include "Ui.h"
+#include "WebUi.h"
 
 #include <set>
 
@@ -124,6 +125,7 @@ DWORD WINAPI Loader::MainThread(LPVOID param)
         Sleep(100);
     DevConsole::Stop();
     LuaHost::Shutdown(); // до Uninstall: Lua закрывается в главном потоке игры через нашу оконную процедуру
+    WebUi::Shutdown();   // до Overlay: CefShutdown тоже исполняется в хуке SwapBuffers
     Overlay::Shutdown(); // до Hooks::Shutdown: освобождение идёт в хуке SwapBuffers
     ScriptRunner::Uninstall();
     Hooks::Shutdown();

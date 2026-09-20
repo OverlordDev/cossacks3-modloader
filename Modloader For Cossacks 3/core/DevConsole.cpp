@@ -3,6 +3,7 @@
 #include "Assets.h"
 #include "Checksum.h"
 #include "Console.h"
+#include "WebUi.h"
 #include "Engine.h"
 #include "Events.h"
 #include "FrameStats.h"
@@ -245,6 +246,17 @@ namespace
                 LuaHost::PrintMods();
             else if (cmd == "assets")
                 Assets::Print();
+            else if (cmd == "web")
+            {
+                if (arg.empty() || arg == "status")
+                    Console::Print("web: %s", WebUi::Status().c_str());
+                else if (arg == "close")
+                    WebUi::RequestClose();
+                else if (arg == "reload")
+                    WebUi::RequestReload();
+                else
+                    WebUi::RequestOpen(arg);
+            }
             else if (cmd == "lua")
             {
                 if (arg == "reload")
