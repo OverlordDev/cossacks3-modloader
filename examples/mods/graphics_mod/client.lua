@@ -173,14 +173,13 @@ end)
 -- В ванили камера жёсткая (data/cameras/camera.cfg): фокус 400, наклон всегда -32 градуса.
 -- Причём игра возвращает эти значения сама при каждом OnResize и на старте партии, поэтому свои
 -- приходится повторять каждый такт, пока режим включён.
-local cinematic = { on = false, focal = 520, tilt = -18 }
+local cinematic = { on = false, focal = 520, pitch = 18, distance = 90 }
 
 local function applyCamera()
-    gfx.camera{
-        focal = { cinematic.focal, cinematic.focal, 0.5 },
-        -- все четыре угла одинаковые — так же это делает сама игра в OnResize
-        freeRotation = { cinematic.tilt, cinematic.tilt, cinematic.tilt, cinematic.tilt, 1.0, 1, 10, 0.15 },
-    }
+    -- Наклон — это положение камеры относительно точки, на которую она смотрит (см. gfx.camera.look).
+    -- Игра возвращает свой угол каждый кадр, поэтому повторяем на каждом такте.
+    gfx.camera{ focal = { cinematic.focal, cinematic.focal, 0.5 } }
+    gfx.camera.look{ pitch = cinematic.pitch, distance = cinematic.distance }
 end
 
 events.on("game.tick", function()
@@ -193,7 +192,7 @@ input.bind("F12", function()
     if cinematic.on then
         applyCamera()
         gfx.camera.stop() -- камера умеет ехать сама; убеждаемся, что стоит
-        log.info(("камера: кинематографичная (фокус %d, наклон %d°)"):format(cinematic.focal, cinematic.tilt))
+        log.info(("камера: кинематографичная (наклон %d°, дистанция %d)"):format(cinematic.pitch, cinematic.distance))
     else
         -- Вернуть ванильную: перечитать профиль камеры из файла игры — там исходные значения.
         gfx.camera{ profile = gfx.camera().profile, dof = false }

@@ -5,6 +5,7 @@
 
 #include "imgui.h"
 
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -19,6 +20,16 @@ namespace
             return false;
         std::string error;
         return NativeCall::Invoke(*sig, args, out, &error);
+    }
+
+    bool CallNativeOut(const char* name, const std::vector<NativeCall::Value>& args, std::vector<NativeCall::Value>* outs)
+    {
+        const NativeCall::Signature* sig = NativeCall::Find(name);
+        if (!sig || !sig->error.empty() || static_cast<int>(args.size()) != sig->inputCount)
+            return false;
+        NativeCall::Value r;
+        std::string error;
+        return NativeCall::Invoke(*sig, args, &r, &error, outs);
     }
 
     float GetFloat(const char* name)
@@ -118,8 +129,56 @@ namespace
     // изменении размера окна и на старте партии жёстко возвращает 400 и -32. Поэтому, если игрок
     // что-то подвинул, повторяем установку каждый кадр (g_keepCamera).
     float g_focal = 400.0f;
-    float g_tilt = -32.0f;
+
+    // Наклон и поворот движок отдельными нативами не даёт: угол — это то, где камера стоит
+    // относительно точки, на которую смотрит. Читаем обе точки и ставим камеру сами.
+    float g_pitch = 32.0f;    // градусов над целью
+    float g_yaw = 0.0f;
+    float g_distance = 100.0f;
     bool g_keepCamera = false;
+
+    struct View { float pitch, yaw, distance, tx, ty, tz; };
+
+    bool ReadView(View* v)
+    {
+        std::vector<NativeCall::Value> target, camera;
+        if (!CallNativeOut("GetCameraTargetPosition", {}, &target) || target.size() != 3)
+            return false;
+        if (!CallNativeOut("GetCameraAbsolutePosition", {}, &camera) || camera.size() != 3)
+            return false;
+        v->tx = target[0].f; v->ty = target[1].f; v->tz = target[2].f;
+        float dx = camera[0].f - v->tx, dy = camera[1].f - v->ty, dz = camera[2].f - v->tz;
+        v->distance = std::sqrt(dx * dx + dy * dy + dz * dz);
+        v->pitch = static_cast<float>(atan2(dy, std::sqrt(dx * dx + dz * dz)) * 180.0 / 3.14159265358979);
+        v->yaw = static_cast<float>(atan2(dx, dz) * 180.0 / 3.14159265358979);
+        return v->distance > 0.01f;
+    }
+
+    void ApplyView()
+    {
+        View v;
+        if (!ReadView(&v))
+            return;
+        double pitch = g_pitch * 3.14159265358979 / 180.0;
+        double yaw = g_yaw * 3.14159265358979 / 180.0;
+        double flat = cos(pitch) * g_distance;
+        std::vector<NativeCall::Value> args;
+        for (float f : { v.tx, v.ty, v.tz,
+                         static_cast<float>(v.tx + flat * sin(yaw)),
+                         static_cast<float>(v.ty + sin(pitch) * g_distance),
+                         static_cast<float>(v.tz + flat * cos(yaw)) })
+        {
+            NativeCall::Value a;
+            a.type = NativeCall::Type::Float;
+            a.f = f;
+            args.push_back(a);
+        }
+        NativeCall::Value r;
+        std::string error;
+        const NativeCall::Signature* sig = NativeCall::Find("CameraInfoLoadWithProperties");
+        if (sig && sig->error.empty())
+            NativeCall::Invoke(*sig, args, &r, &error);
+    }
 
     // ---------- поля пресета ----------
 
@@ -178,9 +237,9 @@ namespace
         s += std::string("gfx.render{ fxaa = ") + (GetOption("FXAAEnable") ? "true" : "false") + " }\n";
         s += std::string("gfx.shadows{ enabled = ") + (GetOption("ShadowMapEnabled") ? "true" : "false") +
              ", size = " + std::to_string(GetInt("GetShadowMapSize")) + " }\n";
-        s += "gfx.camera{ focal = { " + Num(g_focal) + ", " + Num(g_focal) + ", 0.5 }, freeRotation = { " +
-             Num(g_tilt) + ", " + Num(g_tilt) + ", " + Num(g_tilt) + ", " + Num(g_tilt) +
-             ", 1, 1, 10, 0.15 } }\n";
+        s += "gfx.camera{ focal = { " + Num(g_focal) + ", " + Num(g_focal) + ", 0.5 } }\n";
+        s += "gfx.camera.look{ pitch = " + Num(g_pitch) + ", yaw = " + Num(g_yaw) +
+             ", distance = " + Num(g_distance) + " }\n";
         s += std::string("gfx.fog{ enabled = ") + (GetInt("GetFogEnable") ? "true" : "false") +
              ", density = " + Num(GetFloat("GetCameraDynFogDensity")) +
              ", power = " + Num(GetFloat("GetCameraDynFogPower")) + " }\n";
@@ -302,47 +361,44 @@ void GraphicsTab::Draw()
     // их сами. Стартовые значения — как в data/cameras/camera.cfg: зума нет, наклон всегда -32.
     ImGui::SeparatorText("Camera");
 
-    // Поле зрения. Игра меняет его так же (Ctrl+колесо — «скриншотный» зум).
+    // Пока не трогали — показываем то, что у камеры сейчас, чтобы ползунки не врали.
+    if (!g_keepCamera)
+    {
+        View v;
+        if (ReadView(&v))
+        {
+            g_pitch = v.pitch;
+            g_yaw = v.yaw;
+            g_distance = v.distance;
+        }
+    }
+
+    bool viewChanged = ImGui::SliderFloat("Tilt", &g_pitch, 5.0f, 85.0f, "%.0f°");
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Угол над целью. В игре всегда 32° — угол не менялся никогда.");
+    viewChanged |= ImGui::SliderFloat("Rotate", &g_yaw, -180.0f, 180.0f, "%.0f°");
+    viewChanged |= ImGui::SliderFloat("Distance", &g_distance, 20.0f, 400.0f, "%.0f");
+    if (viewChanged)
+    {
+        g_keepCamera = true;
+        ApplyView();
+    }
+
+    // Поле зрения: этим игра делает скрытый зум на Ctrl+колесо.
     if (ImGui::SliderFloat("Field of view (focal)", &g_focal, 150.0f, 900.0f, "%.0f"))
-    {
-        g_keepCamera = true;
         SetFloats("SetCameraFocalLengthInfo", { g_focal, g_focal, 0.5f });
-    }
     if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("400 — как в игре. Меньше — шире обзор, больше — ближе и площе.");
-
-    // Наклон. Игра ставит все четыре угла одинаковыми, делаем так же.
-    if (ImGui::SliderFloat("Tilt", &g_tilt, -85.0f, -5.0f, "%.0f°"))
-    {
-        g_keepCamera = true;
-        SetFloats("SetCameraFreeRotationInfo", { g_tilt, g_tilt, g_tilt, g_tilt, 1.0f, 1.0f, 10.0f, 0.15f });
-    }
-    if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("-32° — как в игре. Ближе к нулю — вид почти от земли.");
-
-    // Расстояние до земли: именно им игра зумит по + и -.
-    float distance = GetFloat("GetCameraElasticDistance");
-    if (ImGui::SliderFloat("Distance", &distance, 10.0f, 400.0f, "%.0f"))
-        SetFloat("SetCameraElasticDistance", distance);
+        ImGui::SetTooltip("400 — как в игре. Меньше — шире обзор, больше — ближе.");
 
     ImGui::Checkbox("Keep against the game", &g_keepCamera);
     if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Игра возвращает фокус 400 и наклон -32 при каждом OnResize.\n"
-                          "С галочкой модлоадер ставит их обратно каждый кадр.");
+        ImGui::SetTooltip("Игра возвращает камеру к своему углу каждый кадр.\n"
+                          "С галочкой модлоадер ставит её обратно.");
 
-    if (ImGui::Button("Stop camera"))
-    {
-        // Камера умеет ехать и вращаться сама; эти две останавливают.
-        NativeCall::Value r;
-        CallNative("SetCameraElasticMoveTurnOff", {}, &r);
-        CallNative("SetCameraElasticRotationTurnOff", {}, &r);
-    }
-    ImGui::SameLine();
     if (ImGui::Button("Reset camera"))
     {
         g_keepCamera = false;
         g_focal = 400.0f;
-        g_tilt = -32.0f;
         SetString("SetCameraPropertiesFromFile", GetString("GetCameraPropertieFileName"));
     }
     ImGui::SameLine();
@@ -362,5 +418,5 @@ void GraphicsTab::Tick()
     if (!g_keepCamera)
         return;
     SetFloats("SetCameraFocalLengthInfo", { g_focal, g_focal, 0.5f });
-    SetFloats("SetCameraFreeRotationInfo", { g_tilt, g_tilt, g_tilt, g_tilt, 1.0f, 1.0f, 10.0f, 0.15f });
+    ApplyView();
 }

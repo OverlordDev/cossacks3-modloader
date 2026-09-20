@@ -72,12 +72,13 @@ namespace
             }
             std::string names = group.substr(0, colon), type = group.substr(colon + 1);
             std::string lnames = Lower(Trim(names));
-            if (lnames.rfind("var ", 0) == 0 || lnames.rfind("out ", 0) == 0)
+            bool byRef = lnames.rfind("var ", 0) == 0 || lnames.rfind("out ", 0) == 0;
+            NativeCall::Type t = ParseType(type);
+            if (byRef && t == NativeCall::Type::String)
             {
-                sig.error = "var/out parameters are not supported yet";
+                sig.error = "var String parameters are not supported yet";
                 return sig;
             }
-            NativeCall::Type t = ParseType(type);
             if (t == NativeCall::Type::Unsupported)
             {
                 sig.error = "unsupported parameter type '" + Trim(type) + "'";
@@ -87,7 +88,10 @@ namespace
             for (size_t i = 0; i < count; ++i)
             {
                 sig.params.push_back(t);
+                sig.byRef.push_back(byRef);
                 sig.paramTypeNames.push_back(Trim(type));
+                if (!byRef)
+                    ++sig.inputCount;
             }
         }
 
@@ -168,18 +172,28 @@ const NativeCall::Signature* NativeCall::Find(const std::string& name)
     return it != table.end() ? &it->second : nullptr;
 }
 
-bool NativeCall::Invoke(const Signature& sig, const std::vector<Value>& args, Value* result, std::string* error)
+bool NativeCall::Invoke(const Signature& sig, const std::vector<Value>& args, Value* result, std::string* error,
+                        std::vector<Value>* outs)
 {
     std::vector<uint32_t> stack;
+    // Буферы var-параметров: натив пишет прямо в них, поэтому они не должны переезжать при росте вектора.
+    std::vector<std::unique_ptr<uint32_t>> refs;
     std::vector<std::unique_ptr<GameApi::DelphiString>> strings; // живут до конца вызова
     char* stringResult = nullptr;
 
     if (sig.result == Type::String)
         stack.push_back(reinterpret_cast<uint32_t>(&stringResult)); // скрытый var Result — первым
 
+    size_t argIndex = 0;
     for (size_t i = 0; i < sig.params.size(); ++i)
     {
-        const Value& v = args[i];
+        if (sig.byRef[i])
+        {
+            refs.push_back(std::make_unique<uint32_t>(0));
+            stack.push_back(reinterpret_cast<uint32_t>(refs.back().get()));
+            continue;
+        }
+        const Value& v = args[argIndex++];
         switch (sig.params[i])
         {
         case Type::Int:
@@ -213,6 +227,27 @@ bool NativeCall::Invoke(const Signature& sig, const std::vector<Value>& args, Va
         snprintf(buf, sizeof(buf), "exception 0x%08lX inside native", exc);
         *error = buf;
         return false;
+    }
+
+    if (outs)
+    {
+        size_t refIndex = 0;
+        for (size_t i = 0; i < sig.params.size(); ++i)
+        {
+            if (!sig.byRef[i])
+                continue;
+            uint32_t raw = *refs[refIndex++];
+            Value v;
+            v.type = sig.params[i];
+            switch (v.type)
+            {
+            case Type::Int:   v.i = static_cast<int32_t>(raw); break;
+            case Type::Bool:  v.b = (raw & 0xFF) != 0; break;
+            case Type::Float: memcpy(&v.f, &raw, 4); break;
+            default: break;
+            }
+            outs->push_back(v);
+        }
     }
 
     result->type = sig.result;

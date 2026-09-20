@@ -4,6 +4,8 @@
 > Билд игры: 2.2.3, 32-bit Delphi, ImageBase `0x400000`. Адреса ниже — VA при этой базе.
 > Реальный адрес = `GetModuleHandleW(nullptr) + (VA - 0x400000)` (`GameApi::Addr`).
 > Все нативы — `__stdcall`, `String` = Delphi AnsiString.
+> `var`-параметры передаются указателем и возвращаются в Lua после результата:
+> `local x, y, z = native.GetCameraPosition()`.
 
 Всего нативов: **4856**. Движок/системные: **2254**, юниты/объекты/игроки: **1700**, GUI: **586**, камера/окружение/рендер: **259**, прочее (редактор): **57**.
 
@@ -5019,7 +5021,7 @@ local f = gfx.fog()                                    -- { enabled = true, dens
 | --- | --- |
 | `post` | `preset` (запись в posteffects.lib), `preset2`, `ssao`, `dof` |
 | `render` | `fxaa`, `antialiasing` (строка), `culling`, `objectCulling` |
-| `camera` | `dof`, `depth`, `dynamicFocal`, `focal {min,max,power}`, `freeRotation {8 углов}`, `restrict {9 границ}`, `sceneScale {x,y}`, `angle`, `distance`, `elasticDist`, `controlMode`, `distToGroups`, `rotateSpeed`, `zoomSpeed`, `bounded`, `autoRayCast`, `wheelRotate`, `wheelZoom`, `profile`, `height`/`toTarget`/`freeMode` (чтение); методы `fovOf`, `focalOf`, `spin`/`tiltBy`/`glide` (камера едет сама), `stop` |
+| `camera` | `dof`, `depth`, `dynamicFocal`, `focal {min,max,power}`, `freeRotation {8 углов}`, `restrict {9 границ}`, `sceneScale {x,y}`, `angle`, `distance`, `elasticDist`, `controlMode`, `distToGroups`, `rotateSpeed`, `zoomSpeed`, `bounded`, `autoRayCast`, `wheelRotate`, `wheelZoom`, `profile`, `height`/`toTarget`/`freeMode` (чтение); методы `view`/`look` (наклон и поворот), `fovOf`, `focalOf`, `spin`/`tiltBy`/`glide` (камера едет сама), `stop` |
 | `fog` | `enabled`, `density`, `power`, `start`, `finish`, `offset`, `depth` |
 | `clouds` | `visible`, `active`, `height`, `horizon`, `fog`, `speed` |
 | `sky` | `visible`, `active`, `flareAngle`, `flareZ`, `flare` |
@@ -5060,6 +5062,19 @@ local names = gfx.presetNames()     -- { [0] = "default", [1] = "winter", ... }
 `Focal*`, `SSAO*`, `Gamma*`. Короткие псевдонимы: `brightness`, `saturation`, `contrast`, `bloom`,
 `hdr`, `tint`, `vignetteInner/Outer/Fade`, `dof`, `focal`, `ssao`, `ssaoRange/Power/Cap/Color`,
 `fxaa`, `gamma`, `lut`. Сырой доступ — `gfx.fx.fields/info/get/set/apply`.
+
+**Наклона и поворота у камеры нет отдельными нативами.** `SetCameraFreeRotationInfo`, `ElasticTargetAngle`
+и мышиные множители в обычной игре либо ничего не делают, либо просто двигают камеру вверх-вниз. Угол —
+это то, где камера стоит относительно точки, на которую смотрит, а задаётся он целиком:
+
+```lua
+local v = gfx.camera.view()                  -- { pitch, yaw, distance, target = {x, y, z} }
+gfx.camera.look{ pitch = 20, distance = 90 } -- что не указано — остаётся как есть
+```
+
+`view` читает `GetCameraTargetPosition` и `GetCameraAbsolutePosition` (var-параметры, см. NativeCall),
+`look` считает положение камеры и ставит его через `CameraInfoLoadWithProperties`. Игра возвращает свой
+угол каждый кадр, поэтому `look` надо повторять — например, в `game.tick`.
 
 Камера в ванили жёсткая (`data/cameras/camera.cfg`): фокус 400 без диапазона, наклон всегда -32° —
 поэтому зум не меняет поле зрения, а угол не зависит от высоты. **Игра возвращает эти значения сама**:

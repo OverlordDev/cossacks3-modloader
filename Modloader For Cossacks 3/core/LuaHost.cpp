@@ -832,16 +832,22 @@ end
         auto sig = static_cast<const NativeCall::Signature*>(lua_touserdata(L, lua_upvalueindex(1)));
         if (!sig->error.empty())
             return luaL_error(L, "native.%s: %s", sig->name.c_str(), sig->error.c_str());
-        if (lua_gettop(L) != static_cast<int>(sig->params.size()))
+        if (lua_gettop(L) != sig->inputCount)
             return luaL_error(L, "native.%s expects %d argument(s): %s", sig->name.c_str(),
-                              static_cast<int>(sig->params.size()), sig->decl.c_str());
+                              sig->inputCount, sig->decl.c_str());
 
-        std::vector<NativeCall::Value> args(sig->params.size());
+        // var-параметры не передаются, а возвращаются — берём только обычные.
+        std::vector<NativeCall::Type> inputs;
         for (size_t i = 0; i < sig->params.size(); ++i)
+            if (!sig->byRef[i])
+                inputs.push_back(sig->params[i]);
+
+        std::vector<NativeCall::Value> args(inputs.size());
+        for (size_t i = 0; i < inputs.size(); ++i)
         {
             int idx = static_cast<int>(i) + 1;
             NativeCall::Value& v = args[i];
-            v.type = sig->params[i];
+            v.type = inputs[i];
             switch (v.type)
             {
             case NativeCall::Type::Int:    v.i = static_cast<int32_t>(luaL_checkinteger(L, idx)); break;
@@ -853,18 +859,32 @@ end
         }
 
         NativeCall::Value result;
+        std::vector<NativeCall::Value> outs;
         std::string error;
-        if (!NativeCall::Invoke(*sig, args, &result, &error))
+        if (!NativeCall::Invoke(*sig, args, &result, &error, &outs))
             return luaL_error(L, "native.%s: %s", sig->name.c_str(), error.c_str());
 
+        int pushed = 0;
         switch (result.type)
         {
-        case NativeCall::Type::Int:    lua_pushinteger(L, result.i); return 1;
-        case NativeCall::Type::Bool:   lua_pushboolean(L, result.b); return 1;
-        case NativeCall::Type::Float:  lua_pushnumber(L, result.f); return 1;
-        case NativeCall::Type::String: lua_pushstring(L, Text::AnsiToUtf8(result.s).c_str()); return 1;
-        default: return 0;
+        case NativeCall::Type::Int:    lua_pushinteger(L, result.i); ++pushed; break;
+        case NativeCall::Type::Bool:   lua_pushboolean(L, result.b); ++pushed; break;
+        case NativeCall::Type::Float:  lua_pushnumber(L, result.f); ++pushed; break;
+        case NativeCall::Type::String: lua_pushstring(L, Text::AnsiToUtf8(result.s).c_str()); ++pushed; break;
+        default: break;
         }
+        // Значения var-параметров идут следом: local x, y, z = native.GetCameraPosition()
+        for (const NativeCall::Value& v : outs)
+        {
+            switch (v.type)
+            {
+            case NativeCall::Type::Bool:  lua_pushboolean(L, v.b); break;
+            case NativeCall::Type::Float: lua_pushnumber(L, v.f); break;
+            default:                      lua_pushinteger(L, v.i); break;
+            }
+            ++pushed;
+        }
+        return pushed;
     }
 
     int l_nativeServerOnly(lua_State* L)

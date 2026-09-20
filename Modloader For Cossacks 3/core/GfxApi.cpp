@@ -33,6 +33,10 @@ namespace
             "SetCameraFreeRotationInfo", "GetCameraFreeRotationMode", "SetCameraRestrictInfo",
             "SetCameraElasticRotateFactor", "SetCameraElasticVRotateFactor", "SetCameraElasticMoveFactor",
             "SetCameraElasticMoveTurnOff", "SetCameraElasticRotationTurnOff",
+            // настоящий угол камеры: читаем позицию и точку взгляда, ставим свои
+            "GetCameraAbsolutePosition", "GetCameraPosition", "GetCameraTargetPosition",
+            "CameraInfoLoadWithProperties", "SetCameraInfoSmoothingTime", "SetCameraInfoSmoothingChange",
+            "GetCameraAbsoluteHeightByXZ",
             "SetCameraElasticDistance", "GetCameraElasticDistance", "GetCameraDistanceToTargetObject",
             "SetCameraControlMode", "GetCameraControlMode", "SetCameraDistToGroups", "GetCameraDistToGroups",
             // туман
@@ -207,6 +211,38 @@ defgroup("camera", {
     stop    = function()
         gfx.SetCameraElasticMoveTurnOff()
         gfx.SetCameraElasticRotationTurnOff()
+    end,
+
+    -- Куда и под каким углом смотрит камера. Наклон (pitch) и поворот (yaw) движок отдельными
+    -- нативами не даёт: угол задаётся тем, где стоит камера относительно точки, на которую смотрит.
+    -- Читаем обе точки, считаем нужное положение и ставим его целиком.
+    --   local p = gfx.camera.view()            -- { pitch, yaw, distance, target = {x, y, z} }
+    --   gfx.camera.look{ pitch = 25, distance = 90 }   -- что не указано — остаётся как есть
+    view = function()
+        local tx, ty, tz = gfx.GetCameraTargetPosition()
+        local cx, cy, cz = gfx.GetCameraAbsolutePosition()
+        local dx, dy, dz = cx - tx, cy - ty, cz - tz
+        local distance = math.sqrt(dx * dx + dy * dy + dz * dz)
+        local flat = math.sqrt(dx * dx + dz * dz)
+        return {
+            pitch = math.deg(math.atan(dy, flat)),   -- выше нуля — камера над целью
+            yaw = math.deg(math.atan(dx, dz)),
+            distance = distance,
+            target = { x = tx, y = ty, z = tz },
+        }
+    end,
+
+    look = function(t)
+        local v = gfx.camera.view()
+        local pitch = math.rad(t.pitch or v.pitch)
+        local yaw = math.rad(t.yaw or v.yaw)
+        local distance = t.distance or v.distance
+        local target = t.target or v.target
+        local flat = math.cos(pitch) * distance
+        gfx.CameraInfoLoadWithProperties(target.x, target.y, target.z,
+                                         target.x + flat * math.sin(yaw),
+                                         target.y + math.sin(pitch) * distance,
+                                         target.z + flat * math.cos(yaw))
     end,
 })
 
