@@ -22,18 +22,19 @@ local config = {
 
     -- Сколько свободного места нужно жиле. Меньше — жилы будут лезть в камни и деревья,
     -- больше — их труднее разместить рядом с деревней.
-    clearance = 9,
+    clearance = 7,
 
     -- Насколько держаться от края карты. Координаты идут от -GetMapWidth/2 до +GetMapWidth/2,
     -- и без этого отступа жилы уезжают за границу — они там видны, но толку от них нет.
     mapMargin = 24,
 
-    -- На каком расстоянии от лидера встают деревни союзников.
-    spacing = 30,
+    -- На каком расстоянии от лидера встают деревни союзников. Чем меньше, тем плотнее лагерь
+    -- и тем ближе друг к другу жилы, но тем теснее строиться.
+    spacing = 18,
 
-    -- Кольцо вокруг деревни, в которое кладутся шахты.
-    radiusMin = 22,
-    radiusMax = 48,
+    -- Кольцо вокруг лагеря, в которое кладутся жилы.
+    radiusMin = 15,
+    radiusMax = 34,
 }
 
 -- Ставим ЖИЛУ, а не здание шахты. Жила — объект расы env: minegold / mineiron / minecoal
@@ -142,7 +143,7 @@ local function addMines()
         // Годится ли точка под жилу: не вода, ничего не мешает и рядом ничего не стоит.
         // Без этой проверки жила спокойно появляется внутри скалы или дерева: работать она будет,
         // а построить на ней шахту нельзя.
-        function SpotIsFree(x, z : Float) : Boolean;
+        function SpotIsFree(x, z, clear : Float) : Boolean;
         begin
             Result := False;
 
@@ -153,15 +154,15 @@ local function addMines()
 
             var wo : Float;
             if (GetWaterExt(x, z, wo)) then exit;
-            if (GetMapCollisionTagInRadius(x, z, cClear, False) <> 0) then exit;
-            GetGameObjectsInRadius(x, z, cClear, False, False, 0, -1, 0,
+            if (GetMapCollisionTagInRadius(x, z, round(clear), False) <> 0) then exit;
+            GetGameObjectsInRadius(x, z, clear, False, False, 0, -1, 0,
                                    False, False, False, False, False, False);
             if (GetGameObjectListCount > 0) then exit;
             Result := True;
         end;
 
         // Жилы принадлежат игроку окружения и живут в расе env.
-        function PlaceVein(plHnd : Integer; const bn : String; px, pz, spread : Float) : Integer;
+        function TryPlace(plHnd : Integer; const bn : String; px, pz, spread, clear : Float) : Integer;
         begin
             Result := 0;
             var t : Integer;
@@ -171,11 +172,24 @@ local function addMines()
                 var d : Float = cRadMin + RandomExt * (spread - cRadMin);
                 var x : Float = px + cos(a) * d;
                 var z : Float = pz + sin(a) * d;
-                if (not SpotIsFree(x, z)) then continue;
+                if (not SpotIsFree(x, z, clear)) then continue;
 
                 Result := CreatePlayerGameObjectHandleByHandle(plHnd, gc_racename_env, bn, x, RayCastHeight(x, z), z);
                 if (Result <> 0) then exit;
             end;
+        end;
+
+        // Если места не нашлось, постепенно ослабляем требование к свободному месту, а потом и
+        // расширяем кольцо: лучше жила чуть теснее или чуть дальше, чем её отсутствие.
+        function PlaceVein(plHnd : Integer; const bn : String; px, pz, spread : Float) : Integer;
+        begin
+            Result := TryPlace(plHnd, bn, px, pz, spread, cClear);
+            if (Result = 0) then
+            Result := TryPlace(plHnd, bn, px, pz, spread, cClear * 0.7);
+            if (Result = 0) then
+            Result := TryPlace(plHnd, bn, px, pz, spread * 1.6, cClear * 0.7);
+            if (Result = 0) then
+            Result := TryPlace(plHnd, bn, px, pz, spread * 1.6, cClear * 0.45);
         end;
 
         // Кто с кем стоит: союзники после переселения сидят вокруг лидера, поэтому считаем жилы
