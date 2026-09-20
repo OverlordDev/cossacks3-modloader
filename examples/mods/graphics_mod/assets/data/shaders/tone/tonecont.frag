@@ -84,12 +84,12 @@ void main()
    // sharpen (unsharp mask)
    //
    // Шаг в экранных координатах: размер текстуры шейдеру не передают, поэтому берём под 1920x1080.
-   const float step=0.00052;
+   const float texel=0.00052; // step - имя встроенной функции GLSL, брать его нельзя
    const float amount=0.35;
-   vec3 around=texture2D(texUnit0, gl_TexCoord[0].xy+vec2( step, 0.0)).xyz
-              +texture2D(texUnit0, gl_TexCoord[0].xy+vec2(-step, 0.0)).xyz
-              +texture2D(texUnit0, gl_TexCoord[0].xy+vec2( 0.0, step)).xyz
-              +texture2D(texUnit0, gl_TexCoord[0].xy+vec2( 0.0,-step)).xyz;
+   vec3 around=texture2D(texUnit0, gl_TexCoord[0].xy+vec2( texel, 0.0)).xyz
+              +texture2D(texUnit0, gl_TexCoord[0].xy+vec2(-texel, 0.0)).xyz
+              +texture2D(texUnit0, gl_TexCoord[0].xy+vec2( 0.0, texel)).xyz
+              +texture2D(texUnit0, gl_TexCoord[0].xy+vec2( 0.0,-texel)).xyz;
    color0.xyz+=(color0.xyz-around*0.25)*amount;
    color0=mix(color0, color1, vec4(afterBlur));
    // vignette effect

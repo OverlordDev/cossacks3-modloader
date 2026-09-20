@@ -358,13 +358,11 @@ void Overlay::OnSwapBuffers(HDC dc)
         return;
     }
 
-    if (!g_initialized)
-    {
-        HWND hwnd = WindowFromDC(dc);
-        if (!hwnd)
-            return;
-        Init(hwnd);
-    }
+    // Окно рендера запоминаем всегда: на него опирается ScriptRunner. Это не трогает OpenGL.
+    HWND hwnd = WindowFromDC(dc);
+    if (!hwnd)
+        return;
+    g_hwnd = hwnd;
 
     GraphicsTab::Tick();
 
@@ -375,10 +373,16 @@ void Overlay::OnSwapBuffers(HDC dc)
         g_open = !g_open;
     insertWasDown = insertDown;
 
+    // ImGui поднимаем только когда меню открыли впервые: пока его не просили, мы вообще не касаемся
+    // OpenGL. На части драйверов (замечено на AMD) лишние действия с состоянием GL давали чёрный
+    // экран, а без меню модлоадер картинку теперь не трогает совсем.
+    if (g_open && !g_initialized)
+        Init(hwnd);
+
     // Бинды клиентских Lua-скриптов: только когда играют, а не работают с меню.
     LuaHost::PollInput(!g_open && GameInForeground());
 
-    if (g_open)
+    if (g_open && g_initialized)
         RenderFrame();
 }
 
