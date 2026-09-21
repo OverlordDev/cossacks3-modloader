@@ -357,3 +357,106 @@ ML_RET(s);]], quote(upgSid)))
     end
     if n == 0 then error("buildings.setUpgrade: unknown upgrade '" .. tostring(upgSid) .. "'", 2) end
 end
+
+-- ---------- постройка ----------
+--
+--   buildings.canPlace("auscen", x, z)                 --> true/false — можно ли поставить здесь
+--   buildings.build("auscen", x, z)                     --> хендл стройки (цена списывается, как у игрока)
+--   buildings.build("auscen", x, z, { workers = "selected" })   -- строить выделенными крестьянами
+--   buildings.build("auscen", x, z, { workers = { h1, h2 } })   -- этими юнитами
+--   buildings.build("auscen", x, z, { instant = true })         -- сразу готовое
+--   buildings.build("auscen", x, z, { player = 1, check = false }) -- за игрока 1, без проверки места
+--   buildings.finish(handle)                            --  достроить стройку мгновенно
+--
+-- Координаты — мировые, как у GetGameObjectPositionX/Z (центр карты — 0,0).
+-- Постройка идёт через _player_ConstructBuildingList — ту же функцию, что клик игрока: цена,
+-- стройка, приказ рабочим и сеть. instant/finish меняют партию только на этой машине —
+-- в сетевой игре их можно звать только в shared-моде у всех одновременно.
+
+local function playerIndex(p)
+    if p == nil then return native.GetPlayerIndexInterfaceIO() end
+    return math.tointeger(tonumber(p)) or error("buildings: player must be a number", 3)
+end
+
+-- Общая часть: нация игрока, номер типа, выровненная позиция (как у игры — по сетке коллизий).
+local PREPARE = [[
+var p : Integer = %d;
+var plHnd : Integer = GetPlayerHandleByIndex(p);
+if plHnd = 0 then begin ML_RET('no player ' + IntToStr(p)); exit; end;
+var cid : Integer = gPlayer[p].cid;
+var bsid : String = %s;
+var id : Integer = _unit_ConvertObjSIDToID(cid, bsid);
+if id < 0 then begin ML_RET('nation ' + IntToStr(cid) + ' has no building ' + bsid); exit; end;
+var px : Float = StrToInt('%d') / 1000;
+var pz : Float = StrToInt('%d') / 1000;
+if gObjProp[cid][id].usage <> gc_obj_usage_mine then
+begin
+   px := Floor(px * 2) / 2 + 0.25;
+   pz := Floor(pz * 2) / 2 + 0.25;
+end;
+function CanPlace : Boolean;
+begin
+   var misc : Integer = GetPlayerHandleByIndex(gc_playerind_misc);
+   var dummy : Integer = _player_CreateConstructionDummyBySID(misc, cid, bsid, px, pz);
+   if dummy = 0 then begin Result := False; exit; end;
+   if gObjProp[cid][id].usage = gc_obj_usage_mine then
+   Result := _misc_CanPlaceBuilding(dummy, p, gObjProp[cid][id].usage, px, pz, 0, 0.26, 0, -1, True)
+   else
+   Result := _misc_CanPlaceBuilding(dummy, p, gObjProp[cid][id].usage, px, pz, gc_path_mincoldist, 0.26, 0.5, gc_path_minemincoldist, True);
+   GameObjectDestroyByHandle(dummy);
+end;
+]]
+
+local function prepare(sid, x, z, player)
+    return string.format(PREPARE, playerIndex(player), quote(sid),
+        math.floor((tonumber(x) or 0) * 1000 + 0.5), math.floor((tonumber(z) or 0) * 1000 + 0.5))
+end
+
+function buildings.canPlace(sid, x, z, player)
+    local r = run(prepare(sid, x, z, player) .. "if CanPlace then ML_RET('True') else ML_RET('False');")
+    if r ~= "True" and r ~= "False" then error("buildings.canPlace: " .. r, 2) end
+    return r == "True"
+end
+
+local FINISH = [[
+var fobj : Pointer = _unit_GetTObj(%s);
+if (fobj <> nil) and (not TObj(fobj).bbuilt) then
+begin
+   TObj(fobj).hp := gPlayer[TObj(fobj).pl].objbase[TObj(fobj).cid][TObj(fobj).id].maxhp;
+   _unit_ControlBuildProgress(%s);
+end;
+]]
+
+function buildings.build(sid, x, z, opts)
+    opts = opts or {}
+    needExec("build")
+    local workers
+    if opts.workers == "selected" then
+        workers = "var list : TIntegerList = gSelectedObjects;"
+    else
+        local adds = {}
+        for _, h in ipairs(type(opts.workers) == "table" and opts.workers or {}) do
+            adds[#adds + 1] = "gIntegerList.Add(" .. checkHandle(h) .. ");"
+        end
+        workers = "gIntegerList.Clear;\n" .. table.concat(adds, "\n") .. "\nvar list : TIntegerList = gIntegerList;"
+    end
+    local code = prepare(sid, x, z, opts.player) .. [[
+if ]] .. (opts.check == false and "False" or "True") .. [[ and (not CanPlace) then begin ML_RET('cannot place here'); exit; end;
+if not _unit_CanApplyCostByID(cid, id, p) then begin ML_RET('not enough resources'); exit; end;
+]] .. workers .. [[
+
+var h : Integer = _player_ConstructBuildingList(plHnd, cid, bsid, px, pz, list, True, True);
+if h = 0 then begin ML_RET('the game refused to build'); exit; end;
+]] .. (opts.instant and FINISH:format("h", "h") or "") .. [[
+ML_RET(IntToStr(h));]]
+    local r = run(code)
+    local h = math.tointeger(tonumber(r))
+    if not h then error("buildings.build: " .. r, 2) end
+    return h
+end
+
+function buildings.finish(handle)
+    needExec("finish")
+    local h = checkHandle(handle)
+    run(FINISH:format(h, h))
+end
