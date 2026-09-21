@@ -483,8 +483,12 @@ window.game = {
         return true;
     }
 
+    HWND g_parent = nullptr;       // окно, к которому привязан браузер
+    std::string g_reopenUrl;       // страница, которую надо поднять заново в новом окне
+
     void CreateBrowser(HWND window, const std::string& url)
     {
+        g_parent = window;
         RECT rc = {};
         GetClientRect(window, &rc);
         g_viewWidth = (std::max)(16L, rc.right - rc.left);
@@ -736,6 +740,26 @@ void WebUi::OnFrame(HWND window)
 
     if (g_state.load() != State::Running)
         return;
+
+    // Окно, к которому привязан браузер, игра могла уничтожить (выход из партии пересоздаёт окно
+    // рендера). Браузер со мёртвым родителем роняет CEF — закрываем его и открываем ту же страницу
+    // в текущем окне.
+    if (!IsWindow(window))
+        return;
+    if (g_browser && g_parent && g_parent != window)
+    {
+        LOG_INFO("[web] render window changed %p -> %p, reopening page", g_parent, window);
+        g_reopenUrl = g_browser->GetMainFrame()->GetURL().ToString();
+        g_parent = nullptr;
+        g_browser->GetHost()->CloseBrowser(true);
+    }
+    if (!g_browser && !g_reopenUrl.empty() && !open)
+    {
+        open = true;
+        url = g_reopenUrl;
+    }
+    if (open)
+        g_reopenUrl.clear();
 
     if (!g_browser && open) // вкладку закрывали, а CEF остался поднятым — открываем заново
     {
