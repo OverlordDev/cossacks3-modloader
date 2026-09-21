@@ -8,3 +8,8 @@ Debug/
 */Debug/
 Win32/
 */Win32/
+
+# личные файлы, не относятся к модлоадеру
+__pycache__/
+tools/blender_osm_addon.py
+tools/3ds/
