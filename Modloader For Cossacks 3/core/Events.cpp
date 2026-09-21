@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <map>
+#include <set>
 #include <mutex>
 
 namespace
@@ -221,59 +222,76 @@ namespace
     }
 
     // Главный поток игры: обернуть вызовы в состоянии. true — обёртки на месте.
+    // Вставки, которые сломали компиляцию: больше не пробуем (иначе Maintain повторяет раз в секунду).
+    std::set<std::string> g_failed;
+
+    // Главный поток игры: обернуть вызовы в состоянии. Каждый вызов — отдельно, со своей проверкой
+    // компиляции: строка, которая не компилируется обёрнутой, остаётся как есть, остальные работают.
     bool ApplyWrap(const Injection& inj, uint8_t* sm, uint8_t* state, bool quiet)
     {
         uint8_t* list = Engine::StateCode(state);
-        std::string marker = "'ML:" + inj.line.substr(inj.line.find("'ML:") + 4, inj.line.find('|') - inj.line.find("'ML:") - 4);
-        std::vector<std::pair<int, std::string>> replaced; // номер строки -> исходная строка
+        size_t m = inj.line.find("'ML:");
+        std::string marker = inj.line.substr(m, inj.line.find('|', m) - m);
+        int wrapped = 0, skipped = 0;
         int count = Engine::ListCount(list);
         for (int i = 0; i < count; ++i)
         {
             std::string original = Engine::ListGet(list, i);
             if (original.find("{ML:orig=") != std::string::npos && original.find(marker) != std::string::npos)
-                return true; // уже обёрнуто
-            std::vector<std::string> args;
-            if (original.find(inj.wrapCall + "(") == std::string::npos || original.find('}') != std::string::npos ||
-                !CallArgs(original, inj.wrapCall, &args))
+            {
+                ++wrapped; // уже обёрнуто
                 continue;
-            size_t start = original.find_first_not_of(" \t");
-            size_t end = original.find_last_not_of(" \t");
+            }
+            std::vector<std::string> args;
+            size_t start = original.find_first_not_of(" 	");
+            if (start == std::string::npos || original.compare(start, 2, "//") == 0 ||
+                original.find(inj.wrapCall + "(") == std::string::npos || original.find('}') != std::string::npos ||
+                original.find("//") != std::string::npos || !CallArgs(original, inj.wrapCall, &args))
+                continue;
+            size_t end = original.find_last_not_of(" 	");
             std::string core = original.substr(start, end - start + 1);
             bool semicolon = !core.empty() && core.back() == ';';
             if (semicolon)
                 core.pop_back();
-            std::string wrapped = original.substr(0, start) + "begin " + Fill(inj.line, args) + "; " + core + " end" +
-                                  (semicolon ? ";" : "") + "{ML:orig=" + original + "}";
+            std::string text = original.substr(0, start) + "begin " + Fill(inj.line, args) + "; " + core + " end" +
+                               (semicolon ? ";" : "") + "{ML:orig=" + original + "}";
             Engine::ListDelete(list, i);
-            Engine::ListInsert(list, i, wrapped);
-            replaced.push_back({ i, original });
-        }
-        if (replaced.empty())
-        {
-            if (!quiet)
-                LOG_WARN("Events: no %s( calls in '%s' (%s)", inj.wrapCall.c_str(), inj.state.c_str(), inj.library.c_str());
-            return false;
-        }
-        Engine::StateReset(state);
-        if (!Engine::StateCompileSafe(sm, state))
-        {
-            for (const auto& [i, original] : replaced)
-            {
-                Engine::ListDelete(list, i);
-                Engine::ListInsert(list, i, original);
-            }
+            Engine::ListInsert(list, i, text);
             Engine::StateReset(state);
-            LOG_ERROR("Events: wrapping %s in '%s' broke compilation — reverted", inj.wrapCall.c_str(), inj.state.c_str());
+            if (Engine::StateCompileSafe(sm, state))
+            {
+                ++wrapped;
+                continue;
+            }
+            Engine::ListDelete(list, i);
+            Engine::ListInsert(list, i, original);
+            Engine::StateReset(state);
+            ++skipped;
+            LOG_DEV("Events: %s: line %d of '%s' does not compile wrapped, left as is: %s", inj.event.c_str(), i + 1,
+                    inj.state.c_str(), original.c_str());
+        }
+        if (skipped)
+            Engine::StateCompileSafe(sm, state); // вернуть состояние в рабочий (скомпилированный) вид
+        if (wrapped == 0)
+        {
+            g_failed.insert(inj.event);
+            if (!quiet)
+                LOG_WARN("Events: %s — no %s( calls could be wrapped in '%s' (%s)%s", inj.event.c_str(),
+                         inj.wrapCall.c_str(), inj.state.c_str(), inj.library.c_str(),
+                         skipped ? ", they do not compile wrapped" : "");
             return false;
         }
-        LOG_DEV("Events: %s — wrapped %d call(s) of %s in '%s' (%s)", inj.event.c_str(), static_cast<int>(replaced.size()),
-                inj.wrapCall.c_str(), inj.state.c_str(), inj.library.c_str());
+        LOG_DEV("Events: %s — %d call(s) of %s wrapped in '%s' (%s)%s", inj.event.c_str(), wrapped,
+                inj.wrapCall.c_str(), inj.state.c_str(), inj.library.c_str(),
+                skipped ? (", " + std::to_string(skipped) + " skipped").c_str() : "");
         return true;
     }
 
     // Главный поток игры. true — строка на месте.
     bool Apply(const Injection& inj, bool quiet)
     {
+        if (g_failed.count(inj.event))
+            return false;
         uint8_t* sm = inj.library.empty() ? Engine::GuiStateMachine() : LibraryStateMachine(inj.library);
         if (!sm)
         {
@@ -314,7 +332,8 @@ namespace
             if (at >= 0)
                 Engine::ListDelete(list, at);
             Engine::StateReset(state);
-            LOG_ERROR("Events: injecting into '%s' broke compilation — reverted", inj.state.c_str());
+            g_failed.insert(inj.event);
+            LOG_ERROR("Events: injecting into '%s' broke compilation — reverted, will not retry", inj.state.c_str());
             return false;
         }
         LOG_DEV("Events: hooked %s (line %d of state '%s'%s%s)", inj.event.c_str(), index + 1, inj.state.c_str(),
