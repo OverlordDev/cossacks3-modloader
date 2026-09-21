@@ -66,7 +66,9 @@ end
 
 local stats
 
-local function walk(h, out, depth)
+local clips
+
+local function walk(h, out, depth, clip)
     stats.visited = stats.visited + 1
     if depth > 40 or N.GetGUIElementVisible(h) == false then
         stats.hidden = stats.hidden + 1
@@ -79,6 +81,18 @@ local function walk(h, out, depth)
     local press = N.GetGUIElementPressState(h) or ""
     local material = N.GetGUIElementMaterial(h) or ""
     local leaf = (N.GetGUIElementChildrenCount(h) or 0) == 0
+
+    -- Прокручиваемая область (_gui_CreateScrollLayer): всё внутри неё страница кладёт в блок
+    -- с прокруткой её размера. Угол — из рамки (при прокрутке 0 дети начинаются в углу слоя),
+    -- размер — собственный.
+    if class == "TXGuiLayer" and not leaf then
+        local x, y = N.GetGUIElementBoundingBox(h)
+        local w, hh = N.GetGUIElementWidth(h) or 0, N.GetGUIElementHeight(h) or 0
+        if x and w > 0 and hh > 0 then
+            clip = h
+            clips[#clips + 1] = { id = h, x = x, y = y, w = w, h = hh }
+        end
+    end
     local kind = kindOf(h, class, press, material, leaf)
 
     if kind then
@@ -97,7 +111,8 @@ local function walk(h, out, depth)
                 tag = N.GetGUIElementTag(h) or 0,
                 enabled = N.GetGUIElementEnabled(h) ~= false,
                 material = material,
-                z = #out, -- игра рисует элементы в порядке обхода дерева: позже — выше
+                font = N.GetGUIElementFont(h) or "",
+                clip = clip,
             }
             if kind == "checkbox" then e.checked = N.GetGUIElementChecked(h) == true end
             if kind == "combo" or kind == "list" then
@@ -112,7 +127,7 @@ local function walk(h, out, depth)
 
     for i = 0, (N.GetGUIElementChildrenCount(h) or 0) - 1 do
         local child = N.GetGUIElementChildrenByIndex(h, i)
-        if child and child ~= 0 then walk(child, out, depth + 1) end
+        if child and child ~= 0 then walk(child, out, depth + 1, clip) end
     end
 end
 
@@ -120,9 +135,10 @@ function mirror.snapshot()
     local top = N.GetGUIElementTopIndexByName("top")
     local out = {}
     stats = { top = top or 0, visited = 0, hidden = 0 }
+    clips = {}
     if top and top ~= 0 then walk(top, out, 0) end
     -- stats — чтобы по пустому снимку было видно, где потерялись элементы.
-    return { width = N.GetViewerWidth(), height = N.GetViewerHeight(), items = out, stats = stats }
+    return { width = N.GetViewerWidth(), height = N.GetViewerHeight(), items = out, clips = clips, stats = stats }
 end
 
 -- Нажатие уходит в состояние, которое игра назначила элементу, с теми же переменными, что ставит

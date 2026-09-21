@@ -85,6 +85,8 @@
   .list .row:hover { background: rgba(106, 86, 55, .3); }
   .list .row.selected { background: rgba(106, 86, 55, .6); }
 
+  .clip { position: absolute; overflow-x: hidden; overflow-y: auto; }
+
   #error { position: fixed; bottom: 12px; left: 12px; color: #f99; font-size: 13px; }
 </style>
 </head>
@@ -110,11 +112,35 @@
       .finally(() => setTimeout(refresh, 60));
   }
 
+  // Текст игры с разметкой: %color(RRGGBB)% меняет цвет до следующей такой метки,
+  // прочие %метки% убираем.
+  function richText(node, text) {
+    const parts = String(text).split(/%color\(([0-9a-fA-F]{6})\)%/);
+    for (let i = 0; i < parts.length; i++) {
+      if (i % 2 === 1) continue;
+      const piece = parts[i].replace(/%[a-z]+(\([^)]*\))?%/gi, '');
+      if (!piece) continue;
+      const span = document.createElement('span');
+      span.textContent = piece;
+      if (i > 0) span.style.color = '#' + parts[i - 1];
+      node.appendChild(span);
+    }
+  }
+
+  // Размер шрифта — из имени шрифта игры (serif_12, serif_15 ...), чтобы строки ложились как в игре.
+  function fontPx(font) {
+    const m = /(\d+)/.exec(font || '');
+    return m ? Math.max(11, Number(m[1]) + 1) : 15;
+  }
+
+  // Координаты элемента — экранные, но внутри прокручиваемой области — от её угла.
+  let origin = { x: 0, y: 0 };
+
   function el(item, cls) {
     const d = document.createElement('div');
     d.className = 'el ' + cls;
-    d.style.left = item.x + 'px';
-    d.style.top = item.y + 'px';
+    d.style.left = (item.x - origin.x) + 'px';
+    d.style.top = (item.y - origin.y) + 'px';
     d.style.width = item.w + 'px';
     d.style.height = item.h + 'px';
     if (item.hint) d.title = item.hint;
@@ -129,13 +155,14 @@
 
     text(item) {
       const d = el(item, 'text');
-      d.textContent = item.text;
+      d.style.fontSize = fontPx(item.font) + 'px';
+      richText(d, item.text);
       return d;
     },
 
     button(item) {
       const d = el(item, 'button' + (item.text ? ' with-text' : ' icon') + (item.enabled ? '' : ' disabled'));
-      d.textContent = item.text || '';
+      richText(d, item.text || '');
       if (item.enabled) d.addEventListener('click', () => act('mirror.click', item.id));
       return d;
     },
@@ -149,7 +176,8 @@
     combo(item) {
       const d = el(item, '');
       const s = document.createElement('select');
-      item.items.forEach((text, i) => s.add(new Option(text, i, false, i === item.selected)));
+      item.items.forEach((text, i) => s.add(new Option(
+        String(text).replace(/%[a-z]+(\([^)]*\))?%/gi, ''), i, false, i === item.selected)));
       s.disabled = !item.enabled;
       s.addEventListener('change', () => act('mirror.select', item.id, Number(s.value)));
       d.appendChild(s);
@@ -161,7 +189,7 @@
       item.items.forEach((text, i) => {
         const r = document.createElement('div');
         r.className = 'row' + (i === item.selected ? ' selected' : '');
-        r.textContent = text;
+        richText(r, text);
         r.addEventListener('click', () => act('mirror.select', item.id, i));
         d.appendChild(r);
       });
@@ -187,6 +215,12 @@
     stage.style.height = snap.height + 'px';
     stage.style.transform = `scale(${scale})`;
 
+    // Прокручиваемые области: свой блок на каждую, прокрутку сохраняем между перерисовками.
+    const clips = Array.isArray(snap.clips) ? snap.clips : Object.values(snap.clips || {});
+    const clipBox = {};
+    const scrolls = {};
+    stage.querySelectorAll('.clip').forEach(c => { scrolls[c.dataset.id] = c.scrollTop; });
+
     const frag = document.createDocumentFragment();
     let keep = null;
     for (const item of snap.items) {
@@ -194,11 +228,30 @@
         keep = document.activeElement.parentElement;
         continue;
       }
+      let parent = frag;
+      origin = { x: 0, y: 0 };
+      if (item.clip) {
+        const c = clips.find(c => c.id === item.clip);
+        if (c) {
+          if (!clipBox[c.id]) {
+            const box = document.createElement('div');
+            box.className = 'clip';
+            box.dataset.id = c.id;
+            Object.assign(box.style, { left: c.x + 'px', top: c.y + 'px', width: c.w + 'px', height: c.h + 'px' });
+            clipBox[c.id] = box;
+            frag.appendChild(box);
+          }
+          parent = clipBox[c.id];
+          origin = { x: c.x, y: c.y };
+        }
+      }
       const node = (render[item.kind] || (() => null))(item);
-      if (node) frag.appendChild(node);
+      if (node) parent.appendChild(node);
     }
+    origin = { x: 0, y: 0 };
     stage.replaceChildren(frag);
     if (keep) stage.appendChild(keep);
+    stage.querySelectorAll('.clip').forEach(c => { c.scrollTop = scrolls[c.dataset.id] || 0; });
   }
 
   async function refresh() {
