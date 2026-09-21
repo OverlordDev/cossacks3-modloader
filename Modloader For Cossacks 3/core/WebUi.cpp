@@ -519,6 +519,64 @@ window.game = {
         CefBrowserHost::CreateBrowser(info, g_handler, url, browser, nullptr, nullptr);
     }
 
+    // ---------- инструменты разработчика ----------
+
+    class DevToolsClient : public CefClient
+    {
+        IMPLEMENT_REFCOUNTING(DevToolsClient);
+    };
+
+    void ShowDevTools()
+    {
+        if (!g_browser)
+            return;
+        CefWindowInfo info;
+        info.SetAsPopup(nullptr, "Cossacks 3 — DevTools");
+        CefBrowserSettings settings;
+        g_browser->GetHost()->ShowDevTools(info, new DevToolsClient(), settings, CefPoint());
+        LOG_INFO("[web] DevTools opened (F12)");
+    }
+
+    // Автоперезагрузка в режиме разработчика: сохранили файл в папке страницы — страница
+    // перезагружается сама, без .web reload. Проверка раз в полсекунды по времени изменения.
+    void WatchPageFiles()
+    {
+        static ULONGLONG lastCheck = 0;
+        static std::string watchedUrl;
+        static fs::file_time_type newest{};
+        if (!Console::Dev() || !g_browser || GetTickCount64() - lastCheck < 500)
+            return;
+        lastCheck = GetTickCount64();
+
+        std::string url = g_browser->GetMainFrame()->GetURL().ToString();
+        if (url.rfind("file:///", 0) != 0)
+            return;
+
+        std::error_code ec;
+        fs::file_time_type latest{};
+        for (auto it = fs::recursive_directory_iterator(PageDirectory(url), ec);
+             !ec && it != fs::recursive_directory_iterator(); it.increment(ec))
+        {
+            if (it.depth() > 2)
+                it.disable_recursion_pending();
+            if (it->is_regular_file(ec))
+                latest = (std::max)(latest, it->last_write_time(ec));
+        }
+
+        if (url != watchedUrl)
+        {
+            watchedUrl = url;
+            newest = latest;
+            return;
+        }
+        if (latest > newest)
+        {
+            newest = latest;
+            LOG_INFO("[web] page files changed — reloading");
+            g_browser->ReloadIgnoreCache();
+        }
+    }
+
     // ---------- вывод ----------
 
     // Общая заливка слоя в текстуру: одинаково для страницы и для выпадающего списка.
@@ -806,6 +864,8 @@ void WebUi::OnFrame(HWND window)
             a.callback->Failure(4, a.value);
     }
 
+    WatchPageFiles();
+
     if (GetCurrentThreadId() == g_cefThread)
         CefDoMessageLoopWork();
 }
@@ -896,6 +956,12 @@ bool WebUi::OnWndProc(HWND window, UINT msg, WPARAM wp, LPARAM lp)
     case WM_KEYDOWN: case WM_KEYUP: case WM_SYSKEYDOWN: case WM_SYSKEYUP:
     case WM_CHAR: case WM_SYSCHAR:
     {
+        // F12 в режиме разработчика — инструменты Chromium отдельным окном (ошибки JS, вёрстка, сеть).
+        if (msg == WM_KEYDOWN && wp == VK_F12 && Console::Dev())
+        {
+            ShowDevTools();
+            return true;
+        }
         CefKeyEvent key;
         key.windows_key_code = static_cast<int>(wp);
         key.native_key_code = static_cast<int>(lp);

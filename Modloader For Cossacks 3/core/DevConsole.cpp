@@ -266,6 +266,14 @@ namespace
             }
             else if (cmd == "natives")
                 Console::Print("%zu natives", GameApi::Natives().size());
+            else if ((cmd == "unload" || cmd == "reload") && WebUi::Running())
+            {
+                // CEF нельзя поднять второй раз в том же процессе, а новая сборка модлоадера попробует —
+                // и уронит игру. Поэтому после запуска браузера выгрузка закрыта.
+                Console::Print(".%s is not available after the browser (CEF) was started: restart the game.\n"
+                               "  Lua mods: .lua reload    pages: saved files reload by themselves (dev.txt), or .web reload",
+                               cmd.c_str());
+            }
             else if (cmd == "unload")
                 g_exit = DevConsole::ExitRequest::Unload;
             else if (cmd == "reload")
