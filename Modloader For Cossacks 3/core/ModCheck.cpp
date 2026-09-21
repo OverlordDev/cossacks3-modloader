@@ -58,12 +58,19 @@ namespace
     // ---------- отпечаток ----------
 
     // "id version hash;..." — по порядку id; пусто, если модов, влияющих на партию, нет.
+    // Отпечаток читает файлы модов с диска — не чаще раза в 10 секунд (моды правят редко).
     std::string Fingerprint()
     {
+        static std::string cached;
+        static ULONGLONG at = 0;
+        if (at && GetTickCount64() - at < 10000)
+            return cached;
+        at = GetTickCount64();
         std::ostringstream out;
         for (const LuaHost::MultiplayerMod& m : LuaHost::MultiplayerMods())
             out << m.id << ' ' << m.version << ' ' << m.hash << ';';
-        return out.str();
+        cached = out.str();
+        return cached;
     }
 
     std::map<std::string, std::string> Parse(const std::string& fp) // id -> "version hash"

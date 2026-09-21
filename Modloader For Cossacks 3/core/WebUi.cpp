@@ -495,17 +495,35 @@ window.game = {
     // Родитель браузера — своё скрытое окно, а не окно игры: игра пересоздаёт окно рендера
     // (при загрузке партии — по нескольку раз), и браузер с уничтоженным родителем роняет CEF.
     // Размер страницы и ввод всё равно берутся из текущего окна игры.
+    std::atomic<HWND> g_gameWindow = nullptr; // текущее окно игры (из OnFrame)
+
+    // CEF, получая фокус, ставит клавиатурный фокус на родительское окно браузера. Это окно
+    // невидимое: фокус на нём — и нажатия клавиш пропадают для игры. Сразу отдаём фокус игре.
+    LRESULT CALLBACK ParentProc(HWND wnd, UINT msg, WPARAM wp, LPARAM lp)
+    {
+        if (msg == WM_SETFOCUS || msg == WM_ACTIVATE)
+        {
+            HWND game = g_gameWindow.load();
+            if (game && IsWindow(game))
+                SetFocus(game);
+            return 0;
+        }
+        if (msg == WM_MOUSEACTIVATE)
+            return MA_NOACTIVATE;
+        return DefWindowProcW(wnd, msg, wp, lp);
+    }
+
     HWND StableParent()
     {
         static HWND parent = nullptr;
         if (parent && IsWindow(parent))
             return parent;
         WNDCLASSW wc = {};
-        wc.lpfnWndProc = DefWindowProcW;
+        wc.lpfnWndProc = ParentProc;
         wc.hInstance = GetModuleHandleW(nullptr);
         wc.lpszClassName = L"Cossacks3ModloaderWebParent";
         RegisterClassW(&wc);
-        parent = CreateWindowExW(WS_EX_TOOLWINDOW, wc.lpszClassName, L"", WS_POPUP, 0, 0, 1, 1,
+        parent = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, wc.lpszClassName, L"", WS_POPUP, 0, 0, 1, 1,
                                  nullptr, nullptr, wc.hInstance, nullptr);
         return parent;
     }
@@ -795,6 +813,7 @@ void WebUi::RequestReload()
 
 void WebUi::OnFrame(HWND window)
 {
+    g_gameWindow = window;
     CrashHandler::Scope scope("браузер: кадр CEF (сообщения, ввод, ответы страниц)");
     // CEF обязан жить в одном потоке: где подняли, там и качаем сообщения. Во время загрузки карты
     // игра рисует прогресс-бар отдельным потоком, и кадры могут прийти оттуда — это надо видеть.
