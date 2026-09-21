@@ -101,6 +101,7 @@
   const errorBox = document.getElementById('error');
   let lastJson = '';
   let busy = false;
+  let noGui = 0;
 
   // Крупные картинки родного экрана — окна и подложки: рисуем их панелями, мелкие (узоры,
   // рамки, иконки) пропускаем — на странице свой фон.
@@ -259,6 +260,13 @@
     busy = true;
     try {
       const snap = await game.api('mirror.snapshot');
+      // Интерфейса игры нет совсем — игра снесла меню и грузит партию (кампании, миссии и
+      // сценарии идут мимо DoNewGame, и мод этого не видит). Показываем экран загрузки.
+      if (snap.stats && snap.stats.top === 0) {
+        if (++noGui >= 2) location.href = 'loading.html';
+        return;
+      }
+      noGui = 0;
       // Пустая таблица Lua приходит объектом {}, а не массивом.
       if (!Array.isArray(snap.items)) snap.items = Object.values(snap.items || {});
       const json = JSON.stringify(snap);
