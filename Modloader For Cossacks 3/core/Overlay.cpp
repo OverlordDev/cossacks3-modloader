@@ -14,6 +14,7 @@
 #include <GL/gl.h>
 #include <atomic>
 #include <filesystem>
+#include <map>
 
 #pragma comment(lib, "opengl32.lib")
 
@@ -62,6 +63,33 @@ namespace
 
     // Диагностика ввода (dev): сколько клавиш пришло в окно игры и сколько из них забрали мы.
     std::atomic<int> g_keysIn = 0, g_keysEatenWeb = 0, g_keysEatenMenu = 0, g_charsIn = 0;
+
+    // Куда на самом деле идут клавиши: перехват очереди сообщений потока игры (dev).
+    HHOOK g_msgHook = nullptr;
+    std::string g_keyTargets; // "окно(класс)×число ..." за последние 3 с
+    std::map<HWND, int> g_keyTargetCount;
+
+    std::string WindowText(HWND w)
+    {
+        if (!w)
+            return "none";
+        char cls[64] = "";
+        GetClassNameA(w, cls, sizeof(cls));
+        char buf[128];
+        snprintf(buf, sizeof(buf), "%p(%s)", w, cls);
+        return buf;
+    }
+
+    LRESULT CALLBACK MsgHook(int code, WPARAM wp, LPARAM lp)
+    {
+        if (code == HC_ACTION)
+        {
+            const MSG* m = reinterpret_cast<const MSG*>(lp);
+            if (m->message == WM_KEYDOWN || m->message == WM_SYSKEYDOWN)
+                ++g_keyTargetCount[m->hwnd];
+        }
+        return CallNextHookEx(g_msgHook, code, wp, lp);
+    }
 
     LRESULT CALLBACK WndProc(HWND wnd, UINT msg, WPARAM wp, LPARAM lp)
     {
@@ -157,6 +185,11 @@ namespace
 
     void ShutdownOnRenderThread()
     {
+        if (g_msgHook)
+        {
+            UnhookWindowsHookEx(g_msgHook);
+            g_msgHook = nullptr;
+        }
         RestoreWndProc();
         if (g_initialized)
         {
@@ -482,6 +515,18 @@ void Overlay::OnSwapBuffers(HDC dc)
                      "viewport %dx%d, drawbuf %X, fbo %d, thread %lu", swaps, drawn,
                      WebUi::HasFrame() ? "yes" : "no", dc, dc != lastDc ? " (new)" : "", WindowFromDC(dc),
                      size.x, size.y, viewport[2], viewport[3], drawBuffer, fbo, GetCurrentThreadId());
+        }
+        if (Console::Dev() && !g_msgHook)
+            g_msgHook = SetWindowsHookExW(WH_GETMESSAGE, MsgHook, nullptr, GetCurrentThreadId());
+        if (Console::Dev() && !g_keyTargetCount.empty())
+        {
+            std::string targets;
+            for (const auto& [w, n] : g_keyTargetCount)
+                targets += WindowText(w) + " x" + std::to_string(n) + "  ";
+            LOG_DEV("[input] key messages in the game thread queue went to: %s| focus %s, foreground %s, render %s",
+                    targets.c_str(), WindowText(GetFocus()).c_str(), WindowText(GetForegroundWindow()).c_str(),
+                    WindowText(g_hwnd.load()).c_str());
+            g_keyTargetCount.clear();
         }
         if (Console::Dev() && (g_keysIn || g_charsIn))
             LOG_DEV("[input] 3s: %d key(s), %d char(s) reached the game window; eaten by web page %d; "
