@@ -407,8 +407,27 @@ void Overlay::OnSwapBuffers(HDC dc)
     // Бинды клиентских Lua-скриптов: только когда играют, а не работают с меню.
     LuaHost::PollInput(!g_open && GameInForeground());
 
-    if (g_open || WebUi::HasFrame())
+    bool draw = g_open || WebUi::HasFrame();
+    if (draw)
         RenderFrame();
+
+    // Диагностика веб-слоя: пока страница открыта, раз в 3 с — сколько кадров игра показала и
+    // сколько из них мы накрыли страницей. Так видно, когда игра рисует мимо нашего хука.
+    static ULONGLONG lastReport = 0;
+    static int swaps = 0, drawn = 0;
+    static HDC lastDc = nullptr;
+    ++swaps;
+    drawn += draw ? 1 : 0;
+    ULONGLONG now = GetTickCount64();
+    if (now - lastReport >= 3000)
+    {
+        if (WebUi::IsOpen() || dc != lastDc)
+            LOG_INFO("[web] overlay: %d swap(s), %d drawn, page frame %s, dc %p%s", swaps, drawn,
+                     WebUi::HasFrame() ? "yes" : "no", dc, dc != lastDc ? " (new)" : "");
+        lastDc = dc;
+        lastReport = now;
+        swaps = drawn = 0;
+    }
 }
 
 void Overlay::Shutdown()

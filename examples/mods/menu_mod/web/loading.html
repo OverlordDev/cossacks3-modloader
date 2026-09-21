@@ -151,7 +151,8 @@
       });
     }
     await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-    await new Promise(r => setTimeout(r, 250)); // кадр должен дойти до игры
+    // Первая картинка проявляется плавно (1.2 с) — ждём конца, иначе игра застынет на полутёмном кадре.
+    await new Promise(r => setTimeout(r, 1500));
     try { await game.tag(state, tag); } catch (e) { console.error(e); }
   };
 
