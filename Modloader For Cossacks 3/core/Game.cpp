@@ -52,6 +52,23 @@ void Game::Install()
     Events::HookGuiState("DoProgress");
     Events::HookGuiState("DoDestroy");
 
+    // Жизнь объектов: вставки в библиотеки состояний юнитов и зданий. Данные: "хендл|тип".
+    struct ObjectHook { const char* library; const char* kind; const char* state; const char* event; };
+    const ObjectHook objectHooks[] = {
+        { "units\\unit.aix",     "unit",     "Initial",   "spawn" },
+        { "units\\unit.aix",     "unit",     "OnDeath",   "death" },
+        { "units\\unit.aix",     "unit",     "OnDestroy", "destroy" },
+        { "units\\building.aix", "building", "Initial",   "spawn" },
+        { "units\\building.aix", "building", "OnDeath",   "death" },
+        { "units\\building.aix", "building", "OnDestroy", "destroy" },
+    };
+    for (const ObjectHook& h : objectHooks)
+    {
+        std::string event = std::string(h.kind) + "." + h.event;
+        Events::HookLibraryStateCode(h.library, h.state, event,
+            "DScriptSetgDbgString0('ML:" + event + "|'+IntToStr(GetGameObjectMyHandle)+'|'+GetGameObjectMyBaseName);");
+    }
+
     Events::Subscribe("gui.DoNewGame", [](const std::string&, const std::string&) {
         Leave();
         Events::Emit("game.prepare");

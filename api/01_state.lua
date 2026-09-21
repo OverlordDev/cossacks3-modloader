@@ -97,16 +97,29 @@ end
 -- поля склеиваются в одну строку через символ #1 и режутся обратно здесь.
 local SEP = "\1"
 
+local collectValue
+
 local function collect(path, typeName, depth, out, prefix)
     for _, f in ipairs(SCHEMA.types[typeName] or {}) do
-        local sub = path .. "." .. f.name
-        if not f.array then
-            if SCALAR[f.type] then
-                out[#out + 1] = { key = prefix .. f.name, path = sub, type = f.type }
-            elseif depth > 1 and SCHEMA.types[f.type] then
-                collect(sub, f.type, depth - 1, out, prefix .. f.name .. ".")
-            end
+        collectValue(path .. "." .. f.name, f, depth, out, prefix .. f.name)
+    end
+end
+
+-- Одно значение: простое — лист; запись — внутрь (если хватает глубины); массив — поэлементно
+-- (ключи элементов — числа: t.price[3], t.weapon[0].damage). Массивы с неизвестными границами
+-- пропускаются.
+function collectValue(path, node, depth, out, key)
+    if node.array then
+        local lo, hi = node.array[1], node.array[2]
+        if not lo or not hi or hi - lo > 64 then return end -- огромные массивы — через state.list
+        if not SCALAR[node.of.type] and depth <= 1 then return end
+        for i = lo, hi do
+            collectValue(path .. "[" .. i .. "]", node.of, depth, out, key .. "." .. i)
         end
+    elseif SCALAR[node.type] then
+        out[#out + 1] = { key = key, path = path, type = node.type }
+    elseif depth > 1 and SCHEMA.types[node.type] then
+        collect(path, node.type, depth - 1, out, key .. ".")
     end
 end
 
@@ -120,10 +133,12 @@ local CONVERT = {
 local function place(result, key, value)
     local t = result
     for part in key:gmatch("([^%.]+)%.") do
+        part = tonumber(part) or part -- элементы массивов — числовые ключи
         t[part] = t[part] or {}
         t = t[part]
     end
-    t[key:match("([^%.]+)$")] = value
+    local last = key:match("([^%.]+)$")
+    t[tonumber(last) or last] = value
 end
 
 function state.read(path, depth)

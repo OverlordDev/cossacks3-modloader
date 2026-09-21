@@ -16,6 +16,8 @@ Lua-модули, которые модлоадер грузит в окруже
 | `13_players.lua` | `players` — участники партии |
 | `14_map.lua` | `map` — карта и настройки партии |
 | `15_screens.lua` | `screens` — экраны по именам: открыть, нажать кнопку, перехватить кнопку, заменить экран |
+| `16_mirror.lua` | `mirror` — родной интерфейс как данные (для mirror.html) |
+| `17_balance.lua` | `balance` — параметры типов юнитов/зданий: читать и менять посреди партии |
 | `90_call.lua` | `api_call` — вход для страниц (`game.api` в JS) |
 
 Справочник по всем переменным и полям игры — `GAME_STATE.md`, по экранам и кнопкам — `GAME_SCREENS.md`.
@@ -102,4 +104,4 @@ python tools/gen_game_api.py "C:/Program Files (x86)/Steam/steamapps/common/Coss
   переменных; нужен разбор `data/gui/menu.inc/showcampaign.inc`.
 - **Лобби и комнаты** — сетевые данные, обновляются по событиям; нужен разбор `showinternetshell.inc`
   и событий `OnLanEvent`.
-- **Юниты** — отдельная большая тема (`TObjProp`, `gObjProp`, нативы `GetGameObject*`).
+- **Юниты** — статы типов есть (`balance`), события жизни — `unit.spawn/death/destroy`, `building.*`. Нет: урона, приказов, данных конкретного юнита (TObj).

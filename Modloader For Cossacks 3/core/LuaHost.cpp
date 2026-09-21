@@ -524,6 +524,16 @@ namespace
             return; // серверная логика работает только там, где решается игра
         lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
         lua_pushstring(L, event.c_str());
+        // События объектов (unit.spawn, building.death ...) приходят "хендл|тип": отдаём сразу
+        // числом и строкой — function(event, handle, basename).
+        size_t bar = payload.find('|');
+        if ((event.rfind("unit.", 0) == 0 || event.rfind("building.", 0) == 0) && bar != std::string::npos)
+        {
+            lua_pushinteger(L, atoi(payload.c_str()));
+            lua_pushstring(L, Text::AnsiToUtf8(payload.substr(bar + 1)).c_str());
+            Call(3, 0, who);
+            return;
+        }
         lua_pushstring(L, Text::AnsiToUtf8(payload).c_str());
         Call(2, 0, who);
     }

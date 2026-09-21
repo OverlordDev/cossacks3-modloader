@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "CrashHandler.h"
 #include "Events.h"
+#include "NativeCall.h"
 #include "Console.h"
 #include "Engine.h"
 #include "GameApi.h"
@@ -17,6 +18,7 @@ namespace
 
     struct Injection
     {
+        std::string library; // пусто — интерфейс (menu.aix); иначе файл библиотеки состояний (units\unit.aix)
         std::string state;
         bool atEnd;
         std::string event;
@@ -127,14 +129,58 @@ namespace
         return index;
     }
 
+    // Машина состояний библиотеки (юниты, здания...) по имени файла. Движок хранит библиотеки
+    // под тем именем, под которым их загрузил, поэтому пробуем несколько написаний пути.
+    uint8_t* LibraryStateMachine(const std::string& file)
+    {
+        static std::map<std::string, std::string> resolved; // файл -> написание, которое сработало
+        const NativeCall::Signature* get = NativeCall::Find("StateMachineLibraryGet");
+        if (!get)
+            return nullptr;
+
+        auto tryName = [&](const std::string& name) -> uint8_t* {
+            NativeCall::Value arg, result;
+            arg.type = NativeCall::Type::String;
+            arg.s = name;
+            std::string error;
+            if (!NativeCall::Invoke(*get, { arg }, &result, &error))
+                return nullptr;
+            return reinterpret_cast<uint8_t*>(result.i);
+        };
+
+        if (auto it = resolved.find(file); it != resolved.end())
+            return tryName(it->second);
+
+        const std::string variants[] = {
+            ".\\data\\scripts\\" + file, "data\\scripts\\" + file, ".\\data\\scripts\\" + Lower(file),
+            "data/scripts/" + file, file,
+        };
+        for (const std::string& v : variants)
+            if (uint8_t* sm = tryName(v))
+            {
+                resolved[file] = v;
+                LOG_DEV("Events: state library %s found as '%s'", file.c_str(), v.c_str());
+                return sm;
+            }
+        return nullptr;
+    }
+
     // Главный поток игры. true — строка на месте.
     bool Apply(const Injection& inj, bool quiet)
     {
-        uint8_t* state = Engine::FindState(Engine::GuiStateMachine(), inj.state);
+        uint8_t* sm = inj.library.empty() ? Engine::GuiStateMachine() : LibraryStateMachine(inj.library);
+        if (!sm)
+        {
+            if (!quiet)
+                LOG_DEV("Events: state library %s is not loaded yet — will retry", inj.library.c_str());
+            return false;
+        }
+        uint8_t* state = Engine::FindState(sm, inj.state);
         if (!state)
         {
             if (!quiet)
-                LOG_ERROR("Events: GUI state '%s' not found", inj.state.c_str());
+                LOG_ERROR("Events: state '%s' not found in %s", inj.state.c_str(),
+                          inj.library.empty() ? "GUI" : inj.library.c_str());
             return false;
         }
         uint8_t* list = Engine::StateCode(state);
@@ -153,7 +199,7 @@ namespace
         Engine::StateReset(state);
 
         // Проверяем сразу: если сломали компиляцию — откатываем, иначе у игры отвалится это состояние.
-        if (!Engine::StateCompileSafe(Engine::GuiStateMachine(), state))
+        if (!Engine::StateCompileSafe(sm, state))
         {
             int at = Engine::ListIndexOf(list, inj.line);
             if (at >= 0)
@@ -162,7 +208,8 @@ namespace
             LOG_ERROR("Events: injecting into '%s' broke compilation — reverted", inj.state.c_str());
             return false;
         }
-        LOG_DEV("Events: hooked %s (line %d of state '%s')", inj.event.c_str(), index + 1, inj.state.c_str());
+        LOG_DEV("Events: hooked %s (line %d of state '%s'%s%s)", inj.event.c_str(), index + 1, inj.state.c_str(),
+                inj.library.empty() ? "" : " in ", inj.library.c_str());
         return true;
     }
 
@@ -220,6 +267,25 @@ void Events::HookGuiStateCode(const std::string& state, const std::string& key, 
             g_injections.push_back(inj);
     });
 }
+void Events::HookLibraryStateCode(const std::string& library, const std::string& state, const std::string& key,
+                                  const std::string& line, bool atEnd)
+{
+    Injection inj;
+    inj.library = library;
+    inj.state = state;
+    inj.atEnd = atEnd;
+    inj.event = key;
+    inj.line = line;
+
+    ScriptRunner::RunOnGameThread([inj] {
+        for (const auto& existing : g_injections)
+            if (existing.event == inj.event)
+                return;
+        Apply(inj, false);
+        g_injections.push_back(inj); // даже если библиотека ещё не загружена: Maintain довставит
+    });
+}
+
 
 void Events::Emit(const std::string& event, const std::string& payload)
 {

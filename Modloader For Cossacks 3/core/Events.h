@@ -26,6 +26,11 @@ namespace Events
 
     void HookGuiStateCode(const std::string& state, const std::string& key, const std::string& line, bool atEnd = false);
 
+    // То же для библиотеки состояний объектов: library — путь от data\scripts ("units\unit.aix").
+    // Код библиотеки общий для всех объектов этого вида, так что одна вставка ловит всех.
+    void HookLibraryStateCode(const std::string& library, const std::string& state, const std::string& key,
+                              const std::string& line, bool atEnd = false);
+
     // Сгенерировать событие из C++ (главный поток игры).
     void Emit(const std::string& event, const std::string& payload = {});
 

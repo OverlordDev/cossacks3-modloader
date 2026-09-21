@@ -13,7 +13,7 @@ dofile(here .. "/fake_game.lua")
 -- Список api/*.lua без модулей файловой системы: имена задаём по шаблону и пробуем открыть.
 local loaded = {}
 for _, name in ipairs({ "00_schema", "01_state", "02_screens_data", "10_profile", "11_options", "12_saves",
-                        "13_players", "14_map", "15_screens", "16_mirror", "90_call" }) do
+                        "13_players", "14_map", "15_screens", "16_mirror", "17_balance", "90_call" }) do
     local path = root .. "/api/" .. name .. ".lua"
     local chunk, err = loadfile(path, "t", _ENV)
     assert(chunk, err)
@@ -107,6 +107,23 @@ check("onAnyButton block", HOOKS.EventMainMenu(1, "c", 101), true)
 check("onAnyButton name", got, "MainMenu.Campaign")
 check("onButton hover skipped", HOOKS.EventMainMenu(1, "m", 101), nil)
 check("modOnly", pcall(screens.onButton, "MainMenu", print), false)
+
+-- balance: поиск типа, чтение с массивами, запись всем и одному игроку
+check("balance.find", select(2, balance.find("RUS_Strelets")), 12)
+local st = balance.get("rus_strelets")
+check("balance.get maxhp", st.base.maxhp, 100)
+check("balance.get price[3]", st.base.price[3], 5)
+check("balance.get weapon[0].damage", st.base.weapon[0].damage, 10)
+check("balance.get prop", st.prop.vision, 800)
+balance.set("rus_strelets", "maxhp", 300)
+check("balance.set all p0", FAKE.gPlayer[0].objbase[4][12].maxhp, 300)
+check("balance.set all p11", FAKE.gPlayer[11].objbase[4][12].maxhp, 300)
+balance.set("rus_strelets", "weapon[0].damage", 40, 1)
+check("balance.set one", FAKE.gPlayer[1].objbase[4][12].weapon[0].damage, 40)
+check("balance.set one untouched", FAKE.gPlayer[2].objbase[4][12].weapon[0].damage, 10)
+balance.set("rus_strelets", "price[3]", 50)
+check("balance.set price", FAKE.gPlayer[5].objbase[4][12].price[3], 50)
+check("balance.unknown", pcall(balance.find, "nope"), false)
 
 print(("api: %d module(s), %d passed, %d failed"):format(#loaded, passed, failed))
 os.exit(failed == 0 and 0 or 1)

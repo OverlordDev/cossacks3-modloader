@@ -22,6 +22,17 @@ for i = 0, 11 do
                              bai = i > 0, bhuman = i == 0, startx = i * 1.5, starty = 0 }
 end
 
+-- Баланс: один тип юнита (нация 4, номер 12) и его статы у каждого игрока.
+FAKE.gObjProp = { [4] = { [12] = { sid = "rus_strelets", vision = 800, radius = 1.5 } } }
+FAKE.gPlayer = {}
+for p = 0, 11 do
+    FAKE.gPlayer[p] = { objbase = { [4] = { [12] = {
+        sid = "rus_strelets", maxhp = 100, speed = 2.5,
+        price = { [0] = 10, 20, 0, 5, 0, 0, 0 },
+        weapon = { [0] = { damage = 10, radiusmax = 400, pause = 1.2 } },
+    } } } }
+end
+
 local function lookup(path, assign)
     local node, key = FAKE, nil
     local head, rest = path:match("^%s*([%a_][%w_]*)(.*)$")
@@ -61,6 +72,9 @@ function game.isInGame() return true end
 EXEC_LOG = {}
 function game.exec(code, arg)
     EXEC_LOG[#EXEC_LOG + 1] = code
+    if code:find("gObjProp%[c%]%[u%]%.sid") then -- balance: цикл по всем типам
+        return "4,12,rus_strelets;"
+    end
     local path, rhs = code:match("^(.-) := (.-);$")
     if not path then return "" end
     local value
