@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "CrashHandler.h"
+#include "ModCheck.h"
 #include "DevConsole.h"
 #include "Assets.h"
 #include "Checksum.h"
@@ -256,6 +257,8 @@ namespace
                 else
                     Events::HookGuiState(state, atEnd);
             }
+            else if (cmd == "modcheck")
+                ModCheck::Print();
             else if (cmd == "events")
                 Events::PrintStats();
             else if (cmd == "checksum")

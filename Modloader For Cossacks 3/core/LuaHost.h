@@ -40,6 +40,11 @@ namespace LuaHost
         ModStatus status;
     };
     std::vector<ModView> Mods();
+
+    // Моды, которые должны совпадать у всех в сетевой игре: загружены, multiplayer = "required",
+    // есть серверная или shared-часть. hash — по содержимому папки мода (кроме web/).
+    struct MultiplayerMod { std::string id, version, hash; };
+    std::vector<MultiplayerMod> MultiplayerMods();
     // Вкл/выкл мода: сохраняется в modloader/modstate.txt (манифест не меняется), Lua перезагружается.
     void SetModEnabled(const std::string& id, bool enabled);
 }

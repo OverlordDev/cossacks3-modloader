@@ -174,6 +174,7 @@
     <ClInclude Include="framework.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="core/Console.h" />
+    <ClInclude Include="core/ModCheck.h" />
     <ClInclude Include="core/CrashHandler.h" />
     <ClInclude Include="core/Hooks.h" />
     <ClInclude Include="core/Loader.h" />
@@ -226,6 +227,7 @@
   <ItemGroup>
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="core/Console.cpp" />
+    <ClCompile Include="core/ModCheck.cpp" />
     <ClCompile Include="core/CrashHandler.cpp" />
     <ClCompile Include="core/Hooks.cpp" />
     <ClCompile Include="core/Loader.cpp" />

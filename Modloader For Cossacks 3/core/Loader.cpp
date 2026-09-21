@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "CrashHandler.h"
 #include "Loader.h"
+#include "ModCheck.h"
 #include "Assets.h"
 #include "Checksum.h"
 #include "Console.h"
@@ -68,7 +69,13 @@ namespace
                 SignalReadyToLauncher();
             }
         });
-            Net::Install(LuaHost::OnNetMessage);
+            Net::Install([](char direction, const std::string& mod, const std::string& event, const std::string& data, int from) {
+                if (mod == ModCheck::kModId)
+                    ModCheck::OnMessage(direction, event, data, from); // служебные пакеты модлоадера
+                else
+                    LuaHost::OnNetMessage(direction, mod, event, data, from);
+            });
+            ModCheck::Install();
             Ui::Install();
             Ui::SetPressHandler(LuaHost::OnUiPress);
         }

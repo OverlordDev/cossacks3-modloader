@@ -2141,3 +2141,48 @@ void LuaHost::PrintMods()
         }
     });
 }
+
+std::vector<LuaHost::MultiplayerMod> LuaHost::MultiplayerMods()
+{
+    std::vector<MultiplayerMod> out;
+    for (const Mod& m : g_mods)
+    {
+        if (!m.loaded || m.multiplayer != "required" || (!m.shared && m.entry[Server].empty()))
+            continue;
+        // FNV-1a по путям и содержимому всех файлов мода по порядку; web/ — интерфейс, не партия.
+        std::vector<fs::path> files;
+        std::error_code ec;
+        for (auto it = fs::recursive_directory_iterator(m.dir, ec); !ec && it != fs::recursive_directory_iterator(); it.increment(ec))
+        {
+            if (it->is_directory(ec) && it->path().filename() == L"web")
+            {
+                it.disable_recursion_pending();
+                continue;
+            }
+            if (it->is_regular_file(ec))
+                files.push_back(it->path());
+        }
+        std::sort(files.begin(), files.end());
+        uint64_t h = 1469598103934665603ull;
+        auto mix = [&h](const char* p, size_t n) {
+            for (size_t i = 0; i < n; ++i)
+                h = (h ^ static_cast<uint8_t>(p[i])) * 1099511628211ull;
+        };
+        for (const fs::path& f : files)
+        {
+            std::string rel = fs::relative(f, m.dir, ec).generic_string();
+            mix(rel.data(), rel.size());
+            std::string data;
+            if (ReadFile(f, &data))
+            {
+                data.erase(std::remove(data.begin(), data.end(), '\r'), data.end()); // CRLF/LF после git — один и тот же мод
+                mix(data.data(), data.size());
+            }
+        }
+        char hex[17];
+        snprintf(hex, sizeof(hex), "%016llx", static_cast<unsigned long long>(h));
+        out.push_back({ m.id, m.version, hex });
+    }
+    std::sort(out.begin(), out.end(), [](const MultiplayerMod& a, const MultiplayerMod& b) { return a.id < b.id; });
+    return out;
+}
