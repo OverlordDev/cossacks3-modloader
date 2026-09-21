@@ -46,7 +46,8 @@ ui.screen("News", function() end)
 local inGame = false
 
 local MIRROR_SCREENS = {
-    "CustomGame", "Campaign", "HistoricalBattle", "Missions", "Credits", "UnitsStats", "Profile",
+    -- Campaign пока родной (решили оставить экран игры) — его открывает menu.html, закрыв браузер.
+    "CustomGame", "HistoricalBattle", "Missions", "Credits", "UnitsStats", "Profile",
     "MultiplayerLogin", "InternetShell", "CreateJoinRoom", "TournamentsWindow",
 }
 -- Всплывающие окна появляются поверх текущего экрана: страницу не меняем, только обновляем зеркало.
