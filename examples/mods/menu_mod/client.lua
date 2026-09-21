@@ -86,17 +86,14 @@ events.on("game.menu", function()
     if not web.isOpen() then web.open("menu") end
 end)
 
-events.on("game.start", function()
-    loadingShown = false
-    web.close()
-end)
+-- Когда убирать экран загрузки. game.start для этого рано: партия уже «игровая», но игра ещё
+-- догружает карту и показывает свой экран загрузки (gMap.gamestage = 1, ждём игроков/загрузку).
+-- Убираем страницу, только когда партия реально пошла: gamestage >= 2 (gc_map_gamestage_started).
+local STAGE_STARTED = 2
 
--- Подстраховка: если game.start почему-то не придёт, страница не должна остаться
--- поверх партии и забирать себе мышь.
 events.on("game.tick", function()
-    if web.isOpen() then
+    if web.isOpen() and state.get("gMap.gamestage") >= STAGE_STARTED then
+        loadingShown = false
         web.close()
     end
 end)
-
-log.info("menu_mod ready — меню и настройки на HTML (web/)")
