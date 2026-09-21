@@ -4,7 +4,7 @@ return {
     name = "Dev Tools",
     version = "0.1.0",
     author = "Illia",
-    description = "ЛКМ в партии — мировые координаты точки под курсором в консоль.",
+    description = "ЛКМ в партии — мировые координаты в консоль; лог приказов игрока.",
     enabled = true,
     client = "client.lua",
     multiplayer = "optional",

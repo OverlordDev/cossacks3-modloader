@@ -28,6 +28,9 @@ namespace
         //   begin <line с {0},{1}... = аргументы вызова>; <исходный вызов> end{ML:orig=<исходная строка>}
         // Так событие видит настоящие аргументы, а исходная строка восстанавливается для контрольной суммы.
         std::string wrapCall;
+        // Обёртка с отменой: begin <line>; if <ответ не ML:block> then <вызов> end — обработчик может
+        // вернуть true, и вызов не выполнится.
+        bool blockable = false;
     };
 
     struct Subscription
@@ -237,18 +240,25 @@ namespace
         std::string marker = inj.line.substr(m, inj.line.find('|', m) - m);
         int wrapped = 0, skipped = 0, fresh = 0;
         std::set<std::string>& bad = g_badLines[inj.event];
+        // Строка события отдельно перед вызовом — запасной путь, когда обёртка не компилируется.
+        std::string lone = inj.line + ";";
+        bool loneAbove = false; // строка выше — наша отдельная вставка: вызов под ней уже обработан
         int count = Engine::ListCount(list);
         for (int i = 0; i < count; ++i)
         {
             std::string original = Engine::ListGet(list, i);
-            if (original.find("{ML:orig=") != std::string::npos && original.find(marker) != std::string::npos)
+            bool above = loneAbove;
+            loneAbove = false;
+            if (original.find(marker) != std::string::npos)
             {
-                ++wrapped; // уже обёрнуто
+                ++wrapped; // уже обёрнуто или вставлено отдельно
+                loneAbove = original.find("{ML:orig=") == std::string::npos;
                 continue;
             }
             std::vector<std::string> args;
             size_t start = original.find_first_not_of(" 	");
-            if (start == std::string::npos || original.compare(start, 2, "//") == 0 ||
+            if (above || start == std::string::npos || original.compare(start, 2, "//") == 0 ||
+                original.compare(start, 10, "procedure ") == 0 || original.compare(start, 9, "function ") == 0 ||
                 original.find(inj.wrapCall + "(") == std::string::npos || original.find('}') != std::string::npos ||
                 original.find("//") != std::string::npos || bad.count(original) || !CallArgs(original, inj.wrapCall, &args))
                 continue;
@@ -257,7 +267,8 @@ namespace
             bool semicolon = !core.empty() && core.back() == ';';
             if (semicolon)
                 core.pop_back();
-            std::string text = original.substr(0, start) + "begin " + Fill(inj.line, args) + "; " + core + " end" +
+            std::string guard = inj.blockable ? std::string("if (DScriptGetgDbgString0<>'ML:block') then ") : "";
+            std::string text = original.substr(0, start) + "begin " + Fill(inj.line, args) + "; " + guard + core + " end" +
                                (semicolon ? ";" : "") + "{ML:orig=" + original + "}";
             Engine::ListDelete(list, i);
             Engine::ListInsert(list, i, text);
@@ -268,9 +279,48 @@ namespace
                 ++fresh;
                 continue;
             }
-            bad.insert(original);
             Engine::ListDelete(list, i);
             Engine::ListInsert(list, i, original);
+
+            // Отдельной строкой — только внутри блока (выше begin или законченный оператор), иначе
+            // после then/else/do она заберёт себе условие у вызова. Отмену так не сделать.
+            bool inserted = false;
+            if (!inj.blockable)
+            {
+                std::string prev;
+                for (int k = i - 1; k >= 0 && prev.empty(); --k)
+                {
+                    prev = Engine::ListGet(list, k);
+                    if (size_t c = prev.find("//"); c != std::string::npos)
+                        prev.erase(c);
+                    prev.erase(prev.find_last_not_of(" 	") + 1);
+                    prev.erase(0, prev.find_first_not_of(" 	") == std::string::npos ? prev.size() : prev.find_first_not_of(" 	"));
+                }
+                std::string low = Lower(prev);
+                bool block = (!low.empty() && low.back() == ';') ||
+                             (low.size() >= 5 && low.compare(low.size() - 5, 5, "begin") == 0 &&
+                              (low.size() == 5 || !isalnum(static_cast<unsigned char>(low[low.size() - 6]))));
+                if (block)
+                {
+                    Engine::ListInsert(list, i, original.substr(0, start) + Fill(lone, args));
+                    Engine::StateReset(state);
+                    if (Engine::StateCompileSafe(sm, state))
+                    {
+                        inserted = true;
+                        ++wrapped;
+                        ++fresh;
+                        ++count;
+                        ++i; // вызов теперь ниже вставки
+                        LOG_DEV("Events: %s: line %d of '%s' — event inserted as a separate line", inj.event.c_str(),
+                                i + 1, inj.state.c_str());
+                    }
+                    else
+                        Engine::ListDelete(list, i);
+                }
+            }
+            if (inserted)
+                continue;
+            bad.insert(original);
             Engine::StateReset(state);
             ++skipped;
             LOG_DEV("Events: %s: line %d of '%s' does not compile wrapped, left as is: %s", inj.event.c_str(), i + 1,
@@ -426,7 +476,7 @@ void Events::HookLibraryStateCode(const std::string& library, const std::string&
 
 
 void Events::WrapLibraryCalls(const std::string& library, const std::string& state, const std::string& call,
-                              const std::string& key, const std::string& line)
+                              const std::string& key, const std::string& line, bool blockable)
 {
     Injection inj;
     inj.library = library;
@@ -435,6 +485,7 @@ void Events::WrapLibraryCalls(const std::string& library, const std::string& sta
     inj.event = key;
     inj.line = line;
     inj.wrapCall = call;
+    inj.blockable = blockable;
 
     ScriptRunner::RunOnGameThread([inj] {
         for (const auto& existing : g_injections)

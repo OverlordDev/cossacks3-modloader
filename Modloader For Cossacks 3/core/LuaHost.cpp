@@ -536,6 +536,42 @@ namespace
             Call(4, 0, who);
             return;
         }
+        // Приказ игрока: function(event, order) — order = {kind, target, x, z, group}; true — отменить.
+        if (event == "player.order")
+        {
+            std::vector<std::string> parts;
+            for (size_t from = 0;;)
+            {
+                size_t to = payload.find('|', from);
+                parts.push_back(payload.substr(from, to == std::string::npos ? std::string::npos : to - from));
+                if (to == std::string::npos)
+                    break;
+                from = to + 1;
+            }
+            parts.resize(5);
+            auto number = [](std::string s) {
+                std::replace(s.begin(), s.end(), ',', '.'); // FloatToStr пишет по локали системы
+                return atof(s.c_str());
+            };
+            lua_createtable(L, 0, 5);
+            lua_pushstring(L, parts[0].c_str());
+            lua_setfield(L, -2, "kind");
+            lua_pushinteger(L, atoi(parts[1].c_str()));
+            lua_setfield(L, -2, "target");
+            lua_pushnumber(L, number(parts[2]));
+            lua_setfield(L, -2, "x");
+            lua_pushnumber(L, number(parts[3]));
+            lua_setfield(L, -2, "z");
+            lua_pushinteger(L, atoi(parts[4].c_str()));
+            lua_setfield(L, -2, "group");
+            if (Call(2, 1, who))
+            {
+                if (lua_toboolean(L, -1))
+                    Events::RequestBlock();
+                lua_pop(L, 1);
+            }
+            return;
+        }
         size_t bar = payload.find('|');
         if ((event.rfind("unit.", 0) == 0 || event.rfind("building.", 0) == 0) && bar != std::string::npos)
         {

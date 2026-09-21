@@ -32,8 +32,10 @@ namespace Events
     // заменяются аргументами вызова. key — уникальное имя вставки (у разных состояний — разные).
     //   WrapLibraryCalls("units\\unit.aix", "OnTagStates", "_misc_DoDamage", "damage@unit/OnTagStates",
     //       "DScriptSetgDbgString0('ML:unit.damage|'+IntToStr({0})+'|'+IntToStr({1})+'|'+IntToStr({2}))");
+    // blockable — обработчик может отменить вызов (Events::RequestBlock). Без него строка, которая не
+    // компилируется обёрнутой, получает событие отдельной строкой перед вызовом.
     void WrapLibraryCalls(const std::string& library, const std::string& state, const std::string& call,
-                          const std::string& key, const std::string& line);
+                          const std::string& key, const std::string& line, bool blockable = false);
 
     void HookLibraryStateCode(const std::string& library, const std::string& state, const std::string& key,
                               const std::string& line, bool atEnd = false);

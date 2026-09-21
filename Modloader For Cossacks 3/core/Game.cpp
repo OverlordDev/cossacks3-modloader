@@ -75,6 +75,25 @@ void Game::Install()
         Events::WrapLibraryCalls(d.library, d.state, "_misc_DoDamage", std::string("damage@") + d.library + "/" + d.state,
             "DScriptSetgDbgString0('ML:unit.damage|'+IntToStr({0})+'|'+IntToStr({1})+'|'+IntToStr({2}))");
 
+    // Приказы игрока: ПКМ и режимы (атака точки, патруль, охрана) в OnMouseDown интерфейса.
+    // Событие "player.order|вид|цель|x|z|группа"; обработчик вернул true — приказ не отдаётся.
+    struct OrderHook { const char* call; const char* kind; const char* target; const char* x; const char* z; const char* group; };
+    const OrderHook orderHooks[] = {
+        { "_player_OrderUnitsToAttack",      "attack",      "{1}", "0",   "0",   "0" },
+        { "_player_OrderUnitsToAttackPoint", "attackpoint", "0",   "{2}", "{3}", "0" },
+        { "_player_OrderUnitsToGuard",       "guard",       "{2}", "0",   "0",   "0" },
+        { "_player_OrderUnitsToBuild",       "build",       "{1}", "0",   "0",   "0" },
+        { "_player_OrderUnitsToGoInside",    "enter",       "{3}", "0",   "0",   "0" },
+        { "_player_SetGroupPosition",        "move",        "0",   "{3}", "{4}", "{1}" },
+        { "_todo_order_OrderSelectedUnitsToGainResource", "gather", "{0}", "0", "0", "0" },
+        { "_todo_order_OrderSelectedUnitsToPatrol",       "patrol", "0", "{0}", "{1}", "0" },
+    };
+    for (const OrderHook& o : orderHooks)
+        Events::WrapLibraryCalls("", "OnMouseDown", o.call, std::string("order@") + o.call,
+            std::string("DScriptSetgDbgString0('ML:player.order|") + o.kind + "|'+IntToStr(" + o.target +
+                ")+'|'+FloatToStr(" + o.x + ")+'|'+FloatToStr(" + o.z + ")+'|'+IntToStr(" + o.group + "))",
+            true);
+
     for (const ObjectHook& h : objectHooks)
     {
         std::string event = std::string(h.kind) + "." + h.event;
