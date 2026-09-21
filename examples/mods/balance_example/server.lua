@@ -28,3 +28,14 @@ if LOG_UNITS then
         end
     end
 end
+
+-- Лог урона: function(event, attacker, target, damage). Строк в бою очень много — false, чтобы выключить.
+local LOG_DAMAGE = true
+
+if LOG_DAMAGE then
+    events.on("unit.damage", function(_, attacker, target, damage)
+        local a = attacker ~= 0 and native.GetGameObjectBaseNameByHandle(attacker) or "?"
+        local t = target ~= 0 and native.GetGameObjectBaseNameByHandle(target) or "?"
+        log.info(string.format("урон: %s #%d -> %s #%d: %d", a, attacker, t, target, damage))
+    end)
+end

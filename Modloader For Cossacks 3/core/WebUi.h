@@ -43,6 +43,15 @@ namespace WebUi
     // 0 — списка сейчас нет.
     unsigned int PresentPopup(int* x, int* y, int* width, int* height);
 
+    // Режим HUD (интерфейс поверх партии): мышь над прозрачным местом страницы уходит в игру,
+    // над нарисованным — странице; клавиатура — игре, пока на странице не активно поле ввода.
+    // Выключен — страница забирает весь ввод (меню). Сбрасывается при закрытии страницы.
+    void SetPassthrough(bool on);
+    bool Passthrough();
+
+    // Адрес открытой страницы ("" — ничего не открыто).
+    std::string CurrentUrl();
+
     // Из оконной процедуры. true — сообщение съедено, игре его отдавать не надо.
     bool OnWndProc(HWND window, UINT msg, WPARAM wp, LPARAM lp);
 

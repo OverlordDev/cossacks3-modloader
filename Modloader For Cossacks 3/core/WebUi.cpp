@@ -67,6 +67,8 @@ namespace
 
     std::mutex g_frameMutex;
     std::vector<uint8_t> g_pixels;
+    std::atomic<bool> g_passthrough = false; // режим HUD: прозрачные места пропускают ввод в игру
+    std::atomic<bool> g_textFocus = false;   // на странице активно поле ввода (клавиатура — ей)
     int g_frameWidth = 0, g_frameHeight = 0;
     bool g_frameDirty = false;
 
@@ -318,6 +320,12 @@ window.game = {
         void GetViewRect(CefRefPtr<CefBrowser>, CefRect& rect) override
         {
             rect.Set(0, 0, g_viewWidth, g_viewHeight);
+        }
+
+        // CEF сообщает, что фокус попал в поле ввода (или ушёл из него).
+        void OnVirtualKeyboardRequested(CefRefPtr<CefBrowser>, TextInputMode mode) override
+        {
+            g_textFocus = mode != CEF_TEXT_INPUT_MODE_NONE;
         }
 
         void OnPaint(CefRefPtr<CefBrowser>, PaintElementType type, const RectList&,
@@ -741,8 +749,40 @@ void WebUi::RequestEval(const std::string& javascript)
     g_pendingEval.push_back(javascript);
 }
 
+void WebUi::SetPassthrough(bool on)
+{
+    g_passthrough = on;
+}
+
+bool WebUi::Passthrough()
+{
+    return g_passthrough.load();
+}
+
+std::string WebUi::CurrentUrl()
+{
+    if (g_state.load() != State::Running || !g_browser)
+        return "";
+    return g_browser->GetMainFrame()->GetURL().ToString();
+}
+
+namespace
+{
+    // Режим HUD: нарисовано ли что-то страницей в точке окна (альфа пикселя кадра).
+    bool PageCovers(int x, int y)
+    {
+        std::lock_guard lock(g_frameMutex);
+        if (g_popupVisible && x >= g_popupX && y >= g_popupY && x < g_popupX + g_popupWidth && y < g_popupY + g_popupHeight)
+            return true; // открытый выпадающий список
+        if (g_pixels.empty() || x < 0 || y < 0 || x >= g_frameWidth || y >= g_frameHeight)
+            return false;
+        return g_pixels[(static_cast<size_t>(y) * g_frameWidth + x) * 4 + 3] >= 16; // BGRA, A — четвёртый
+    }
+}
+
 void WebUi::RequestClose()
 {
+    g_passthrough = false;
     std::lock_guard lock(g_cmdMutex);
     g_pendingClose = true;
 }
@@ -922,6 +962,36 @@ bool WebUi::OnWndProc(HWND window, UINT msg, WPARAM wp, LPARAM lp)
 
     CefMouseEvent mouse;
     mouse.modifiers = Modifiers();
+
+    // HUD: над прозрачным местом ввод уходит в игру. Движение мыши странице всё равно
+    // показываем (иначе подсветка кнопок «залипнет»), но игре его тоже отдаём.
+    if (g_passthrough)
+    {
+        bool mouseMsg = (msg >= WM_MOUSEFIRST && msg <= WM_MOUSELAST) || msg == WM_SETCURSOR;
+        bool keyMsg = msg == WM_KEYDOWN || msg == WM_KEYUP || msg == WM_CHAR || msg == WM_SYSKEYDOWN ||
+                      msg == WM_SYSKEYUP || msg == WM_SYSCHAR;
+        if (keyMsg && !g_textFocus)
+            return false;
+        if (mouseMsg)
+        {
+            POINT p = { GET_X_LPARAM(lp), GET_Y_LPARAM(lp) };
+            if (msg == WM_MOUSEWHEEL || msg == WM_SETCURSOR)
+            {
+                GetCursorPos(&p);
+                ScreenToClient(window, &p);
+            }
+            if (!PageCovers(p.x, p.y))
+            {
+                if (msg == WM_MOUSEMOVE)
+                {
+                    mouse.x = p.x;
+                    mouse.y = p.y;
+                    host->SendMouseMoveEvent(mouse, false);
+                }
+                return false;
+            }
+        }
+    }
 
     switch (msg)
     {

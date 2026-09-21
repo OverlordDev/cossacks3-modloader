@@ -132,7 +132,8 @@ end)
 local STAGE_STARTED = 2
 
 events.on("game.tick", function()
-    if web.isOpen() and state.get("gMap.gamestage") >= STAGE_STARTED then
+    -- Закрываем только свой экран загрузки: в партии страницу могут открыть другие моды (HUD).
+    if web.isOpen() and web.url():find("loading%.html") and state.get("gMap.gamestage") >= STAGE_STARTED then
         loadingShown = false
         web.close()
     end

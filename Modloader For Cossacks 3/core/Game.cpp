@@ -62,6 +62,19 @@ void Game::Install()
         { "units\\building.aix", "building", "OnDeath",   "death" },
         { "units\\building.aix", "building", "OnDestroy", "destroy" },
     };
+    // Урон: каждый вызов _misc_DoDamage(кто, кого, урон, ...) в состояниях юнитов, зданий, снарядов.
+    struct DamageHook { const char* library; const char* state; };
+    const DamageHook damageHooks[] = {
+        { "units\\unit.aix", "OnAclAnimationReachedAttack" }, // ближний бой и выстрел пехоты
+        { "units\\unit.aix", "OnTagStates" },
+        { "units\\building.aix", "OnTagStates" },             // башни, форты
+        { "misc\\projectile.aix", "DoExplode" },              // ядра, снаряды
+        { "misc\\projectile.aix", "DoExplodeCustom" },
+    };
+    for (const DamageHook& d : damageHooks)
+        Events::WrapLibraryCalls(d.library, d.state, "_misc_DoDamage", std::string("damage@") + d.library + "/" + d.state,
+            "DScriptSetgDbgString0('ML:unit.damage|'+IntToStr({0})+'|'+IntToStr({1})+'|'+IntToStr({2}))");
+
     for (const ObjectHook& h : objectHooks)
     {
         std::string event = std::string(h.kind) + "." + h.event;

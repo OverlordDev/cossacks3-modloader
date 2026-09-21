@@ -28,6 +28,13 @@ namespace Events
 
     // То же для библиотеки состояний объектов: library — путь от data\scripts ("units\unit.aix").
     // Код библиотеки общий для всех объектов этого вида, так что одна вставка ловит всех.
+    // Обернуть в состоянии библиотеки каждый вызов call(...): line — строка события, где {0}, {1}...
+    // заменяются аргументами вызова. key — уникальное имя вставки (у разных состояний — разные).
+    //   WrapLibraryCalls("units\\unit.aix", "OnTagStates", "_misc_DoDamage", "damage@unit/OnTagStates",
+    //       "DScriptSetgDbgString0('ML:unit.damage|'+IntToStr({0})+'|'+IntToStr({1})+'|'+IntToStr({2}))");
+    void WrapLibraryCalls(const std::string& library, const std::string& state, const std::string& call,
+                          const std::string& key, const std::string& line);
+
     void HookLibraryStateCode(const std::string& library, const std::string& state, const std::string& key,
                               const std::string& line, bool atEnd = false);
 

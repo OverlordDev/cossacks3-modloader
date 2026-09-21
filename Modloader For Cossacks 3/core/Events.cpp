@@ -23,6 +23,10 @@ namespace
         bool atEnd;
         std::string event;
         std::string line;
+        // Обёртка вызова: каждую строку с вызовом wrapCall(...) заменить на
+        //   begin <line с {0},{1}... = аргументы вызова>; <исходный вызов> end{ML:orig=<исходная строка>}
+        // Так событие видит настоящие аргументы, а исходная строка восстанавливается для контрольной суммы.
+        std::string wrapCall;
     };
 
     struct Subscription
@@ -165,6 +169,108 @@ namespace
         return nullptr;
     }
 
+    // Аргументы вызова name(...) в строке: разбивка по запятым верхнего уровня.
+    bool CallArgs(const std::string& line, const std::string& name, std::vector<std::string>* args)
+    {
+        size_t at = line.find(name + "(");
+        if (at == std::string::npos)
+            return false;
+        size_t i = at + name.size() + 1;
+        int depth = 0;
+        bool quote = false;
+        std::string cur;
+        for (; i < line.size(); ++i)
+        {
+            char c = line[i];
+            if (c == '\'')
+                quote = !quote;
+            if (!quote)
+            {
+                if (c == '(' || c == '[')
+                    ++depth;
+                else if (c == ')' || c == ']')
+                {
+                    if (depth == 0)
+                    {
+                        args->push_back(cur);
+                        return true;
+                    }
+                    --depth;
+                }
+                else if (c == ',' && depth == 0)
+                {
+                    args->push_back(cur);
+                    cur.clear();
+                    continue;
+                }
+            }
+            cur += c;
+        }
+        return false;
+    }
+
+    std::string Fill(std::string text, const std::vector<std::string>& args)
+    {
+        for (size_t i = 0; i < args.size(); ++i)
+        {
+            std::string mark = "{" + std::to_string(i) + "}";
+            for (size_t p; (p = text.find(mark)) != std::string::npos;)
+                text.replace(p, mark.size(), args[i]);
+        }
+        return text;
+    }
+
+    // Главный поток игры: обернуть вызовы в состоянии. true — обёртки на месте.
+    bool ApplyWrap(const Injection& inj, uint8_t* sm, uint8_t* state, bool quiet)
+    {
+        uint8_t* list = Engine::StateCode(state);
+        std::string marker = "'ML:" + inj.line.substr(inj.line.find("'ML:") + 4, inj.line.find('|') - inj.line.find("'ML:") - 4);
+        std::vector<std::pair<int, std::string>> replaced; // номер строки -> исходная строка
+        int count = Engine::ListCount(list);
+        for (int i = 0; i < count; ++i)
+        {
+            std::string original = Engine::ListGet(list, i);
+            if (original.find("{ML:orig=") != std::string::npos && original.find(marker) != std::string::npos)
+                return true; // уже обёрнуто
+            std::vector<std::string> args;
+            if (original.find(inj.wrapCall + "(") == std::string::npos || original.find('}') != std::string::npos ||
+                !CallArgs(original, inj.wrapCall, &args))
+                continue;
+            size_t start = original.find_first_not_of(" \t");
+            size_t end = original.find_last_not_of(" \t");
+            std::string core = original.substr(start, end - start + 1);
+            bool semicolon = !core.empty() && core.back() == ';';
+            if (semicolon)
+                core.pop_back();
+            std::string wrapped = original.substr(0, start) + "begin " + Fill(inj.line, args) + "; " + core + " end" +
+                                  (semicolon ? ";" : "") + "{ML:orig=" + original + "}";
+            Engine::ListDelete(list, i);
+            Engine::ListInsert(list, i, wrapped);
+            replaced.push_back({ i, original });
+        }
+        if (replaced.empty())
+        {
+            if (!quiet)
+                LOG_WARN("Events: no %s( calls in '%s' (%s)", inj.wrapCall.c_str(), inj.state.c_str(), inj.library.c_str());
+            return false;
+        }
+        Engine::StateReset(state);
+        if (!Engine::StateCompileSafe(sm, state))
+        {
+            for (const auto& [i, original] : replaced)
+            {
+                Engine::ListDelete(list, i);
+                Engine::ListInsert(list, i, original);
+            }
+            Engine::StateReset(state);
+            LOG_ERROR("Events: wrapping %s in '%s' broke compilation — reverted", inj.wrapCall.c_str(), inj.state.c_str());
+            return false;
+        }
+        LOG_DEV("Events: %s — wrapped %d call(s) of %s in '%s' (%s)", inj.event.c_str(), static_cast<int>(replaced.size()),
+                inj.wrapCall.c_str(), inj.state.c_str(), inj.library.c_str());
+        return true;
+    }
+
     // Главный поток игры. true — строка на месте.
     bool Apply(const Injection& inj, bool quiet)
     {
@@ -183,6 +289,9 @@ namespace
                           inj.library.empty() ? "GUI" : inj.library.c_str());
             return false;
         }
+        if (!inj.wrapCall.empty())
+            return ApplyWrap(inj, sm, state, quiet);
+
         uint8_t* list = Engine::StateCode(state);
         if (Engine::ListIndexOf(list, inj.line) >= 0)
             return true;
@@ -286,6 +395,26 @@ void Events::HookLibraryStateCode(const std::string& library, const std::string&
     });
 }
 
+
+void Events::WrapLibraryCalls(const std::string& library, const std::string& state, const std::string& call,
+                              const std::string& key, const std::string& line)
+{
+    Injection inj;
+    inj.library = library;
+    inj.state = state;
+    inj.atEnd = false;
+    inj.event = key;
+    inj.line = line;
+    inj.wrapCall = call;
+
+    ScriptRunner::RunOnGameThread([inj] {
+        for (const auto& existing : g_injections)
+            if (existing.event == inj.event)
+                return;
+        Apply(inj, false);
+        g_injections.push_back(inj);
+    });
+}
 
 void Events::Emit(const std::string& event, const std::string& payload)
 {

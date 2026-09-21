@@ -332,7 +332,9 @@ namespace
         ImGui_ImplOpenGL2_NewFrame();
         ImGui_ImplWin32_NewFrame();
         ImGui::NewFrame();
-        ImGui::GetIO().MouseDrawCursor = true; // курсор игры может быть своим/скрытым
+        // Свой курсор — когда ввод у нас (меню модлоадера, страница-меню). В режиме HUD курсор
+        // рисует игра, иначе их будет два.
+        ImGui::GetIO().MouseDrawCursor = g_open || !WebUi::Passthrough();
 
         // Кадр браузера — в самый низ списка отрисовки, под меню модлоадера. Рисуем его здесь,
         // а не своим кодом: тут состояние OpenGL уже приведено в порядок и будет восстановлено.

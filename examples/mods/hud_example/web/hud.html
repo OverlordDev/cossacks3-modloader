@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>HUD</title>
+<!--
+  Интерфейс партии. Страница во весь экран и прозрачная: где ничего не нарисовано, клики идут
+  в игру (web.passthrough в client.lua). Данные и команды — API модлоадера buildings.* через
+  game.api: те же функции, что у родных кнопок, поэтому цены, доступ и сеть работают как обычно.
+-->
+<style>
+  :root { --gold: #ffdcaa; --dim: #a8988a; --edge: #6b5636; --panel: rgba(18, 15, 11, .9); }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
+               font-family: Georgia, serif; color: var(--gold); user-select: none; }
+
+  #panel {
+    position: absolute; right: 16px; bottom: 16px; width: 420px;
+    background: var(--panel); border: 2px solid var(--edge); border-radius: 8px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, .6); padding: 12px 14px;
+    display: none;
+  }
+  #panel.shown { display: block; }
+  h3 { margin: 0 0 6px; font-size: 18px; }
+  .hp { height: 8px; background: rgba(0,0,0,.5); border-radius: 4px; overflow: hidden; margin-bottom: 10px; }
+  .hp > div { height: 100%; background: linear-gradient(90deg, #8b2d1e, #d4a24a); }
+  .section { font-size: 12px; color: var(--dim); margin: 8px 0 4px; text-transform: uppercase; letter-spacing: .05em; }
+
+  .grid { display: flex; flex-wrap: wrap; gap: 6px; }
+  .item {
+    width: 126px; padding: 6px 8px; font-size: 13px; cursor: pointer;
+    background: rgba(90, 69, 38, .45); border: 1px solid var(--edge); border-radius: 5px;
+  }
+  .item:hover { background: rgba(130, 100, 55, .6); }
+  .item.off { opacity: .45; cursor: default; }
+  .item .cost { color: var(--dim); font-size: 11px; margin-top: 2px; }
+
+  .queue .row { display: flex; justify-content: space-between; font-size: 13px; padding: 2px 0; }
+  .bar { height: 4px; background: rgba(0,0,0,.5); border-radius: 2px; overflow: hidden; }
+  .bar > div { height: 100%; background: #d4a24a; }
+  #status { font-size: 12px; color: #f99; min-height: 14px; margin-top: 6px; }
+</style>
+</head>
+<body>
+  <div id="panel">
+    <h3 id="title"></h3>
+    <div class="hp"><div id="hp"></div></div>
+    <div class="section">Нанять (ЛКМ — 1, Shift — 5, ПКМ — отменить)</div>
+    <div class="grid" id="produce"></div>
+    <div class="section" id="upgTitle">Улучшения</div>
+    <div class="grid" id="upgrades"></div>
+    <div class="section">Очередь</div>
+    <div class="queue" id="queue"></div>
+    <div id="status"></div>
+  </div>
+
+<script>
+  const RES = ['еда', 'дерево', 'камень', 'золото', 'железо', 'уголь'];
+  const $ = id => document.getElementById(id);
+  let current = 0;
+
+  function cost(price) {
+    return (price || []).map((v, i) => v ? v + ' ' + RES[i] : '').filter(Boolean).join(', ') || 'бесплатно';
+  }
+
+  async function act(name, ...args) {
+    try { await game.api(name, ...args); $('status').textContent = ''; }
+    catch (e) { $('status').textContent = e.message.replace(/^.*buildings[.:]\s*/, ''); }
+    refresh();
+  }
+
+  function item(text, sub, enabled, onLeft, onRight) {
+    const d = document.createElement('div');
+    d.className = 'item' + (enabled ? '' : ' off');
+    d.innerHTML = '<div></div><div class="cost"></div>';
+    d.firstChild.textContent = text;
+    d.lastChild.textContent = sub;
+    d.addEventListener('mousedown', e => {
+      if (e.button === 0 && enabled) onLeft(e);
+      if (e.button === 2 && onRight) onRight(e);
+    });
+    d.addEventListener('contextmenu', e => e.preventDefault());
+    return d;
+  }
+
+  function draw(b) {
+    $('title').textContent = b.sid + (b.built ? '' : ' (строится ' + Math.round(b.buildprogress * 100) + '%)');
+    $('hp').style.width = (b.maxhp ? 100 * b.hp / b.maxhp : 0) + '%';
+
+    const produce = $('produce');
+    produce.replaceChildren(...(b.produce || []).map(u => item(u.sid, cost(u.price), u.available && b.built,
+      e => act('buildings.produce', b.handle, u.sid, e.shiftKey ? 5 : 1),
+      () => act('buildings.cancel', b.handle, u.sid, 1))));
+
+    const ups = b.upgrades || [];
+    $('upgTitle').style.display = ups.length ? '' : 'none';
+    $('upgrades').replaceChildren(...ups.map(u => item(u.sid, cost(u.price) + ', ' + u.time + ' c', u.available && b.built,
+      () => act('buildings.upgrade', b.handle, u.sid),
+      () => act('buildings.cancelUpgrade', b.handle, u.sid))));
+
+    $('queue').replaceChildren(...(b.queue || []).map(q => {
+      const r = document.createElement('div');
+      r.innerHTML = '<div class="row"><span></span><span></span></div><div class="bar"><div></div></div>';
+      r.querySelector('span').textContent = q.sid;
+      r.querySelectorAll('span')[1].textContent = q.amount < 0 ? '∞' : '× ' + q.amount;
+      r.querySelector('.bar > div').style.width = Math.round((q.progress || 0) * 100) + '%';
+      return r;
+    }));
+  }
+
+  async function refresh() {
+    try {
+      const h = await game.api('buildings.selected');
+      if (!h) { $('panel').classList.remove('shown'); current = 0; return; }
+      const b = await game.api('buildings.info', h);
+      current = h;
+      draw(b);
+      $('panel').classList.add('shown');
+    } catch (e) {
+      $('status').textContent = e.message;
+    }
+  }
+
+  // window.game модлоадер добавляет после загрузки страницы.
+  const wait = setInterval(() => {
+    if (typeof window.game !== 'object') return;
+    clearInterval(wait);
+    refresh();
+    setInterval(refresh, 400);
+  }, 50);
+</script>
+</body>
+</html>

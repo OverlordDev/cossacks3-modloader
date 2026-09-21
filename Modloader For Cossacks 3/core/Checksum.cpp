@@ -81,7 +81,10 @@ namespace
             for (int j = 0; j < lines; ++j)
             {
                 std::string line = Engine::ListGet(list, j);
-                if (!filter || !IsOurLine(line))
+                size_t orig = filter ? line.find("{ML:orig=") : std::string::npos;
+                if (orig != std::string::npos && line.back() == '}')
+                    text += line.substr(orig + 9, line.size() - orig - 10) + "\r\n"; // обёртка: исходная строка
+                else if (!filter || !IsOurLine(line))
                     text += line + "\r\n";
             }
             all += Md5(text);

@@ -526,6 +526,16 @@ namespace
         lua_pushstring(L, event.c_str());
         // События объектов (unit.spawn, building.death ...) приходят "хендл|тип": отдаём сразу
         // числом и строкой — function(event, handle, basename).
+        if (event == "unit.damage")
+        {
+            int a = 0, t = 0, d = 0;
+            sscanf_s(payload.c_str(), "%d|%d|%d", &a, &t, &d);
+            lua_pushinteger(L, a);
+            lua_pushinteger(L, t);
+            lua_pushinteger(L, d);
+            Call(4, 0, who);
+            return;
+        }
         size_t bar = payload.find('|');
         if ((event.rfind("unit.", 0) == 0 || event.rfind("building.", 0) == 0) && bar != std::string::npos)
         {
@@ -968,6 +978,20 @@ namespace
     }
 
     // web.eval("document.title = 'x'") — выполнить код в открытой странице.
+    // web.passthrough(true) — режим HUD: прозрачные места страницы пропускают мышь в игру.
+    int l_webPassthrough(lua_State* L)
+    {
+        WebUi::SetPassthrough(lua_toboolean(L, 1) != 0);
+        return 0;
+    }
+
+    // web.url() — адрес открытой страницы ("" — ничего не открыто).
+    int l_webUrl(lua_State* L)
+    {
+        lua_pushstring(L, WebUi::CurrentUrl().c_str());
+        return 1;
+    }
+
     int l_webEval(lua_State* L)
     {
         WebUi::RequestEval(luaL_checkstring(L, 1));
@@ -1538,6 +1562,8 @@ end
             SetPlain("reload", l_webReload);
             SetPlain("isOpen", l_webIsOpen);
             SetPlain("eval", l_webEval);
+            SetPlain("passthrough", l_webPassthrough);
+            SetPlain("url", l_webUrl);
             lua_setfield(L, -2, "web");
 
             lua_newtable(L); // ui: своё (кнопки, клики, перехват) + общее из базового окружения через __index
