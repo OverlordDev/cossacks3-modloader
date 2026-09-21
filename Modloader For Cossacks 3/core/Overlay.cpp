@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "CrashHandler.h"
 #include "Overlay.h"
 #include "GraphicsTab.h"
 #include "Console.h"
@@ -277,6 +278,7 @@ namespace
 
     void RenderFrame()
     {
+        CrashHandler::Scope scope("оверлей: отрисовка ImGui и слоя браузера");
         // Сохраняем и нейтрализуем то, что движок мог оставить к концу кадра (шейдер, VBO, FBO, доп. текстурные
         // блоки, туман, матрицу текстуры) — бэкенд OpenGL2 рассчитан на чистый фиксированный конвейер.
         GLint program = 0, arrayBuffer = 0, elementBuffer = 0, framebuffer = 0;

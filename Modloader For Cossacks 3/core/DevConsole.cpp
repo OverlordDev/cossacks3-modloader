@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "CrashHandler.h"
 #include "DevConsole.h"
 #include "Assets.h"
 #include "Checksum.h"
@@ -24,6 +25,22 @@ namespace fs = std::filesystem;
 
 namespace
 {
+    // .crashtest av: настоящее нарушение доступа, пойманное здесь же, — проверка отчётов о сбоях
+    // без падения игры (обработчик видит исключение раньше, чем этот __except).
+    bool TriggerAccessViolation()
+    {
+        __try
+        {
+            volatile int* p = reinterpret_cast<volatile int*>(0x24);
+            *p = 1;
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            return true;
+        }
+        return false;
+    }
+
     std::atomic<DevConsole::ExitRequest> g_exit = DevConsole::ExitRequest::None;
 
     // Функции библиотеки скриптов игры (data/scripts/lib/*.script) — вызываются из скриптов так же, как нативы.
@@ -166,6 +183,7 @@ namespace
             "  .mods               Lua-моды (modloader/mods/*/manifest.lua) и их статус\n"
             "  .lua reload         перезагрузить все Lua-моды\n"
             "  .natives            количество нативов\n"
+            "  .crashtest [av]     отчёт о сбое вручную / настоящий сбой (пойманный) — проверка modloader\\crashes\n"
             "  .reload             перезагрузить модлоадер из свежей сборки (при инжекте через Cossacks3Loader.dll)\n"
             "  .unload             выгрузить модлоадер\n"
             "  .help               эта справка");
@@ -246,6 +264,17 @@ namespace
                 LuaHost::PrintMods();
             else if (cmd == "assets")
                 Assets::Print();
+            else if (cmd == "crashtest")
+            {
+                CrashHandler::Scope scope("консоль: .crashtest " + arg);
+                if (arg == "av")
+                {
+                    TriggerAccessViolation();
+                    Console::Print("crashtest: access violation raised and caught — see modloader\\crashes");
+                }
+                else
+                    Console::Print("crashtest: report written to %s", CrashHandler::ReportNow("ручной отчёт (.crashtest)").c_str());
+            }
             else if (cmd == "web")
             {
                 if (arg.empty() || arg == "status")

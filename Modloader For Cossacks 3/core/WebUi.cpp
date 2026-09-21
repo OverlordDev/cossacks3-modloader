@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "CrashHandler.h"
 #include "WebUi.h"
 #include "Console.h"
 #include "LuaHost.h"
@@ -754,6 +755,7 @@ void WebUi::RequestReload()
 
 void WebUi::OnFrame(HWND window)
 {
+    CrashHandler::Scope scope("браузер: кадр CEF (сообщения, ввод, ответы страниц)");
     // CEF обязан жить в одном потоке: где подняли, там и качаем сообщения. Во время загрузки карты
     // игра рисует прогресс-бар отдельным потоком, и кадры могут прийти оттуда — это надо видеть.
     static DWORD s_thread = 0;

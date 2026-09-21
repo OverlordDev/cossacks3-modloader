@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "CrashHandler.h"
 #include "Loader.h"
 #include "Assets.h"
 #include "Checksum.h"
@@ -36,7 +37,7 @@ namespace
     // игра дошла до главного меню, картинку можно убирать. Без лаунчера события просто нет.
     void SignalReadyToLauncher()
     {
-        if (HANDLE ready = OpenEventW(EVENT_MODIFY_STATE, FALSE, L"Local\Cossacks3Modloader.Ready"))
+        if (HANDLE ready = OpenEventW(EVENT_MODIFY_STATE, FALSE, L"Local\\Cossacks3Modloader.Ready"))
         {
             SetEvent(ready);
             CloseHandle(ready);
@@ -89,6 +90,7 @@ DWORD WINAPI Loader::MainThread(LPVOID param)
 
     Console::Init(L"Cossacks 3 Modloader");
     LOG_INFO("Cossackss 3 Modloader injected");
+    CrashHandler::Install(); // как можно раньше: сбой при установке хуков тоже должен дать отчёт
     LOG_INFO("Game base: %p", GetModuleHandleW(nullptr));
 
     ScriptRunner::Install();
@@ -151,6 +153,7 @@ DWORD WINAPI Loader::MainThread(LPVOID param)
     ScriptRunner::Uninstall();
     Hooks::Shutdown();
     Sleep(200); // даём потокам выйти из наших detour-функций
+    CrashHandler::Uninstall();
     Console::Shutdown(); // консоль загрузчика не закрывается — она его
 
     // Загружены через Cossacks3Loader.dll — сообщаем ему; он дождётся выгрузки и при reload загрузит свежую копию.

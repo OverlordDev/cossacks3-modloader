@@ -7,7 +7,7 @@
 namespace Splash
 {
     // Имя события, которым модлоадер сообщает «игра дошла до меню».
-    inline constexpr wchar_t kReadyEventName[] = L"Local\Cossacks3Modloader.Ready";
+    inline constexpr wchar_t kReadyEventName[] = L"Local\\Cossacks3Modloader.Ready";
 
     // Создать событие до запуска игры, чтобы модлоадер внутри неё смог его открыть.
     HANDLE CreateReadyEvent();

@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "CrashHandler.h"
 #include "Events.h"
 #include "Console.h"
 #include "Engine.h"
@@ -49,6 +50,7 @@ namespace
 
     void Dispatch(const std::string& event, const std::string& payload)
     {
+        CrashHandler::Scope scope("событие " + event + (payload.empty() ? "" : " (" + payload.substr(0, 80) + ")"));
         std::vector<Events::Handler> handlers;
         {
             std::lock_guard lock(g_mutex);

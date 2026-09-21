@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "CrashHandler.h"
 #include "NativeCall.h"
 #include "Engine.h"
 #include "GameApi.h"
@@ -221,6 +222,7 @@ bool NativeCall::Invoke(const Signature& sig, const std::vector<Value>& args, Va
     uint32_t eaxValue = 0;
     double st0 = 0;
     DWORD exc = 0;
+    CrashHandler::Guard guard; // сбой внутри натива ловим сами — отчёт о сбое не нужен
     if (!RawCall(sig.fn, stack.data(), static_cast<int>(stack.size()), sig.result == Type::Float, &eaxValue, &st0, &exc))
     {
         char buf[64];

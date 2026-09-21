@@ -2,6 +2,7 @@
 #include "Console.h"
 
 #include <cstdarg>
+#include <deque>
 #include <share.h>
 #include <mutex>
 #include <atomic>
@@ -36,6 +37,9 @@ namespace
 
     FILE* g_file = nullptr;
 
+    std::deque<std::string> g_recent; // под g_writeMutex
+    constexpr size_t kRecentMax = 200;
+
     // В файл — без цветовых кодов консоли.
     void WriteFile(const SYSTEMTIME& t, const char* tag, const char* msg)
     {
@@ -62,6 +66,13 @@ namespace
             }
             clean += *p;
         }
+        char head[64] = "";
+        if (tag)
+            snprintf(head, sizeof(head), "[%02d:%02d:%02d] [%s] ", t.wHour, t.wMinute, t.wSecond, tag);
+        g_recent.push_back(head + clean);
+        if (g_recent.size() > kRecentMax)
+            g_recent.pop_front();
+
         if (tag)
             std::fprintf(g_file, "[%02d:%02d:%02d] [%s] %s\n", t.wHour, t.wMinute, t.wSecond, tag, clean.c_str());
         else
@@ -241,4 +252,13 @@ bool Console::Dev()
 void Console::Dev(const char* fmt, ...)
 {
     va_list a; va_start(a, fmt); Write("\x1b[36m", "DEV", fmt, a); va_end(a);
+}
+
+std::vector<std::string> Console::Recent(size_t count)
+{
+    std::unique_lock lock(g_writeMutex, std::try_to_lock);
+    if (!lock.owns_lock())
+        return {};
+    size_t from = g_recent.size() > count ? g_recent.size() - count : 0;
+    return { g_recent.begin() + from, g_recent.end() };
 }

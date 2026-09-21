@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "CrashHandler.h"
 #include "LuaHost.h"
 #include "Console.h"
 #include "Events.h"
@@ -186,6 +187,7 @@ namespace
     // pcall с трассировкой; false — ошибка уже залогирована.
     bool Call(int nargs, int nresults, const std::string& who)
     {
+        CrashHandler::Scope scope("Lua: " + who);
         int base = lua_gettop(L) - nargs;
         lua_pushcfunction(L, Traceback);
         lua_insert(L, base);

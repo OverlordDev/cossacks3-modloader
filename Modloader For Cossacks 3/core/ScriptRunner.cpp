@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "CrashHandler.h"
 #include "ScriptRunner.h"
 #include "GameApi.h"
 #include "Console.h"
@@ -280,6 +281,8 @@ namespace
 
 bool ScriptRunner::Call(const std::string& code, const std::string& arg, std::string* result)
 {
+    CrashHandler::Scope scope("скрипт игры: " + code.substr(0, 160) + (code.size() > 160 ? "..." : "") +
+                              (arg.empty() ? "" : "  [ML_ARG=" + arg.substr(0, 80) + "]"));
     uint8_t* sm = Engine::GuiStateMachine();
     if (!sm)
         return false;
