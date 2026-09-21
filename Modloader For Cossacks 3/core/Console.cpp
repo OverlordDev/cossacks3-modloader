@@ -2,6 +2,7 @@
 #include "Console.h"
 
 #include <cstdarg>
+#include <share.h>
 #include <mutex>
 #include <atomic>
 
@@ -44,7 +45,7 @@ namespace
             if (tried)
                 return;
             tried = true;
-            g_file = _wfopen(ModloaderPath(L"modloader.log").c_str(), L"w");
+            g_file = _wfsopen(ModloaderPath(L"modloader.log").c_str(), L"w", _SH_DENYWR); // читать лог можно, пока игра идёт
             if (!g_file)
                 return;
         }
