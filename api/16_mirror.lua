@@ -33,9 +33,10 @@ local function textOf(h, class, press)
     return N.GetGUIElementText(h) or ""
 end
 
--- Пустые и служебные картинки не рисуем: на странице свой фон.
-local function isDecor(material)
-    return material == "" or material == "misc.blank" or material:find("^blank")
+-- Из картинок берём только подложки окон (*.background): рамки, углы и узоры собраны из
+-- десятков кусков, а у страницы своя рамка.
+local function isPanel(material)
+    return material:find("background") ~= nil
 end
 
 local function classOf(h)
@@ -50,7 +51,7 @@ local function kindOf(h, class, press, material)
     if normal:find("^checkbox") then return "checkbox" end
     if press ~= "" then return "button" end
     if textOf(h, class, press) ~= "" then return "text" end
-    if not isDecor(material) then return "image" end
+    if isPanel(material) then return "image" end
     return nil
 end
 
@@ -79,10 +80,12 @@ local function walk(h, out, depth)
     local kind = kindOf(h, class, press, material)
 
     if kind then
-        -- Рамка у движка: y отсчитывается вверх от верхнего края экрана, высота отрицательная
-        -- (сверху вниз). Переводим в обычные экранные координаты.
-        local x, y, w, hh = N.GetGUIElementBoundingBox(h)
-        if x then y, hh = -y, math.abs(hh) end
+        -- Рамка у движка: x, y — левый верхний угол на экране, высота со знаком минус. И она
+        -- охватывает всех детей: у контейнера это не его размер. Поэтому ширину и высоту берём
+        -- собственные, а угол — из рамки, только если детей не видно (иначе он тоже чужой).
+        local x, y, bw, bh = N.GetGUIElementBoundingBox(h)
+        local w, hh = N.GetGUIElementWidth(h) or 0, N.GetGUIElementHeight(h) or 0
+        if x and (N.GetGUIElementChildrenCount(h) or 0) == 0 then w, hh = bw, math.abs(bh) end
         if x and w > 0 and hh > 0 then
             local e = {
                 id = h, kind = kind, x = x, y = y, w = w, h = hh,
@@ -148,24 +151,30 @@ function mirror.input(h, text)
     if (N.GetGUIElementPressState(h) or "") ~= "" then send(h, "change") end
 end
 
--- Отладка: сырые ответы нативов по первым видимым элементам (с текстом ошибки, если натив упал).
---   =mirror.debug(8)
+-- Отладка: сырые ответы нативов по видимым элементам экрана (HUD партии пропускается).
+--   =mirror.debug(30)
 function mirror.debug(limit)
     local rows, count = {}, 0
     local function raw(name, ...)
         local ok, a, b, c, d = pcall(native[name], ...)
-        if not ok then return "ERR " .. tostring(a) end
+        if not ok then return "ERR" end
         if b ~= nil then return table.concat({ tostring(a), tostring(b), tostring(c), tostring(d) }, ",") end
         return tostring(a)
     end
     local function visit(h, depth)
-        if count >= (limit or 8) or depth > 40 then return end
-        if raw("GetGUIElementVisible", h) == "true" and depth > 0 then
+        if count >= (limit or 30) or depth > 40 then return end
+        if raw("GetGUIElementVisible", h) ~= "true" then return end
+        local class = raw("GetObjectClassNameByHandle", h)
+        if class == "TXGroupHUDCollection" then return end
+        if depth > 0 then
             count = count + 1
-            rows[#rows + 1] = string.format("%d d=%d vis class=%s name=%s press=%s mat=%s box=%s",
-                h, depth, raw("GetObjectClassNameByHandle", h), raw("GetGUIElementNameByIndex", h),
-                raw("GetGUIElementPressState", h), raw("GetGUIElementMaterial", h),
-                raw("GetGUIElementBoundingBox", h))
+            local text = class == "TOSWBaseGuiTextControl" and raw("GetGUIElementText", h) or ""
+            rows[#rows + 1] = string.format("d=%d %s %s press=%s mat=%s box=%s pos=%s,%s size=%s,%s align=%s/%s text=%s",
+                depth, class, raw("GetGUIElementNameByIndex", h), raw("GetGUIElementPressState", h),
+                raw("GetGUIElementMaterial", h), raw("GetGUIElementBoundingBox", h),
+                raw("GetGUIElementPositionX", h), raw("GetGUIElementPositionY", h),
+                raw("GetGUIElementWidth", h), raw("GetGUIElementHeight", h),
+                raw("GetGUIElementHAlign", h), raw("GetGUIElementVAlign", h), text:sub(1, 30))
         end
         local n = tonumber(raw("GetGUIElementChildrenCount", h)) or 0
         for i = 0, n - 1 do visit(tonumber(raw("GetGUIElementChildrenByIndex", h, i)), depth + 1) end
