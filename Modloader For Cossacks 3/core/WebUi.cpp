@@ -797,6 +797,13 @@ bool WebUi::HasFrame()
     return !g_pixels.empty();
 }
 
+void WebUi::OnContextLost()
+{
+    std::lock_guard lock(g_frameMutex);
+    g_texture = g_popupTexture = 0; // удалять нечего: они принадлежали старому контексту
+    g_frameDirty = g_popupDirty = true;
+}
+
 unsigned int WebUi::Present(int* width, int* height)
 {
     if (!HasFrame())

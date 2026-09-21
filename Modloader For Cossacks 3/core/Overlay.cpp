@@ -392,6 +392,24 @@ void Overlay::OnSwapBuffers(HDC dc)
         Init(hwnd);
     }
 
+    // Игра может пересоздать контекст OpenGL (при загрузке партии — новый DC и контекст).
+    // Текстуры ImGui и страницы остались в старом: без пересоздания слой просто не виден.
+    static HGLRC lastContext = nullptr;
+    HGLRC context = wglGetCurrentContext();
+    if (lastContext && context != lastContext)
+    {
+        for (ImTextureData* tex : ImGui::GetPlatformIO().Textures)
+        {
+            if (tex->Status == ImTextureStatus_Destroyed)
+                continue;
+            tex->SetTexID(ImTextureID_Invalid);
+            tex->SetStatus(ImTextureStatus_WantCreate);
+        }
+        WebUi::OnContextLost();
+        LOG_INFO("Overlay: OpenGL context changed (%p -> %p), textures recreated", lastContext, context);
+    }
+    lastContext = context;
+
     GraphicsTab::Tick();
 
     // Веб-слой рисуется под меню модлоадера: оно должно оставаться сверху.
