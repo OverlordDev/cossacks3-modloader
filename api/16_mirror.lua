@@ -88,6 +88,17 @@ local function walk(h, out, depth, clip)
     if class == "TXGuiLayer" and not leaf then
         local x, y = N.GetGUIElementBoundingBox(h)
         local w, hh = N.GetGUIElementWidth(h) or 0, N.GetGUIElementHeight(h) or 0
+        -- Слой бывает высотой во весь текст, а видимое окно — его родитель: обрезаем по нему.
+        local p = N.GetGUIElementParentByIndex(h)
+        local px, py = p and N.GetGUIElementBoundingBox(p)
+        if x and px then
+            local pw, ph = N.GetGUIElementWidth(p) or 0, N.GetGUIElementHeight(p) or 0
+            if pw > 0 and ph > 0 then
+                local x2, y2 = math.min(x + w, px + pw), math.min(y + hh, py + ph)
+                x, y = math.max(x, px), math.max(y, py)
+                w, hh = x2 - x, y2 - y
+            end
+        end
         if x and w > 0 and hh > 0 then
             clip = h
             clips[#clips + 1] = { id = h, x = x, y = y, w = w, h = hh }
@@ -193,6 +204,40 @@ function mirror.debug(limit)
                 raw("GetGUIElementPositionX", h), raw("GetGUIElementPositionY", h),
                 raw("GetGUIElementWidth", h), raw("GetGUIElementHeight", h),
                 raw("GetGUIElementHAlign", h), raw("GetGUIElementVAlign", h), text:sub(1, 30))
+        end
+        local n = tonumber(raw("GetGUIElementChildrenCount", h)) or 0
+        for i = 0, n - 1 do visit(tonumber(raw("GetGUIElementChildrenByIndex", h, i)), depth + 1) end
+    end
+    visit(native.GetGUIElementTopIndexByName("top"), 0)
+    return table.concat(rows, "\n")
+end
+
+-- Отладка: цепочка родителей у длинных текстов (где игра их обрезает).
+--   =mirror.debugText()
+function mirror.debugText()
+    local rows = {}
+    local function raw(name, ...)
+        local ok, a, b, c, d = pcall(native[name], ...)
+        if not ok then return "ERR" end
+        if b ~= nil then return table.concat({ tostring(a), tostring(b), tostring(c), tostring(d) }, ",") end
+        return tostring(a)
+    end
+    local function visit(h, depth)
+        if depth > 40 or raw("GetGUIElementVisible", h) ~= "true" then return end
+        local class = raw("GetObjectClassNameByHandle", h)
+        if class == "TXGroupHUDCollection" then return end
+        if class == "TOSWBaseGuiTextControl" and #raw("GetGUIElementText", h) > 200 then
+            local p = h
+            while p and p ~= 0 do
+                rows[#rows + 1] = string.format("  %s %s box=%s size=%s,%s pos=%s,%s align=%s/%s scroll=%s,%s",
+                    raw("GetObjectClassNameByHandle", p), raw("GetGUIElementNameByIndex", p),
+                    raw("GetGUIElementBoundingBox", p), raw("GetGUIElementWidth", p), raw("GetGUIElementHeight", p),
+                    raw("GetGUIElementPositionX", p), raw("GetGUIElementPositionY", p),
+                    raw("GetGUIElementHAlign", p), raw("GetGUIElementVAlign", p),
+                    raw("GetGUIElementHScroll", p), raw("GetGUIElementVScroll", p))
+                p = tonumber(raw("GetGUIElementParentByIndex", p))
+            end
+            rows[#rows + 1] = "--"
         end
         local n = tonumber(raw("GetGUIElementChildrenCount", h)) or 0
         for i = 0, n - 1 do visit(tonumber(raw("GetGUIElementChildrenByIndex", h, i)), depth + 1) end
