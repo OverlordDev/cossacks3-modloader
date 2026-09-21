@@ -927,7 +927,12 @@ void WebUi::OnFrame(HWND window)
 
     WatchPageFiles();
 
-    if (GetCurrentThreadId() == g_cefThread)
+    // CefDoMessageLoopWork крутит свой цикл Windows-сообщений и забирает из очереди потока всё
+    // подряд — в том числе клавиши и мышь, адресованные игре, мимо её обработчика клавиатуры
+    // (Delphi). Из-за этого в полях ввода игры терялась часть нажатий. Пока в очереди ждёт ввод,
+    // браузер не качаем: игра заберёт его своим циклом, а CEF доработает на следующем кадре.
+    // Если открыта наша страница и ввод идёт ей, это не мешает: его доставляем мы сами (OnWndProc).
+    if (GetCurrentThreadId() == g_cefThread && !(HIWORD(GetQueueStatus(QS_INPUT)) & QS_INPUT))
         CefDoMessageLoopWork();
 }
 
