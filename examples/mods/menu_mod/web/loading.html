@@ -140,6 +140,7 @@
   const SLIDE_SECONDS = 7;
 
   bridge.whenReady(async ok => {
+    if (slides.length) return; // список уже передал мод (client.lua) — спрашивать игру незачем
     if (!ok) return document.getElementById('hint').classList.add('shown');
     try {
       const files = (await game.files('../LoadScreen'))

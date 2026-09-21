@@ -20,6 +20,10 @@ namespace Events
 
     // Вставить в состояние GUI свою строку кода (она сама вызывает DScriptSetgDbgString0('ML:...')).
     // key — уникальное имя вставки (для повторов и логов).
+    // Вернуть все вставки прямо сейчас (главный поток игры). Зовётся в начале DoCreate: игра пересобрала
+    // интерфейс и сейчас построит экраны — ждать плановую проверку (раз в секунду) уже поздно.
+    void MaintainNow();
+
     void HookGuiStateCode(const std::string& state, const std::string& key, const std::string& line, bool atEnd = false);
 
     // Сгенерировать событие из C++ (главный поток игры).

@@ -39,9 +39,27 @@ ui.screen("News", function() end)
 
 -- Новая партия (случайная карта, кампания): игра вызывает DoNewGame. Загрузку сохранения это
 -- событие не ловит — там экран показывает сама страница загрузки, сразу после нажатия.
+-- Список картинок передаём странице сразу: пока игра генерирует карту, она почти не отвечает
+-- на запросы, и страница, спрашивающая сама, осталась бы без картинок.
+local function slidesJs()
+    local names = {}
+    for _, name in ipairs(mod.files("LoadScreen")) do
+        if name:lower():match("%.png$") or name:lower():match("%.jpe?g$") or name:lower():match("%.webp$") then
+            names[#names + 1] = '"' .. name:gsub('[\\"]', "\\%0") .. '"'
+        end
+    end
+    return "setSlides([" .. table.concat(names, ",") .. "], 7)"
+end
+
 events.on("game.prepare", function()
     web.open("loading")
+    web.eval(slidesJs())
     log.info("загрузка партии: страница открыта")
+end)
+
+-- Выход из партии: страница меню должна вернуться, даже если игра успела построить родное меню.
+events.on("game.menu", function()
+    if not web.isOpen() then web.open("menu") end
 end)
 
 events.on("game.start", function()

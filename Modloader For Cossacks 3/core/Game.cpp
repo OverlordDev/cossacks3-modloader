@@ -61,6 +61,7 @@ void Game::Install()
     // Наша вставка стоит в начале DoCreate — интерфейс ещё не построен (и дальше пересоздаётся), поэтому
     // game.start / game.menu откладываем до первого такта: к нему интерфейс уже готов и моды могут его менять.
     Events::Subscribe("gui.DoCreate", [](const std::string&, const std::string&) {
+        Events::MaintainNow(); // перехваты экранов (ShowMainMenu...) — до того, как игра их построит
         g_pending = Pending::Resolve; // спросим на первом такте, когда игра уже отвечает
         g_resolveTries = 0;
     });

@@ -183,6 +183,11 @@ bool Events::Install()
     return false;
 }
 
+void Events::MaintainNow()
+{
+    Maintain();
+}
+
 void Events::Update()
 {
     if (GetTickCount64() - g_lastMaintain < 1000)
