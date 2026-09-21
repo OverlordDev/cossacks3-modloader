@@ -410,6 +410,23 @@ void Overlay::OnSwapBuffers(HDC dc)
     }
     lastContext = context;
 
+    // Игра может рисовать в другое окно (при загрузке партии — новый DC). ImGui берёт размер экрана
+    // и ввод из окна, с которым его запустили: со старым окном слой получает нулевой размер.
+    HWND window = WindowFromDC(dc);
+    if (window && window != g_hwnd.load())
+    {
+        HWND old = g_hwnd.load();
+        RestoreWndProc();
+        ImGui_ImplWin32_Shutdown();
+        ImGui_ImplWin32_Init(window);
+        g_hwnd = window;
+        g_unicode = IsWindowUnicode(window) != FALSE;
+        g_origProc = reinterpret_cast<WNDPROC>(g_unicode
+            ? SetWindowLongW(window, GWL_WNDPROC, reinterpret_cast<LONG>(WndProc))
+            : SetWindowLongA(window, GWL_WNDPROC, reinterpret_cast<LONG>(WndProc)));
+        LOG_INFO("Overlay: render window changed %p -> %p", old, window);
+    }
+
     GraphicsTab::Tick();
 
     // Веб-слой рисуется под меню модлоадера: оно должно оставаться сверху.
@@ -440,8 +457,17 @@ void Overlay::OnSwapBuffers(HDC dc)
     if (now - lastReport >= 3000)
     {
         if (WebUi::IsOpen() || dc != lastDc)
-            LOG_INFO("[web] overlay: %d swap(s), %d drawn, page frame %s, dc %p%s", swaps, drawn,
-                     WebUi::HasFrame() ? "yes" : "no", dc, dc != lastDc ? " (new)" : "");
+        {
+            GLint viewport[4] = {}, drawBuffer = 0, fbo = 0;
+            glGetIntegerv(GL_VIEWPORT, viewport);
+            glGetIntegerv(GL_DRAW_BUFFER, &drawBuffer);
+            if (glBindFramebuffer_) glGetIntegerv(kFramebufferBinding, &fbo);
+            ImVec2 size = ImGui::GetIO().DisplaySize;
+            LOG_INFO("[web] overlay: %d swap(s), %d drawn, page frame %s, dc %p%s, wnd %p, display %.0fx%.0f, "
+                     "viewport %dx%d, drawbuf %X, fbo %d, thread %lu", swaps, drawn,
+                     WebUi::HasFrame() ? "yes" : "no", dc, dc != lastDc ? " (new)" : "", WindowFromDC(dc),
+                     size.x, size.y, viewport[2], viewport[3], drawBuffer, fbo, GetCurrentThreadId());
+        }
         lastDc = dc;
         lastReport = now;
         swaps = drawn = 0;
