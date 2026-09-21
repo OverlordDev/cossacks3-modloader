@@ -31,7 +31,7 @@
     font-size: 15px;
     line-height: 1.2;
     text-shadow: 0 1px 3px #000;
-    white-space: pre-wrap;
+    white-space: pre-line;
     pointer-events: none;
   }
 
@@ -117,7 +117,6 @@
     d.style.top = item.y + 'px';
     d.style.width = item.w + 'px';
     d.style.height = item.h + 'px';
-    d.style.zIndex = item.z * 10 + (cls === 'panel' ? 0 : 5);
     if (item.hint) d.title = item.hint;
     return d;
   }
@@ -207,12 +206,15 @@
     busy = true;
     try {
       const snap = await game.api('mirror.snapshot');
+      // Пустая таблица Lua приходит объектом {}, а не массивом.
+      if (!Array.isArray(snap.items)) snap.items = Object.values(snap.items || {});
       const json = JSON.stringify(snap);
       if (json !== lastJson) {
         lastJson = json;
         draw(snap);
       }
-      errorBox.textContent = '';
+      errorBox.textContent = snap.items.length ? '' :
+        `на экране игры ничего не найдено (${JSON.stringify(snap.stats)})`;
     } catch (e) {
       errorBox.textContent = e.message;
     } finally {

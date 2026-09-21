@@ -43,7 +43,7 @@ local function classOf(h)
     return N.GetObjectClassNameByHandle(h) or ""
 end
 
-local function kindOf(h, class, press, material)
+local function kindOf(h, class, press, material, leaf)
     if class == "TXGuiComboBox" then return "combo" end
     if class == "TXGuiListBox" then return "list" end
     if class == "TXEditControl" then return "input" end
@@ -51,7 +51,8 @@ local function kindOf(h, class, press, material)
     if normal:find("^checkbox") then return "checkbox" end
     if press ~= "" then return "button" end
     if textOf(h, class, press) ~= "" then return "text" end
-    if isPanel(material) then return "image" end
+    -- Подложка-контейнер (с видимыми детьми) даёт неверный угол — такие не рисуем.
+    if leaf and isPanel(material) then return "image" end
     return nil
 end
 
@@ -77,7 +78,8 @@ local function walk(h, out, depth)
     if class == "TXGroupHUDCollection" then return end
     local press = N.GetGUIElementPressState(h) or ""
     local material = N.GetGUIElementMaterial(h) or ""
-    local kind = kindOf(h, class, press, material)
+    local leaf = (N.GetGUIElementChildrenCount(h) or 0) == 0
+    local kind = kindOf(h, class, press, material, leaf)
 
     if kind then
         -- Рамка у движка: x, y — левый верхний угол на экране, высота со знаком минус. И она
@@ -85,7 +87,7 @@ local function walk(h, out, depth)
         -- собственные, а угол — из рамки, только если детей не видно (иначе он тоже чужой).
         local x, y, bw, bh = N.GetGUIElementBoundingBox(h)
         local w, hh = N.GetGUIElementWidth(h) or 0, N.GetGUIElementHeight(h) or 0
-        if x and (N.GetGUIElementChildrenCount(h) or 0) == 0 then w, hh = bw, math.abs(bh) end
+        if x and leaf then w, hh = bw, math.abs(bh) end
         if x and w > 0 and hh > 0 then
             local e = {
                 id = h, kind = kind, x = x, y = y, w = w, h = hh,
@@ -95,7 +97,7 @@ local function walk(h, out, depth)
                 tag = N.GetGUIElementTag(h) or 0,
                 enabled = N.GetGUIElementEnabled(h) ~= false,
                 material = material,
-                z = depth,
+                z = #out, -- игра рисует элементы в порядке обхода дерева: позже — выше
             }
             if kind == "checkbox" then e.checked = N.GetGUIElementChecked(h) == true end
             if kind == "combo" or kind == "list" then
