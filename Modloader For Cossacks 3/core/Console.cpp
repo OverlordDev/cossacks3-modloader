@@ -24,19 +24,63 @@ namespace
     ULONGLONG g_lastLineTick = 0;
     constexpr ULONGLONG kPasteGapMs = 120;
 
+    std::wstring ModloaderPath(const wchar_t* name)
+    {
+        wchar_t exe[MAX_PATH];
+        GetModuleFileNameW(nullptr, exe, MAX_PATH);
+        std::wstring path = exe;
+        path.resize(path.find_last_of(L"\\/") + 1);
+        return path + L"modloader\\" + name;
+    }
+
+    FILE* g_file = nullptr;
+
+    // В файл — без цветовых кодов консоли.
+    void WriteFile(const SYSTEMTIME& t, const char* tag, const char* msg)
+    {
+        if (!g_file)
+        {
+            static bool tried = false;
+            if (tried)
+                return;
+            tried = true;
+            g_file = _wfopen(ModloaderPath(L"modloader.log").c_str(), L"w");
+            if (!g_file)
+                return;
+        }
+        std::string clean;
+        for (const char* p = msg; *p; ++p)
+        {
+            if (*p == '\x1b')
+            {
+                while (*p && *p != 'm')
+                    ++p;
+                if (!*p)
+                    break;
+                continue;
+            }
+            clean += *p;
+        }
+        if (tag)
+            std::fprintf(g_file, "[%02d:%02d:%02d] [%s] %s\n", t.wHour, t.wMinute, t.wSecond, tag, clean.c_str());
+        else
+            std::fprintf(g_file, "%s\n", clean.c_str());
+        std::fflush(g_file);
+    }
+
     void Write(const char* color, const char* tag, const char* fmt, va_list args)
     {
-        if (!g_out)
-            return;
-
         char msg[4096];
         vsnprintf(msg, sizeof(msg), fmt, args);
 
         std::lock_guard lock(g_writeMutex);
+        SYSTEMTIME t;
+        GetLocalTime(&t);
+        WriteFile(t, tag, msg);
+        if (!g_out)
+            return;
         if (tag)
         {
-            SYSTEMTIME t;
-            GetLocalTime(&t);
             std::printf("\x1b[90m[%02d:%02d:%02d]\x1b[0m %s[%s]\x1b[0m %s\n", t.wHour, t.wMinute, t.wSecond, color, tag, msg);
         }
         else
@@ -185,4 +229,15 @@ void Console::Error(const char* fmt, ...)
 void Console::Print(const char* fmt, ...)
 {
     va_list a; va_start(a, fmt); Write(nullptr, nullptr, fmt, a); va_end(a);
+}
+
+bool Console::Dev()
+{
+    static const bool dev = GetFileAttributesW(ModloaderPath(L"dev.txt").c_str()) != INVALID_FILE_ATTRIBUTES;
+    return dev;
+}
+
+void Console::Dev(const char* fmt, ...)
+{
+    va_list a; va_start(a, fmt); Write("\x1b[36m", "DEV", fmt, a); va_end(a);
 }

@@ -353,7 +353,7 @@ window.game = {
                         ++distinct;
                 }
                 size_t mid = count / 2;
-                LOG_INFO("[web] frame %dx%d: first BGRA=%02X %02X %02X %02X, middle BGRA=%02X %02X %02X %02X, "
+                LOG_DEV("[web] frame %dx%d: first BGRA=%02X %02X %02X %02X, middle BGRA=%02X %02X %02X %02X, "
                          "opaque %zu%%, differing pixels %zu%%",
                          width, height, px[0], px[1], px[2], px[3],
                          px[mid * 4], px[mid * 4 + 1], px[mid * 4 + 2], px[mid * 4 + 3],

@@ -456,14 +456,14 @@ void Overlay::OnSwapBuffers(HDC dc)
     ULONGLONG now = GetTickCount64();
     if (now - lastReport >= 3000)
     {
-        if (WebUi::IsOpen() || dc != lastDc)
+        if (Console::Dev() && (WebUi::IsOpen() || dc != lastDc))
         {
             GLint viewport[4] = {}, drawBuffer = 0, fbo = 0;
             glGetIntegerv(GL_VIEWPORT, viewport);
             glGetIntegerv(GL_DRAW_BUFFER, &drawBuffer);
             if (glBindFramebuffer_) glGetIntegerv(kFramebufferBinding, &fbo);
             ImVec2 size = ImGui::GetIO().DisplaySize;
-            LOG_INFO("[web] overlay: %d swap(s), %d drawn, page frame %s, dc %p%s, wnd %p, display %.0fx%.0f, "
+            LOG_DEV("[web] overlay: %d swap(s), %d drawn, page frame %s, dc %p%s, wnd %p, display %.0fx%.0f, "
                      "viewport %dx%d, drawbuf %X, fbo %d, thread %lu", swaps, drawn,
                      WebUi::HasFrame() ? "yes" : "no", dc, dc != lastDc ? " (new)" : "", WindowFromDC(dc),
                      size.x, size.y, viewport[2], viewport[3], drawBuffer, fbo, GetCurrentThreadId());

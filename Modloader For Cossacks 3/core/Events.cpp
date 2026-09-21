@@ -160,7 +160,7 @@ namespace
             LOG_ERROR("Events: injecting into '%s' broke compilation — reverted", inj.state.c_str());
             return false;
         }
-        LOG_INFO("Events: hooked %s (line %d of state '%s')", inj.event.c_str(), index + 1, inj.state.c_str());
+        LOG_DEV("Events: hooked %s (line %d of state '%s')", inj.event.c_str(), index + 1, inj.state.c_str());
         return true;
     }
 
