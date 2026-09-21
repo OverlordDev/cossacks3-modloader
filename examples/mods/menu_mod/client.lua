@@ -37,37 +37,9 @@ end)
 
 ui.screen("News", function() end)
 
--- Остальные экраны меню — зеркалом (web/mirror.html): игра строит свой экран как обычно, а страница
--- рисует его заново в стиле мода и отдаёт нажатия родной логике. Чтобы сделать экрану свой вид,
--- уберите его отсюда и повесьте screens.replace со своей страницей, как у настроек выше.
---
--- Экраны партии (HUD, миникарта, меню Esc в бою...) сюда не входят: браузер забирает мышь, а в
--- партии она нужна игре.
+-- Остальные экраны меню (случайная карта, кампании, мультиплеер...) — родные экраны игры:
+-- menu.html закрывает браузер, и дальше рисует игра. Флаг партии — чтобы знать, что мы в бою.
 local inGame = false
-
-local MIRROR_SCREENS = {
-    -- Campaign пока родной (решили оставить экран игры) — его открывает menu.html, закрыв браузер.
-    "CustomGame", "HistoricalBattle", "Missions", "Credits", "UnitsStats", "Profile",
-    "MultiplayerLogin", "InternetShell", "CreateJoinRoom", "TournamentsWindow",
-}
--- Всплывающие окна появляются поверх текущего экрана: страницу не меняем, только обновляем зеркало.
-local MIRROR_POPUPS = { "ModalMessage", "QueryWindow", "ConnectStateMessage", "Announcement" }
-
-for _, name in ipairs(MIRROR_SCREENS) do
-    screens.replace(name, function()
-        if inGame then return false end
-        goTo("mirror")
-        web.eval("window.mirror && mirror.refresh()")
-        return false -- родной экран строится: зеркалу нужны его элементы
-    end)
-end
-
-for _, name in ipairs(MIRROR_POPUPS) do
-    screens.replace(name, function()
-        if not inGame and web.isOpen() then web.eval("window.mirror && mirror.refresh()") end
-        return false
-    end)
-end
 
 -- Экран загрузки партии. Родной прогресс-бар игры остаётся под нашей страницей и не виден:
 -- слой браузера рисуется поверх всего кадра.
