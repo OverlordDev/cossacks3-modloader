@@ -139,6 +139,22 @@
 
   const SLIDE_SECONDS = 7;
 
+  // Мод придержал «Начать игру» (client.lua): дождаться, пока первая картинка реально на экране,
+  // и нажать кнопку снова. Дальше игра генерирует карту и почти не рисует — картинка остаётся.
+  window.startWhenShown = async function (state, tag) {
+    if (slides.length) {
+      await new Promise(done => {
+        const img = new Image();
+        img.onload = img.onerror = done;
+        img.src = slides[index % slides.length];
+        setTimeout(done, 2000);
+      });
+    }
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    await new Promise(r => setTimeout(r, 250)); // кадр должен дойти до игры
+    try { await game.tag(state, tag); } catch (e) { console.error(e); }
+  };
+
   bridge.whenReady(async ok => {
     if (slides.length) return; // список уже передал мод (client.lua) — спрашивать игру незачем
     if (!ok) return document.getElementById('hint').classList.add('shown');

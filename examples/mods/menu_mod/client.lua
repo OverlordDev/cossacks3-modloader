@@ -51,10 +51,34 @@ local function slidesJs()
     return "setSlides([" .. table.concat(names, ",") .. "], 7)"
 end
 
-events.on("game.prepare", function()
+-- Случайная карта: как только игра начинает генерировать карту, она перестаёт рисовать кадры,
+-- и открытая в этот момент страница не успевает появиться. Поэтому «Начать игру» придерживаем:
+-- сначала показываем экран загрузки, а страница, уже нарисовав первую картинку, сама жмёт кнопку
+-- ещё раз (startWhenShown в loading.html) — второе нажатие пропускаем к игре.
+local loadingShown, letStartThrough = false, false
+
+local function showLoading()
     web.open("loading")
     web.eval(slidesJs())
+    loadingShown = true
     log.info("загрузка партии: страница открыта")
+end
+
+screens.onButton("CustomGame", function(button, tag)
+    if button ~= "StartGame" then return end
+    if letStartThrough then
+        letStartThrough = false
+        return -- второе нажатие — от страницы: пусть игра начинает
+    end
+    showLoading()
+    letStartThrough = true
+    web.eval(string.format("startWhenShown('%s', %d)", screens.info("CustomGame").event, tag))
+    return true
+end)
+
+-- Остальные пути в партию (кампания, миссии) — экран загрузки открываем здесь.
+events.on("game.prepare", function()
+    if not loadingShown then showLoading() end
 end)
 
 -- Выход из партии: страница меню должна вернуться, даже если игра успела построить родное меню.
@@ -63,6 +87,7 @@ events.on("game.menu", function()
 end)
 
 events.on("game.start", function()
+    loadingShown = false
     web.close()
 end)
 
