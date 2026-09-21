@@ -9,13 +9,18 @@
 --
 -- Вёрстка — в web/. Править её можно без перезапуска игры: команда .web reload.
 
-ui.screen("MainMenu", function()
-    -- Игра перестраивает экран не один раз (смена разрешения, возврат из подменю), а страницу
-    -- достаточно открыть однажды: перезагружать её на каждый вызов — только мигать зря.
-    if not web.isOpen() then
-        web.open("menu")
-        log.info("главное меню: страница открыта")
+-- Перейти на страницу, не перезагружая её, если она уже открыта: игра перестраивает экраны
+-- по нескольку раз (смена разрешения, возврат из подменю), и перезагрузка на каждый раз — мигание.
+local function goTo(page)
+    if web.isOpen() then
+        web.eval(string.format("if (!location.pathname.endsWith('/%s.html')) location.href = '%s.html'", page, page))
+    else
+        web.open(page)
     end
+end
+
+ui.screen("MainMenu", function()
+    goTo("menu")
 end)
 
 ui.screen("Settings", function()
@@ -31,6 +36,37 @@ ui.screen("LoadGame", function()
 end)
 
 ui.screen("News", function() end)
+
+-- Остальные экраны меню — зеркалом (web/mirror.html): игра строит свой экран как обычно, а страница
+-- рисует его заново в стиле мода и отдаёт нажатия родной логике. Чтобы сделать экрану свой вид,
+-- уберите его отсюда и повесьте screens.replace со своей страницей, как у настроек выше.
+--
+-- Экраны партии (HUD, миникарта, меню Esc в бою...) сюда не входят: браузер забирает мышь, а в
+-- партии она нужна игре.
+local inGame = false
+
+local MIRROR_SCREENS = {
+    "CustomGame", "Campaign", "HistoricalBattle", "Missions", "Credits", "UnitsStats", "Profile",
+    "MultiplayerLogin", "InternetShell", "CreateJoinRoom", "TournamentsWindow",
+}
+-- Всплывающие окна появляются поверх текущего экрана: страницу не меняем, только обновляем зеркало.
+local MIRROR_POPUPS = { "ModalMessage", "QueryWindow", "ConnectStateMessage", "Announcement" }
+
+for _, name in ipairs(MIRROR_SCREENS) do
+    screens.replace(name, function()
+        if inGame then return false end
+        goTo("mirror")
+        web.eval("window.mirror && mirror.refresh()")
+        return false -- родной экран строится: зеркалу нужны его элементы
+    end)
+end
+
+for _, name in ipairs(MIRROR_POPUPS) do
+    screens.replace(name, function()
+        if not inGame and web.isOpen() then web.eval("window.mirror && mirror.refresh()") end
+        return false
+    end)
+end
 
 -- Экран загрузки партии. Родной прогресс-бар игры остаётся под нашей страницей и не виден:
 -- слой браузера рисуется поверх всего кадра.
@@ -58,6 +94,7 @@ end
 local loadingShown, letStartThrough = false, false
 
 local function showLoading()
+    inGame = true
     web.open("loading")
     web.eval(slidesJs())
     loadingShown = true
@@ -78,11 +115,13 @@ end)
 
 -- Остальные пути в партию (кампания, миссии) — экран загрузки открываем здесь.
 events.on("game.prepare", function()
+    inGame = true
     if not loadingShown then showLoading() end
 end)
 
 -- Выход из партии: страница меню должна вернуться, даже если игра успела построить родное меню.
 events.on("game.menu", function()
+    inGame = false
     if not web.isOpen() then web.open("menu") end
 end)
 
@@ -97,3 +136,5 @@ events.on("game.tick", function()
         web.close()
     end
 end)
+
+events.on("game.start", function() inGame = true end)

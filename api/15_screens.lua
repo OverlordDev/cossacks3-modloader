@@ -69,13 +69,15 @@ end
 function screens.open(name)
     local s = info(name)
     if not s.show then error("screens.open: '" .. name .. "' has no Show state", 2) end
-    ui.exec(s.show)
+    -- Со страницы (game.api) ui нет — там работают с правами сервера и зовут игру напрямую.
+    if ui then ui.exec(s.show) else game.exec("GUIExecuteState('" .. s.show .. "');") end
 end
 
 function screens.press(name, button)
     local s = info(name)
     if not s.event then error("screens.press: '" .. name .. "' has no Event state", 2) end
-    ui.sendTag(s.event, tagOf(s, name, button))
+    local tag = tagOf(s, name, button)
+    if ui then ui.sendTag(s.event, tag) else game.exec("_gui_SendTagToState('" .. s.event .. "', " .. tag .. ");") end
 end
 
 local function modOnly()

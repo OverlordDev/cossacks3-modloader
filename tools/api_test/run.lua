@@ -13,7 +13,7 @@ dofile(here .. "/fake_game.lua")
 -- Список api/*.lua без модулей файловой системы: имена задаём по шаблону и пробуем открыть.
 local loaded = {}
 for _, name in ipairs({ "00_schema", "01_state", "02_screens_data", "10_profile", "11_options", "12_saves",
-                        "13_players", "14_map", "15_screens", "90_call" }) do
+                        "13_players", "14_map", "15_screens", "16_mirror", "90_call" }) do
     local path = root .. "/api/" .. name .. ".lua"
     local chunk, err = loadfile(path, "t", _ENV)
     assert(chunk, err)

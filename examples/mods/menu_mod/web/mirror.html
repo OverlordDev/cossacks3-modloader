@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Экран игры</title>
+<link rel="stylesheet" href="common.css">
+<!--
+  Зеркало родного интерфейса. Игра строит свой экран как обычно (он остаётся под страницей),
+  а здесь он рисуется заново в стиле мода: те же элементы на тех же местах.
+
+  Данные — game.api('mirror.snapshot') (api/16_mirror.lua). Нажатия уходят обратно в игру
+  (mirror.click / select / input), и дальше работает родная логика экрана: ничего из неё здесь
+  не повторяется. Игра после нажатия перестраивает экран — мод зовёт mirror.refresh().
+
+  Свой вид для конкретного экрана — отдельная страница и screens.replace в client.lua.
+-->
+<style>
+  #stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+
+  .el { position: absolute; display: flex; align-items: center; overflow: hidden; }
+
+  .panel {
+    background: rgba(18, 15, 11, .78);
+    border: 1px solid rgba(107, 86, 54, .75);
+    border-radius: 6px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, .45);
+  }
+
+  .text {
+    color: var(--gold);
+    font-size: 15px;
+    line-height: 1.2;
+    text-shadow: 0 1px 3px #000;
+    white-space: pre-wrap;
+    pointer-events: none;
+  }
+
+  .button {
+    justify-content: center;
+    padding: 0 10px;
+    font: inherit;
+    font-size: 15px;
+    color: var(--gold);
+    text-shadow: 0 1px 3px #000;
+    background: linear-gradient(#5a4526, #3a2b16);
+    border: 1px solid var(--edge);
+    border-radius: 5px;
+    cursor: pointer;
+  }
+  .button.with-text { background: url("button.png") center / 100% 100% no-repeat; border: 0; }
+  .button.icon { background: rgba(0, 0, 0, .25); border-color: rgba(107, 86, 54, .5); }
+  .button:hover { filter: brightness(1.3); color: var(--gold-bright); }
+  .button:active { filter: brightness(.85); }
+  .button.disabled { filter: grayscale(.7) brightness(.6); cursor: default; }
+
+  .checkbox {
+    width: 22px !important; height: 22px !important;
+    justify-content: center;
+    background: rgba(0, 0, 0, .45);
+    border: 1px solid var(--edge);
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .checkbox.on::after { content: "✓"; color: var(--gold-bright); font-size: 16px; }
+
+  select, input {
+    width: 100%; height: 100%;
+    font: inherit; font-size: 14px;
+    color: var(--gold);
+    background: rgba(0, 0, 0, .55);
+    border: 1px solid var(--edge);
+    border-radius: 4px;
+    padding: 0 6px;
+  }
+  select option { background: #1b1510; }
+
+  .list {
+    align-items: stretch; flex-direction: column;
+    overflow-y: auto;
+    background: rgba(0, 0, 0, .45);
+    border: 1px solid var(--edge);
+    border-radius: 4px;
+  }
+  .list .row { padding: 5px 8px; font-size: 14px; cursor: pointer; border-bottom: 1px solid rgba(107, 86, 54, .25); }
+  .list .row:hover { background: rgba(106, 86, 55, .3); }
+  .list .row.selected { background: rgba(106, 86, 55, .6); }
+
+  #error { position: fixed; bottom: 12px; left: 12px; color: #f99; font-size: 13px; }
+</style>
+</head>
+<body>
+  <div class="bg"></div>
+  <div id="stage"></div>
+  <div id="error"></div>
+
+<script src="bridge.js"></script>
+<script>
+  const stage = document.getElementById('stage');
+  const errorBox = document.getElementById('error');
+  let lastJson = '';
+  let busy = false;
+
+  // Крупные картинки родного экрана — окна и подложки: рисуем их панелями, мелкие (узоры,
+  // рамки, иконки) пропускаем — на странице свой фон.
+  const PANEL_MIN = { w: 160, h: 90 };
+
+  function act(name, ...args) {
+    game.api(name, ...args)
+      .catch(e => { errorBox.textContent = e.message; })
+      .finally(() => setTimeout(refresh, 60));
+  }
+
+  function el(item, cls) {
+    const d = document.createElement('div');
+    d.className = 'el ' + cls;
+    d.style.left = item.x + 'px';
+    d.style.top = item.y + 'px';
+    d.style.width = item.w + 'px';
+    d.style.height = item.h + 'px';
+    d.style.zIndex = item.z * 10 + (cls === 'panel' ? 0 : 5);
+    if (item.hint) d.title = item.hint;
+    return d;
+  }
+
+  const render = {
+    image(item) {
+      if (item.w < PANEL_MIN.w || item.h < PANEL_MIN.h) return null;
+      return el(item, 'panel');
+    },
+
+    text(item) {
+      const d = el(item, 'text');
+      d.textContent = item.text;
+      return d;
+    },
+
+    button(item) {
+      const d = el(item, 'button' + (item.text ? ' with-text' : ' icon') + (item.enabled ? '' : ' disabled'));
+      d.textContent = item.text || '';
+      if (item.enabled) d.addEventListener('click', () => act('mirror.click', item.id));
+      return d;
+    },
+
+    checkbox(item) {
+      const d = el(item, 'checkbox' + (item.checked ? ' on' : ''));
+      d.addEventListener('click', () => act('mirror.click', item.id));
+      return d;
+    },
+
+    combo(item) {
+      const d = el(item, '');
+      const s = document.createElement('select');
+      item.items.forEach((text, i) => s.add(new Option(text, i, false, i === item.selected)));
+      s.disabled = !item.enabled;
+      s.addEventListener('change', () => act('mirror.select', item.id, Number(s.value)));
+      d.appendChild(s);
+      return d;
+    },
+
+    list(item) {
+      const d = el(item, 'list');
+      item.items.forEach((text, i) => {
+        const r = document.createElement('div');
+        r.className = 'row' + (i === item.selected ? ' selected' : '');
+        r.textContent = text;
+        r.addEventListener('click', () => act('mirror.select', item.id, i));
+        d.appendChild(r);
+      });
+      return d;
+    },
+
+    input(item) {
+      const d = el(item, '');
+      const i = document.createElement('input');
+      i.value = item.text;
+      i.dataset.id = item.id;
+      i.addEventListener('change', () => act('mirror.input', item.id, i.value));
+      d.appendChild(i);
+      return d;
+    },
+  };
+
+  function draw(snap) {
+    // Поле, в котором сейчас печатают, не трогаем — иначе перерисовка съест ввод.
+    const focused = document.activeElement && document.activeElement.dataset.id;
+    const scale = window.innerWidth / snap.width;
+    stage.style.width = snap.width + 'px';
+    stage.style.height = snap.height + 'px';
+    stage.style.transform = `scale(${scale})`;
+
+    const frag = document.createDocumentFragment();
+    let keep = null;
+    for (const item of snap.items) {
+      if (focused && item.kind === 'input' && String(item.id) === focused) {
+        keep = document.activeElement.parentElement;
+        continue;
+      }
+      const node = (render[item.kind] || (() => null))(item);
+      if (node) frag.appendChild(node);
+    }
+    stage.replaceChildren(frag);
+    if (keep) stage.appendChild(keep);
+  }
+
+  async function refresh() {
+    if (busy) return;
+    busy = true;
+    try {
+      const snap = await game.api('mirror.snapshot');
+      const json = JSON.stringify(snap);
+      if (json !== lastJson) {
+        lastJson = json;
+        draw(snap);
+      }
+      errorBox.textContent = '';
+    } catch (e) {
+      errorBox.textContent = e.message;
+    } finally {
+      busy = false;
+    }
+  }
+
+  // Мод зовёт это, когда игра перестроила экран (client.lua).
+  window.mirror = { refresh };
+
+  bridge.whenReady(ok => {
+    if (!ok) { errorBox.textContent = 'мост в игру не поднялся'; return; }
+    refresh();
+    // Часть экранов меняется сама (списки комнат, таймеры) — подтягиваем раз в секунду.
+    setInterval(refresh, 1000);
+  });
+</script>
+</body>
+</html>
