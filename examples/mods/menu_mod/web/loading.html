@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Загрузка партии</title>
+<style>
+  /*
+    Экран загрузки партии. Перекрывает родной прогресс-бар игры целиком.
+    Картинки берутся из папки LoadScreen мода — список присылает модлоадер (см. client.lua),
+    потому что страница сама каталог прочитать не может.
+    Цитаты уже нарисованы на картинках, поэтому текста поверх нет.
+  */
+  html, body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    background: #0b0a08;
+    font-family: Georgia, "Times New Roman", serif;
+    cursor: default;
+    user-select: none;
+  }
+
+  .slide {
+    position: fixed;
+    inset: 0;
+    background-position: center;
+    background-size: cover;
+    background-repeat: no-repeat;
+    opacity: 0;
+    transition: opacity 1.2s ease-in-out;
+  }
+  .slide.shown { opacity: 1; }
+
+  /* Лёгкое затемнение у нижнего края — только под индикатор. */
+  .shade {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    height: 120px;
+    background: linear-gradient(to bottom, rgba(0, 0, 0, 0), rgba(0, 0, 0, .7));
+  }
+
+  /* Бегущая полоса: настоящего процента игра наружу не отдаёт, это признак жизни. */
+  .bar {
+    position: fixed;
+    left: 14vw; right: 14vw;
+    bottom: 52px;
+    height: 3px;
+    background: rgba(255, 220, 170, .14);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .bar i {
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 28%;
+    background: linear-gradient(90deg, transparent, rgba(255, 220, 170, .85), transparent);
+    animation: run 1.8s ease-in-out infinite;
+  }
+  @keyframes run {
+    0%   { left: -30%; }
+    100% { left: 100%; }
+  }
+
+  .caption {
+    position: fixed;
+    left: 0; right: 0;
+    bottom: 22px;
+    text-align: center;
+    font-size: 13px;
+    letter-spacing: .3em;
+    text-transform: uppercase;
+    color: rgba(255, 220, 170, .75);
+    text-shadow: 0 2px 8px rgba(0, 0, 0, .9);
+  }
+
+  /* Пока список не пришёл или папка пуста. */
+  .hint {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 0 16vw;
+    font-size: 16px;
+    line-height: 1.7;
+    color: #a8988a;
+  }
+  .hint.shown { display: flex; }
+  .hint b { color: #ffdcaa; font-weight: normal; }
+</style>
+</head>
+<body>
+  <div class="slide" id="a"></div>
+  <div class="slide" id="b"></div>
+  <div class="shade"></div>
+
+  <div class="hint" id="hint">
+    <div>Положите картинки в <b>LoadScreen</b> внутри папки мода — они подхватятся сами.</div>
+  </div>
+
+  <div class="bar"><i></i></div>
+  <div class="caption">загрузка</div>
+
+<script src="bridge.js"></script>
+<script>
+  const layers = [document.getElementById('a'), document.getElementById('b')];
+  let front = 0;
+  let index = 0;
+  let slides = [];
+  let timer = null;
+
+  function show(i) {
+    if (!slides.length) return;
+    const back = 1 - front;
+    layers[back].style.backgroundImage = `url("${slides[i % slides.length]}")`;
+    layers[back].classList.add('shown');
+    layers[front].classList.remove('shown');
+    front = back;
+  }
+
+  // Список картинок страница берёт сама: game.files читает папку рядом с ней.
+  window.setSlides = function (files, seconds) {
+    slides = (files || []).map(name => '../LoadScreen/' + encodeURIComponent(name));
+    document.getElementById('hint').classList.toggle('shown', slides.length === 0);
+    if (!slides.length) return;
+
+    // Порядок случайный, чтобы каждая загрузка выглядела по-новому.
+    for (let i = slides.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [slides[i], slides[j]] = [slides[j], slides[i]];
+    }
+
+    index = 0;
+    show(index);
+    clearInterval(timer);
+    timer = setInterval(() => show(++index), (seconds || 7) * 1000);
+  };
+
+  const SLIDE_SECONDS = 7;
+
+  bridge.whenReady(async ok => {
+    if (!ok) return document.getElementById('hint').classList.add('shown');
+    try {
+      const files = (await game.files('../LoadScreen'))
+        .filter(name => /\.(png|jpe?g|webp)$/i.test(name));
+      setSlides(files, SLIDE_SECONDS);
+    } catch (e) {
+      document.getElementById('hint').classList.add('shown');
+    }
+  });
+</script>
+</body>
+</html>

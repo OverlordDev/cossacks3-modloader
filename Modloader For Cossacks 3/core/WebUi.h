@@ -13,11 +13,15 @@
 namespace WebUi
 {
     bool Available();     // есть <игра>/cef/libcef.dll и Cossacks3Cef.exe
-    bool Running();       // браузер запущен
+    bool Running();       // CEF поднят
+    bool IsOpen();        // страница открыта
     std::string Status(); // строка для консоли
 
     // Из потока модлоадера: отложенные команды, выполняются в потоке рендера.
+    // Принимает адрес (со схемой), путь к файлу или имя страницы в modloader/web.
     void RequestOpen(const std::string& url);
+    // Выполнить код в открытой странице.
+    void RequestEval(const std::string& javascript);
     void RequestClose();
     void RequestReload();
 
@@ -30,6 +34,10 @@ namespace WebUi
     // Залить кадр в текстуру и вернуть её номер (0 — нечего рисовать). Вызывать только там, где
     // состояние OpenGL уже приведено в порядок, то есть из кадра ImGui в Overlay.
     unsigned int Present(int* width, int* height);
+
+    // Слой выпадающего списка <select>: рисуется поверх страницы в указанном месте.
+    // 0 — списка сейчас нет.
+    unsigned int PresentPopup(int* x, int* y, int* width, int* height);
 
     // Из оконной процедуры. true — сообщение съедено, игре его отдавать не надо.
     bool OnWndProc(HWND window, UINT msg, WPARAM wp, LPARAM lp);

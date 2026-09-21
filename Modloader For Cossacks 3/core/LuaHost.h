@@ -15,6 +15,10 @@ namespace LuaHost
     void Reload();                             // закрыть Lua и загрузить моды заново
     void Shutdown();                           // синхронно; вызывать из потока модлоадера перед выгрузкой DLL
     void RunConsole(const std::string& code);  // строка Lua из консоли (UTF-8), выполняется с правами server
+
+    // То же, но синхронно и с ответом: результат в JSON ("null", если ничего не вернули).
+    // Только из главного потока игры. ok = false — ошибка, тогда в out текст ошибки.
+    std::string EvalJson(const std::string& code, bool* ok);
     void PrintMods();
 
     // Сообщение мода из сети (Net::Receiver). Главный поток игры.

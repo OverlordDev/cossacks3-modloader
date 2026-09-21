@@ -10,6 +10,7 @@
 #include "ScriptRunner.h"
 #include "Text.h"
 #include "Ui.h"
+#include "WebUi.h"
 
 // Lua собран как C++ (исключения вместо longjmp) — заголовки подключаются без extern "C".
 #include "lua.h"
@@ -903,6 +904,63 @@ namespace
         return 0;
     }
 
+    // mod.files("LoadScreen") — имена файлов в папке мода. Нужен, чтобы страница могла показать
+    // содержимое папки: сама она каталог прочитать не может.
+    int l_modFiles(lua_State* L)
+    {
+        Mod* mod = ModFromUpvalue(L);
+        std::string sub = luaL_optstring(L, 1, "");
+        // Только внутри мода: ".." и абсолютные пути не пропускаем.
+        if (sub.find("..") != std::string::npos || sub.find(':') != std::string::npos)
+            return luaL_error(L, "mod.files: only folders inside the mod are allowed");
+
+        fs::path dir = sub.empty() ? mod->dir : mod->dir / fs::path(sub);
+        lua_newtable(L);
+        std::error_code ec;
+        int n = 0;
+        for (const auto& entry : fs::directory_iterator(dir, ec))
+        {
+            if (!entry.is_regular_file(ec))
+                continue;
+            lua_pushstring(L, entry.path().filename().string().c_str());
+            lua_rawseti(L, -2, ++n);
+        }
+        return 1;
+    }
+
+    // ---------- API: web ----------
+
+    // web.open("menu") — страница <папка мода>/web/menu.html. Можно передать и полный адрес.
+    int l_webOpen(lua_State* L)
+    {
+        Mod* mod = ModFromUpvalue(L);
+        std::string page = luaL_checkstring(L, 1);
+        if (!WebUi::Available())
+            return luaL_error(L, "web.open: CEF is not installed (see <game>/cef)");
+        if (page.find("://") != std::string::npos)
+            WebUi::RequestOpen(page);
+        else
+            WebUi::RequestOpen((mod->dir / L"web" / page).string());
+        return 0;
+    }
+
+    int l_webClose(lua_State*)  { WebUi::RequestClose();  return 0; }
+    int l_webReload(lua_State*) { WebUi::RequestReload(); return 0; }
+
+    // web.isOpen() — страница уже на экране (экран интерфейса игра строит не один раз).
+    int l_webIsOpen(lua_State* L)
+    {
+        lua_pushboolean(L, WebUi::IsOpen());
+        return 1;
+    }
+
+    // web.eval("document.title = 'x'") — выполнить код в открытой странице.
+    int l_webEval(lua_State* L)
+    {
+        WebUi::RequestEval(luaL_checkstring(L, 1));
+        return 0;
+    }
+
     // Общие функции работы с элементами (базовое окружение клиента).
     const char* kClientPrelude = R"lua(
 ui = {}
@@ -1425,6 +1483,14 @@ end
             SetFunc("bind", l_inputBind, modIndex, side);
             lua_setfield(L, -2, "input");
 
+            lua_newtable(L); // web — страницы мода в браузере
+            SetFunc("open", l_webOpen, modIndex, side);
+            SetPlain("close", l_webClose);
+            SetPlain("reload", l_webReload);
+            SetPlain("isOpen", l_webIsOpen);
+            SetPlain("eval", l_webEval);
+            lua_setfield(L, -2, "web");
+
             lua_newtable(L); // ui: своё (кнопки, клики, перехват) + общее из базового окружения через __index
             SetFunc("button", l_uiButton, modIndex, side);
             SetFunc("onClick", l_uiOnClick, modIndex, side);
@@ -1439,7 +1505,8 @@ end
             lua_setfield(L, -2, "ui");
         }
 
-        lua_newtable(L); // mod — информация о себе
+        lua_newtable(L); // mod — информация о себе и свои файлы
+        SetFunc("files", l_modFiles, modIndex, side);
         lua_pushstring(L, mod.id.c_str());      lua_setfield(L, -2, "id");
         lua_pushstring(L, mod.name.c_str());    lua_setfield(L, -2, "name");
         lua_pushstring(L, mod.version.c_str()); lua_setfield(L, -2, "version");
@@ -1814,6 +1881,132 @@ void LuaHost::PollInput(bool active)
                 b.wasDown = false;
         }
     }
+}
+
+namespace
+{
+    // Значение Lua -> JSON. Таблица с ключами 1..n становится массивом, остальные — объектом.
+    void ToJson(lua_State* L, int idx, std::string& out, int depth)
+    {
+        idx = lua_absindex(L, idx);
+        if (depth > 12)
+            return out.append("null"), void();
+
+        switch (lua_type(L, idx))
+        {
+        case LUA_TNIL:
+        case LUA_TNONE:
+            out += "null";
+            return;
+        case LUA_TBOOLEAN:
+            out += lua_toboolean(L, idx) ? "true" : "false";
+            return;
+        case LUA_TNUMBER:
+        {
+            char buf[40];
+            if (lua_isinteger(L, idx))
+                sprintf_s(buf, "%lld", static_cast<long long>(lua_tointeger(L, idx)));
+            else
+                sprintf_s(buf, "%.14g", lua_tonumber(L, idx));
+            out += buf;
+            return;
+        }
+        case LUA_TSTRING:
+        {
+            size_t len = 0;
+            const char* str = lua_tolstring(L, idx, &len);
+            out += '"';
+            for (size_t i = 0; i < len; ++i)
+            {
+                unsigned char c = static_cast<unsigned char>(str[i]);
+                if (c == '"' || c == '\\')
+                {
+                    out += '\\';
+                    out += static_cast<char>(c);
+                }
+                else if (c == '\n') out += "\\n";
+                else if (c == '\r') out += "\\r";
+                else if (c == '\t') out += "\\t";
+                else if (c < 0x20)
+                {
+                    char esc[8];
+                    sprintf_s(esc, "\\u%04X", c);
+                    out += esc;
+                }
+                else
+                    out += static_cast<char>(c);
+            }
+            out += '"';
+            return;
+        }
+        case LUA_TTABLE:
+        {
+            lua_Integer count = luaL_len(L, idx);
+            bool array = count > 0;
+            out += array ? '[' : '{';
+            if (array)
+            {
+                for (lua_Integer i = 1; i <= count; ++i)
+                {
+                    if (i > 1)
+                        out += ',';
+                    lua_geti(L, idx, i);
+                    ToJson(L, -1, out, depth + 1);
+                    lua_pop(L, 1);
+                }
+            }
+            else
+            {
+                bool first = true;
+                lua_pushnil(L);
+                while (lua_next(L, idx))
+                {
+                    if (lua_type(L, -2) == LUA_TSTRING)
+                    {
+                        if (!first)
+                            out += ',';
+                        first = false;
+                        ToJson(L, -2, out, depth + 1);
+                        out += ':';
+                        ToJson(L, -1, out, depth + 1);
+                    }
+                    lua_pop(L, 1);
+                }
+            }
+            out += array ? ']' : '}';
+            return;
+        }
+        default:
+            out += '"';
+            out += lua_typename(L, lua_type(L, idx));
+            out += '"';
+            return;
+        }
+    }
+}
+
+std::string LuaHost::EvalJson(const std::string& code, bool* ok)
+{
+    if (ok)
+        *ok = false;
+    if (!L)
+        return "lua is not started";
+
+    std::string error;
+    int top = lua_gettop(L);
+    int env = g_console.env[Server].envRef;
+    // Как в консоли: сначала как выражение, потом как оператор.
+    if (!LoadChunk("return " + code, "=web", env, &error) && !LoadChunk(code, "=web", env, &error))
+        return error;
+    if (!Call(0, 1, "web"))
+        return "error while running the code, see the log";
+
+    std::string json;
+    ToJson(L, -1, json, 0);
+    lua_settop(L, top);
+    if (ok)
+        *ok = true;
+    return json;
 }
 
 void LuaHost::RunConsole(const std::string& code)

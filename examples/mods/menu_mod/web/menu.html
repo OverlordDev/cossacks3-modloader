@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Cossacks IV — главное меню</title>
+<link rel="stylesheet" href="common.css">
+<style>
+  .layout {
+    position: relative;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+  }
+
+  .logo {
+    width: min(36vw, 480px);
+    filter: drop-shadow(0 6px 18px rgba(0, 0, 0, .7));
+  }
+
+  .tagline {
+    margin: -6px 0 2px;
+    font-size: 13px;
+    letter-spacing: .34em;
+    text-transform: uppercase;
+    color: var(--dim);
+  }
+
+  nav { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+
+  footer {
+    position: fixed;
+    left: 0; right: 0; bottom: 12px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--dim);
+  }
+
+  #error {
+    position: fixed;
+    top: 14px; left: 0; right: 0;
+    text-align: center;
+    font-size: 13px;
+    color: #e39179;
+  }
+</style>
+</head>
+<body>
+  <div class="bg"></div>
+
+  <div class="layout">
+    <img class="logo" src="../Cossacks4.png" alt="Cossacks IV">
+    <div class="tagline">modded</div>
+
+    <nav>
+      <!-- data-tag — номер из data/gui/menu.inc/eventmainmenu.inc -->
+      <button class="btn" data-tag="101">Кампания</button>
+      <button class="btn" data-tag="103">Сетевая игра</button>
+      <button class="btn" data-tag="102">Случайная карта</button>
+      <button class="btn" data-tag="105">Загрузить игру</button>
+      <button class="btn" data-tag="104">Настройки</button>
+      <button class="btn small" data-tag="107">Редактор</button>
+      <button class="btn small" data-tag="100">Энциклопедия</button>
+      <button class="btn" data-tag="109">Выход</button>
+    </nav>
+  </div>
+
+  <footer>интерфейс работает на Chromium внутри игры</footer>
+  <div id="error"></div>
+
+<script src="bridge.js"></script>
+<script>
+  // Нажатие уходит родному обработчику игры, а страница убирает себя с экрана:
+  // дальше рисует игра, и мышь должна достаться ей.
+  // Экраны, которые мод рисует сам: их страница откроется поверх этой, закрывать нечего.
+  const OWN_SCREENS = [104, 105]; // настройки, загрузка игры
+
+  async function press(tag) {
+    try {
+      await game.tag('EventMainMenu', tag);
+      if (!OWN_SCREENS.includes(tag))
+        await game.close();
+    } catch (e) {
+      document.getElementById('error').textContent = 'не удалось: ' + e.message;
+    }
+  }
+
+  document.querySelectorAll('button[data-tag]').forEach(b => {
+    b.addEventListener('click', () => press(Number(b.dataset.tag)));
+  });
+
+  bridge.whenReady(ok => {
+    document.querySelectorAll('button').forEach(b => b.disabled = !ok);
+    if (!ok) document.getElementById('error').textContent = 'мост в игру не поднялся';
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Загрузить игру</title>
+<link rel="stylesheet" href="common.css">
+<style>
+  .layout { position: relative; height: 100%; display: flex; align-items: center; justify-content: center; }
+
+  .window { width: 860px; max-height: 88vh; display: flex; flex-direction: column; }
+
+  .modes { display: flex; gap: 8px; padding: 14px 22px 0; }
+
+  .mode {
+    flex: 1;
+    padding: 9px;
+    text-align: center;
+    font-size: 15px;
+    color: var(--dim);
+    background: rgba(0, 0, 0, .35);
+    border: 1px solid transparent;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: color .15s ease, background .15s ease, border-color .15s ease;
+  }
+  .mode:hover { color: var(--gold); background: rgba(80, 62, 38, .45); }
+  .mode.active { color: var(--gold); background: rgba(106, 86, 55, .55); border-color: var(--edge); }
+
+  .list {
+    margin: 14px 22px;
+    flex: 1;
+    min-height: 260px;
+    overflow-y: auto;
+    background: rgba(0, 0, 0, .4);
+    border: 1px solid var(--edge);
+    border-radius: 5px;
+  }
+
+  .row {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 9px 14px;
+    font-size: 15px;
+    cursor: pointer;
+    border-bottom: 1px solid rgba(107, 86, 54, .25);
+  }
+  .row:last-child { border-bottom: 0; }
+  .row:hover { background: rgba(106, 86, 55, .3); }
+  .row.selected { background: rgba(106, 86, 55, .6); }
+  .row .date { color: var(--dim); font-size: 13px; white-space: nowrap; }
+  .row .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .empty { padding: 40px; text-align: center; }
+
+  .actions {
+    display: flex; justify-content: center; gap: 12px;
+    padding: 12px 0 16px; border-top: 1px solid var(--edge);
+  }
+
+  #status { padding: 0 22px 10px; text-align: center; font-size: 12px; color: var(--dim); min-height: 16px; }
+</style>
+</head>
+<body>
+  <div class="bg"></div>
+
+  <div class="layout">
+    <div class="window">
+      <h2>Загрузить игру</h2>
+
+      <div class="modes">
+        <div class="mode active" data-mode="saves">Сохранения</div>
+        <div class="mode" data-mode="replays">Повторы</div>
+      </div>
+
+      <div class="list" id="list"><div class="empty note">читаю список…</div></div>
+
+      <div id="status"></div>
+
+      <div class="actions">
+        <button class="btn small" id="load" disabled>Загрузить</button>
+        <button class="btn small" id="delete" disabled>Удалить</button>
+        <button class="btn small" id="close">Закрыть</button>
+      </div>
+    </div>
+  </div>
+
+<script src="bridge.js"></script>
+<script>
+  const list = document.getElementById('list');
+  const status = document.getElementById('status');
+  let mode = 'saves';
+  let selected = null;
+
+  // Список сохранений игра отдаёт тремя нативами: сколько, имя по номеру, дата по номеру.
+  // Собираем его целиком одним запросом — каждый вызов моста это переход между процессами.
+  function query(kind) {
+    const count = kind === 'saves' ? 'UserGetProfileSavesCount' : 'UserGetProfileReplaysCount';
+    const name = kind === 'saves' ? 'UserGetProfileSaveByIndex' : 'UserGetProfileReplayByIndex';
+    const date = kind === 'saves' ? 'UserGetProfileSaveDateByIndex' : 'UserGetProfileReplayDateByIndex';
+    return `(function()
+      local items = {}
+      for i = 0, native.${count}() - 1 do
+        items[#items + 1] = { name = native.${name}(i), date = native.${date}(i) }
+      end
+      return items
+    end)()`;
+  }
+
+  function render(items) {
+    selected = null;
+    document.getElementById('load').disabled = true;
+    document.getElementById('delete').disabled = true;
+
+    if (!items || !items.length) {
+      list.innerHTML = '<div class="empty note">пусто</div>';
+      return;
+    }
+
+    list.innerHTML = '';
+    for (const item of items) {
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.innerHTML = '<span class="name"></span><span class="date"></span>';
+      row.querySelector('.name').textContent = item.name;
+      row.querySelector('.date').textContent = item.date;
+      row.addEventListener('click', () => {
+        document.querySelectorAll('.row').forEach(r => r.classList.toggle('selected', r === row));
+        selected = item.name;
+        document.getElementById('load').disabled = false;
+        document.getElementById('delete').disabled = (mode !== 'saves');
+        status.textContent = 'выбрано: ' + item.name;
+      });
+      row.addEventListener('dblclick', load);
+      list.appendChild(row);
+    }
+  }
+
+  async function refresh() {
+    list.innerHTML = '<div class="empty note">читаю список…</div>';
+    try {
+      render(await bridge.ask(query(mode)));
+    } catch (e) {
+      list.innerHTML = '<div class="empty note">не удалось прочитать список</div>';
+      status.textContent = e.message;
+    }
+  }
+
+  // Загрузка и удаление — те же нативы, которыми пользуется родной экран.
+  async function load() {
+    if (!selected) return;
+    const call = mode === 'saves' ? 'UserProfileLoadMap' : 'UserProfileLoadReplay';
+    status.textContent = 'загружаю…';
+    await game.lua(`native.${call}([[${selected}]])`);
+    // Не закрываем браузер, а показываем свой экран загрузки: игра как раз начинает грузить карту.
+    location.href = 'loading.html';
+  }
+
+  async function remove() {
+    if (!selected || mode !== 'saves') return;
+    await game.lua(`native.UserProfileDeleteMap([[${selected}]])`);
+    status.textContent = 'удалено: ' + selected;
+    await refresh();
+  }
+
+  document.querySelectorAll('.mode').forEach(m => {
+    m.addEventListener('click', () => {
+      document.querySelectorAll('.mode').forEach(x => x.classList.toggle('active', x === m));
+      mode = m.dataset.mode;
+      status.textContent = '';
+      refresh();
+    });
+  });
+
+  document.getElementById('load').addEventListener('click', load);
+  document.getElementById('delete').addEventListener('click', remove);
+  document.getElementById('close').addEventListener('click', async () => {
+    // 8003 — gc_gui_event_tagClose, тот же тэг, что у крестика родного окна.
+    // Возвращаемся переходом на страницу меню: браузер закрывать незачем.
+    try { await game.tag('EventLoadGame', 8003); } catch (e) { status.textContent = e.message; }
+    location.href = 'menu.html';
+  });
+
+  bridge.whenReady(ok => {
+    document.getElementById('close').disabled = !ok;
+    if (ok) refresh();
+    else status.textContent = 'мост в игру не поднялся';
+  });
+</script>
+</body>
+</html>

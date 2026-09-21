@@ -338,7 +338,17 @@ namespace
         if (unsigned int tex = WebUi::Present(&webW, &webH))
         {
             ImVec2 size = ImGui::GetIO().DisplaySize;
-            ImGui::GetBackgroundDrawList()->AddImage(static_cast<ImTextureID>(tex), ImVec2(0, 0), size);
+            ImDrawList* layer = ImGui::GetBackgroundDrawList();
+            layer->AddImage(static_cast<ImTextureID>(tex), ImVec2(0, 0), size);
+
+            // Выпадающий список страницы — отдельным слоем поверх неё, в точке, которую назвал CEF.
+            int px = 0, py = 0, pw = 0, ph = 0;
+            if (unsigned int popup = WebUi::PresentPopup(&px, &py, &pw, &ph))
+            {
+                ImVec2 at(static_cast<float>(px), static_cast<float>(py));
+                layer->AddImage(static_cast<ImTextureID>(popup), at,
+                                ImVec2(at.x + static_cast<float>(pw), at.y + static_cast<float>(ph)));
+            }
         }
 
         if (g_open)

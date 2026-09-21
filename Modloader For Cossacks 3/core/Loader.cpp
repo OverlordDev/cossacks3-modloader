@@ -32,6 +32,18 @@ namespace
         return pid == GetCurrentProcessId() && GetForegroundWindow() != GetConsoleWindow();
     }
 
+    // Лаунчер показывает экран загрузки, пока игра стартует, и ждёт от нас сигнала: как только
+    // игра дошла до главного меню, картинку можно убирать. Без лаунчера события просто нет.
+    void SignalReadyToLauncher()
+    {
+        if (HANDLE ready = OpenEventW(EVENT_MODIFY_STATE, FALSE, L"Local\Cossacks3Modloader.Ready"))
+        {
+            SetEvent(ready);
+            CloseHandle(ready);
+            LOG_INFO("Launcher: splash screen dismissed");
+        }
+    }
+
     // Часть модлоадера, которой нужны скрипты игры: вставки в состояния интерфейса и моды.
     // При автозагрузке мы стартуем раньше самой игры, поэтому ставится не сразу, а как только
     // движок скриптов и интерфейс готовы (Engine::Ready). При инжекте в идущую игру это первый же такт.
@@ -46,6 +58,15 @@ namespace
                     LOG_INFO("\x1b[35m[event]\x1b[0m %s fired (first time)", event.c_str());
             });
             Game::Install();
+        // Главное меню — момент, когда игру уже можно показывать.
+        Events::Subscribe("game.menu", [](const std::string&, const std::string&) {
+            static bool once = false;
+            if (!once)
+            {
+                once = true;
+                SignalReadyToLauncher();
+            }
+        });
             Net::Install(LuaHost::OnNetMessage);
             Ui::Install();
             Ui::SetPressHandler(LuaHost::OnUiPress);

@@ -1,0 +1,114 @@
+/*
+  Общий вид меню на CEF: фон, плашка кнопки, типографика.
+  Подключается и главным меню, и настройками — чтобы правка шла в одном месте.
+*/
+:root {
+  --gold: #ffdcaa;
+  --gold-bright: #fff0d2;
+  --dim: #a8988a;
+  --edge: #6b5636;
+  --panel: rgba(18, 15, 11, .88);
+
+  /* Плашка кнопки, пропорции 512x110 — под них подогнаны размеры ниже. */
+  --btn-w: 300px;
+  --btn-h: 64px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  font-family: Georgia, "Times New Roman", serif;
+  color: var(--gold);
+  background: transparent; /* под страницей игра */
+  user-select: none;
+  cursor: default;
+}
+
+/* Фоновая иллюстрация мода. */
+.bg {
+  position: fixed;
+  inset: 0;
+  background: url("../backround.jpg") center / cover no-repeat;
+}
+
+.bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 45%, rgba(0, 0, 0, .12), rgba(0, 0, 0, .66));
+}
+
+/* Кнопка на нарисованной плашке: картинка растягивается под размер кнопки. */
+.btn {
+  width: var(--btn-w);
+  height: var(--btn-h);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 34px;         /* поля под узорные концы плашки */
+  font: inherit;
+  font-size: 18px;
+  color: var(--gold);
+  text-shadow: 0 2px 4px rgba(0, 0, 0, .85);
+  background: url("button.png") center / 100% 100% no-repeat;
+  border: 0;
+  cursor: pointer;
+  transition: filter .15s ease, transform .07s ease;
+}
+
+.btn:hover { filter: brightness(1.3); color: var(--gold-bright); }
+.btn:active { transform: translateY(1px); filter: brightness(.85); }
+.btn:disabled { filter: grayscale(.6) brightness(.6); cursor: default; }
+
+.btn.small { --btn-w: 250px; --btn-h: 54px; font-size: 16px; }
+
+/* Окно с рамкой — для настроек и прочих диалогов. */
+.window {
+  background: var(--panel);
+  border: 2px solid var(--edge);
+  border-radius: 8px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .7);
+}
+
+.window h2 {
+  margin: 0;
+  padding: 14px 0;
+  text-align: center;
+  font-size: 22px;
+  font-weight: normal;
+  letter-spacing: .06em;
+  border-bottom: 1px solid var(--edge);
+}
+
+label { display: block; margin-bottom: 14px; font-size: 14px; color: var(--dim); }
+
+select {
+  display: block;
+  width: 100%;
+  margin-top: 5px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 15px;
+  color: var(--gold);
+  background: rgba(0, 0, 0, .45);
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 12px;
+  font-size: 15px;
+  color: var(--gold);
+  cursor: pointer;
+}
+
+.check input { width: 17px; height: 17px; accent-color: #8a6a3a; cursor: pointer; }
+
+.note { font-size: 12px; color: var(--dim); line-height: 1.45; }

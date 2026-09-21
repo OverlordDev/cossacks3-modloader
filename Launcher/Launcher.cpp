@@ -15,6 +15,8 @@
 
 #include <string>
 
+#include "Splash.h"
+
 namespace
 {
     constexpr wchar_t kLoaderDll[] = L"Cossacks3Loader.dll";
@@ -132,6 +134,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, LPWSTR, int)
     }
     std::wstring workDir = DirOf(exe);
 
+    // Событие создаём до запуска: модлоадер внутри игры откроет его по имени и взведёт,
+    // когда дойдёт до главного меню.
+    HANDLE ready = Splash::CreateReadyEvent();
+
     STARTUPINFOW si = { sizeof(si) };
     PROCESS_INFORMATION pi = {};
     std::wstring mutableCommand = command; // CreateProcessW пишет в этот буфер
@@ -151,9 +157,15 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, LPWSTR, int)
     else
         ResumeThread(pi.hThread);
 
+    // Экран загрузки: игра стартует долго, и первые секунды у неё нет даже окна.
+    Splash::Run(GetModuleHandleW(nullptr), workDir.empty() ? std::wstring() : workDir + L"\\",
+                ready, pi.hProcess, 90000);
+
     // Ждём игру, а не выходим сразу: иначе Steam считает, что игра уже закрыта.
     WaitForSingleObject(pi.hProcess, INFINITE);
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
+    if (ready)
+        CloseHandle(ready);
     return 0;
 }

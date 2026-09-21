@@ -57,6 +57,7 @@ namespace
 
     std::mutex g_cmdMutex;
     std::string g_pendingUrl;
+    std::vector<std::string> g_pendingEval;
     bool g_pendingOpen = false;
     bool g_pendingClose = false;
     bool g_pendingReload = false;
@@ -70,6 +71,16 @@ namespace
 
     GLuint g_texture = 0;
     int g_textureWidth = 0, g_textureHeight = 0;
+
+    // Выпадающие списки <select> CEF рисует отдельным слоем поверх страницы и сообщает,
+    // куда его класть. Без этого список раскрывается невидимым.
+    std::vector<uint8_t> g_popupPixels;
+    int g_popupWidth = 0, g_popupHeight = 0;
+    bool g_popupDirty = false;
+    bool g_popupVisible = false;
+    int g_popupX = 0, g_popupY = 0;
+    GLuint g_popupTexture = 0;
+    int g_popupTexWidth = 0, g_popupTexHeight = 0;
     int g_viewWidth = 1280, g_viewHeight = 720;
 
     CefRefPtr<CefBrowser> g_browser;
@@ -78,6 +89,8 @@ namespace
 
     std::atomic<bool> g_reportFrame{ true };
     CefRefPtr<CefMessageRouterBrowserSide> g_router;
+    std::atomic<bool> g_pageReady{ false }; // страница догрузилась, в неё можно выполнять код
+    DWORD g_cefThread = 0;                  // поток, в котором подняли CEF: только он вправе его дёргать
     bool g_localPage = true; // страница загружена с диска — ей можно доверять Lua
 
     // Код, который получает страница: обёртка над cefQuery с промисами.
@@ -99,6 +112,8 @@ window.game = {
   // Выполнить код мода: game.lua('print(gfx.presets())')
   lua(code) { return this.send('lua ' + code); },
   log(text) { return this.send('log ' + text); },
+  // Имена файлов в папке рядом со страницей: game.files('../LoadScreen')
+  async files(folder) { return JSON.parse(await this.send('files ' + folder)); },
   // Убрать страницу с экрана и вернуть управление игре.
   close() { return this.send('close'); },
 };
@@ -113,10 +128,42 @@ window.game = {
         return { request.substr(0, space), request.substr(space + 1) };
     }
 
+    // Ответ считается в потоке игры, а завершать запрос надо в потоке браузера — переносим через очередь.
+    struct Answer
+    {
+        CefRefPtr<CefMessageRouterBrowserSide::Handler::Callback> callback;
+        std::string value;
+        bool ok;
+    };
+    std::mutex g_answerMutex;
+    std::vector<Answer> g_answers;
+
+    // "file:///C:/Games/x/page.html" -> "C:' + BS + BS + 'Games' + BS + BS + 'x"
+    fs::path PageDirectory(const std::string& url)
+    {
+        const std::string prefix = "file:///";
+        if (url.rfind(prefix, 0) != 0)
+            return {};
+        std::string path;
+        for (size_t i = prefix.size(); i < url.size(); ++i)
+        {
+            if (url[i] == '%' && i + 2 < url.size())
+            {
+                path += static_cast<char>(strtol(url.substr(i + 1, 2).c_str(), nullptr, 16));
+                i += 2;
+            }
+            else if (url[i] == '?' || url[i] == '#')
+                break;
+            else
+                path += url[i];
+        }
+        return fs::path(path).parent_path();
+    }
+
     class Bridge : public CefMessageRouterBrowserSide::Handler
     {
     public:
-        bool OnQuery(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, int64_t, const CefString& request,
+        bool OnQuery(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame, int64_t, const CefString& request,
                      bool, CefRefPtr<Callback> callback) override
         {
             auto [cmd, arg] = SplitCommand(request.ToString());
@@ -143,7 +190,41 @@ window.game = {
                 if (!g_localPage)
                     return callback->Failure(2, "lua is only allowed for local pages"), true;
                 std::string code = arg;
-                ScriptRunner::RunOnGameThread([code] { LuaHost::RunConsole(code); });
+                ScriptRunner::RunOnGameThread([code, callback] {
+                    bool ok = false;
+                    std::string value = LuaHost::EvalJson(code, &ok);
+                    std::lock_guard lock(g_answerMutex);
+                    g_answers.push_back({ callback, value, ok });
+                });
+                return true; // ответим, когда игра посчитает
+            }
+            else if (cmd == "files")
+            {
+                // Имена файлов в папке рядом со страницей: каталог она сама прочитать не может.
+                std::error_code ec;
+                fs::path dir = fs::weakly_canonical(PageDirectory(frame->GetURL().ToString()) / arg, ec);
+                std::string gameDir = fs::weakly_canonical(GameDir(), ec).string();
+                if (dir.string().rfind(gameDir, 0) != 0) // не выпускаем за пределы папки игры
+                    return callback->Failure(5, "path is outside the game folder"), true;
+
+                std::string json = "[";
+                for (const auto& entry : fs::directory_iterator(dir, ec))
+                {
+                    if (!entry.is_regular_file(ec))
+                        continue;
+                    if (json.size() > 1)
+                        json += ',';
+                    json += '"';
+                    for (char c : entry.path().filename().string())
+                    {
+                        if (c == '"' || c == '\\')
+                            json += '\\';
+                        json += c;
+                    }
+                    json += '"';
+                }
+                callback->Success(json + "]");
+                return true;
             }
             else if (cmd == "close")
             {
@@ -187,6 +268,7 @@ window.game = {
             g_localPage = url.rfind("file://", 0) == 0;
             LOG_INFO("[web] loaded (%d) %s", status, url.c_str());
             frame->ExecuteJavaScript(kBridgeJs, url, 0); // window.game появляется здесь
+            g_pageReady = true;
             g_reportFrame = true;
         }
 
@@ -220,10 +302,17 @@ window.game = {
         void OnPaint(CefRefPtr<CefBrowser>, PaintElementType type, const RectList&,
                      const void* buffer, int width, int height) override
         {
-            if (type != PET_VIEW) // всплывающие списки <select> пока не рисуем
-                return;
             std::lock_guard lock(g_frameMutex);
             size_t bytes = static_cast<size_t>(width) * height * 4;
+            if (type == PET_POPUP)
+            {
+                g_popupPixels.resize(bytes);
+                memcpy(g_popupPixels.data(), buffer, bytes);
+                g_popupWidth = width;
+                g_popupHeight = height;
+                g_popupDirty = true;
+                return;
+            }
             g_pixels.resize(bytes);
             memcpy(g_pixels.data(), buffer, bytes);
             g_frameWidth = width;
@@ -252,6 +341,24 @@ window.game = {
             }
         }
 
+        void OnPopupShow(CefRefPtr<CefBrowser>, bool show) override
+        {
+            std::lock_guard lock(g_frameMutex);
+            g_popupVisible = show;
+            if (!show)
+            {
+                g_popupPixels.clear();
+                g_popupWidth = g_popupHeight = 0;
+            }
+        }
+
+        void OnPopupSize(CefRefPtr<CefBrowser>, const CefRect& rect) override
+        {
+            std::lock_guard lock(g_frameMutex);
+            g_popupX = rect.x;
+            g_popupY = rect.y;
+        }
+
         void OnAfterCreated(CefRefPtr<CefBrowser> browser) override
         {
             g_browser = browser;
@@ -266,6 +373,8 @@ window.game = {
             std::lock_guard lock(g_frameMutex);
             g_pixels.clear(); // иначе на экране застынет последний кадр
             g_frameDirty = false;
+            g_popupPixels.clear();
+            g_popupVisible = false;
         }
 
         // console.log страницы — в консоль модлоадера
@@ -349,7 +458,8 @@ window.game = {
         g_router = CefMessageRouterBrowserSide::Create(routerConfig);
         g_router->AddHandler(&g_bridge, false);
 
-        LOG_INFO("[web] CEF started (software rendering)");
+        g_cefThread = GetCurrentThreadId();
+        LOG_INFO("[web] CEF started (software rendering), thread %lu", g_cefThread);
         return true;
     }
 
@@ -373,38 +483,37 @@ window.game = {
 
     // ---------- вывод ----------
 
-    void UploadFrame()
+    // Общая заливка слоя в текстуру: одинаково для страницы и для выпадающего списка.
+    void UploadLayer(const std::vector<uint8_t>& pixels, int width, int height, bool& dirty,
+                     GLuint& texture, int& texWidth, int& texHeight)
     {
-        std::lock_guard lock(g_frameMutex);
-        if (g_pixels.empty())
+        if (pixels.empty() || width <= 0 || height <= 0)
             return;
-        if (!g_frameDirty && g_texture)
+        if (!dirty && texture)
             return;
-        g_frameDirty = false;
+        dirty = false;
 
-        if (!g_texture)
+        if (!texture)
         {
-            glGenTextures(1, &g_texture);
-            glBindTexture(GL_TEXTURE_2D, g_texture);
+            glGenTextures(1, &texture);
+            glBindTexture(GL_TEXTURE_2D, texture);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
-            g_textureWidth = g_textureHeight = 0;
+            texWidth = texHeight = 0;
         }
-        glBindTexture(GL_TEXTURE_2D, g_texture);
+        glBindTexture(GL_TEXTURE_2D, texture);
         glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-        if (g_frameWidth != g_textureWidth || g_frameHeight != g_textureHeight)
+        if (width != texWidth || height != texHeight)
         {
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, g_frameWidth, g_frameHeight, 0, kBgra,
-                         GL_UNSIGNED_BYTE, g_pixels.data());
-            g_textureWidth = g_frameWidth;
-            g_textureHeight = g_frameHeight;
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, kBgra, GL_UNSIGNED_BYTE, pixels.data());
+            texWidth = width;
+            texHeight = height;
         }
         else
         {
-            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, g_frameWidth, g_frameHeight, kBgra,
-                            GL_UNSIGNED_BYTE, g_pixels.data());
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, kBgra, GL_UNSIGNED_BYTE, pixels.data());
         }
     }
 
@@ -432,6 +541,11 @@ window.game = {
         {
             glDeleteTextures(1, &g_texture);
             g_texture = 0;
+        }
+        if (g_popupTexture)
+        {
+            glDeleteTextures(1, &g_popupTexture);
+            g_popupTexture = 0;
         }
         CefShutdown();
         delete g_loader;
@@ -464,6 +578,11 @@ bool WebUi::Available()
 bool WebUi::Running()
 {
     return g_state.load() == State::Running;
+}
+
+bool WebUi::IsOpen()
+{
+    return g_state.load() == State::Running && g_browser != nullptr;
 }
 
 std::string WebUi::Status()
@@ -504,9 +623,11 @@ namespace
 void WebUi::RequestOpen(const std::string& name)
 {
     std::string url = name;
-    if (url.find("://") == std::string::npos) // не адрес, а имя страницы в modloader/web
+    if (url.find("://") == std::string::npos)
     {
-        fs::path file = ModloaderDir() / L"web" / name;
+        // Путь к файлу (мод даёт свой) или короткое имя страницы в modloader/web.
+        bool absolute = (name.size() > 1 && name[1] == ':') || (!name.empty() && (name[0] == '/' || name[0] == '\\'));
+        fs::path file = absolute ? fs::path(name) : ModloaderDir() / L"web" / name;
         if (!file.has_extension())
             file += L".html";
         url = FileUrl(file);
@@ -514,6 +635,13 @@ void WebUi::RequestOpen(const std::string& name)
     std::lock_guard lock(g_cmdMutex);
     g_pendingUrl = url;
     g_pendingOpen = true;
+    g_pageReady = false;
+}
+
+void WebUi::RequestEval(const std::string& javascript)
+{
+    std::lock_guard lock(g_cmdMutex);
+    g_pendingEval.push_back(javascript);
 }
 
 void WebUi::RequestClose()
@@ -530,6 +658,17 @@ void WebUi::RequestReload()
 
 void WebUi::OnFrame(HWND window)
 {
+    // CEF обязан жить в одном потоке: где подняли, там и качаем сообщения. Во время загрузки карты
+    // игра рисует прогресс-бар отдельным потоком, и кадры могут прийти оттуда — это надо видеть.
+    static DWORD s_thread = 0;
+    DWORD current = GetCurrentThreadId();
+    if (current != s_thread)
+    {
+        if (s_thread != 0)
+            LOG_WARN("[web] frames now come from thread %lu instead of %lu", current, s_thread);
+        s_thread = current;
+    }
+
     if (g_shutdownRequested.load())
     {
         if (g_state.load() == State::Running)
@@ -541,14 +680,22 @@ void WebUi::OnFrame(HWND window)
     }
 
     std::string url;
+    std::vector<std::string> eval;
     bool open = false, close = false, reload = false;
     {
         std::lock_guard lock(g_cmdMutex);
         url.swap(g_pendingUrl);
+        if (g_pageReady.load())
+            eval.swap(g_pendingEval);
         open = g_pendingOpen;     g_pendingOpen = false;
         close = g_pendingClose;   g_pendingClose = false;
         reload = g_pendingReload; g_pendingReload = false;
     }
+
+    // Закрыть и тут же открыть — значит открыть. Иначе страница, попросившая себя закрыть,
+    // отменяет загрузку той, которую игра запросила следом (ERR_ABORTED).
+    if (open)
+        close = false;
 
     if (open && g_state.load() == State::Off)
     {
@@ -586,6 +733,8 @@ void WebUi::OnFrame(HWND window)
         }
         if (reload)
             g_browser->ReloadIgnoreCache();
+        for (const std::string& code : eval)
+            g_browser->GetMainFrame()->ExecuteJavaScript(code, g_browser->GetMainFrame()->GetURL(), 0);
         if (close)
             g_browser->GetHost()->CloseBrowser(false);
 
@@ -602,7 +751,22 @@ void WebUi::OnFrame(HWND window)
         }
     }
 
-    CefDoMessageLoopWork();
+    // Ответы на запросы страницы, посчитанные в потоке игры.
+    std::vector<Answer> answers;
+    {
+        std::lock_guard lock(g_answerMutex);
+        answers.swap(g_answers);
+    }
+    for (const Answer& a : answers)
+    {
+        if (a.ok)
+            a.callback->Success(a.value);
+        else
+            a.callback->Failure(4, a.value);
+    }
+
+    if (GetCurrentThreadId() == g_cefThread)
+        CefDoMessageLoopWork();
 }
 
 bool WebUi::HasFrame()
@@ -617,10 +781,27 @@ unsigned int WebUi::Present(int* width, int* height)
 {
     if (!HasFrame())
         return 0;
-    UploadFrame();
+    std::lock_guard lock(g_frameMutex);
+    UploadLayer(g_pixels, g_frameWidth, g_frameHeight, g_frameDirty, g_texture, g_textureWidth, g_textureHeight);
     if (width)  *width = g_textureWidth;
     if (height) *height = g_textureHeight;
     return g_texture;
+}
+
+unsigned int WebUi::PresentPopup(int* x, int* y, int* width, int* height)
+{
+    if (g_state.load() != State::Running || !g_browser)
+        return 0;
+    std::lock_guard lock(g_frameMutex);
+    if (!g_popupVisible || g_popupPixels.empty())
+        return 0;
+    UploadLayer(g_popupPixels, g_popupWidth, g_popupHeight, g_popupDirty,
+                g_popupTexture, g_popupTexWidth, g_popupTexHeight);
+    if (x)      *x = g_popupX;
+    if (y)      *y = g_popupY;
+    if (width)  *width = g_popupTexWidth;
+    if (height) *height = g_popupTexHeight;
+    return g_popupTexture;
 }
 
 bool WebUi::OnWndProc(HWND window, UINT msg, WPARAM wp, LPARAM lp)

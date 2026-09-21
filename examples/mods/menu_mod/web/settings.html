@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Настройки</title>
+<link rel="stylesheet" href="common.css">
+<style>
+  .layout { position: relative; height: 100%; display: flex; align-items: center; justify-content: center; }
+
+  .window { width: 1060px; max-height: 90vh; display: flex; flex-direction: column; }
+
+  .body { display: flex; gap: 22px; padding: 18px 24px; flex: 1; min-height: 0; }
+
+  .tabs { display: flex; flex-direction: column; gap: 6px; width: 200px; flex: none; }
+
+  .tab {
+    padding: 11px;
+    text-align: center;
+    font-size: 16px;
+    color: var(--dim);
+    background: rgba(0, 0, 0, .35);
+    border: 1px solid transparent;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: color .15s ease, background .15s ease, border-color .15s ease;
+  }
+  .tab:hover { color: var(--gold); background: rgba(80, 62, 38, .45); }
+  .tab.active { color: var(--gold); background: rgba(106, 86, 55, .55); border-color: var(--edge); }
+
+  .pages { flex: 1; min-width: 0; overflow-y: auto; padding-right: 6px; }
+  .page { display: none; gap: 26px; }
+  .page.active { display: flex; }
+  .column { flex: 1; min-width: 0; }
+
+  .column h3 {
+    margin: 0 0 14px;
+    padding-bottom: 7px;
+    font-size: 16px;
+    font-weight: normal;
+    color: var(--gold);
+    border-bottom: 1px solid var(--edge);
+  }
+
+  .slider { margin-bottom: 15px; }
+  .slider .head { display: flex; justify-content: space-between; font-size: 14px; color: var(--dim); }
+  .slider .head b { font-weight: normal; color: var(--gold); }
+  .slider input { width: 100%; margin-top: 5px; accent-color: #8a6a3a; cursor: pointer; }
+
+  .actions {
+    display: flex; justify-content: center; gap: 14px;
+    padding: 12px 0 16px; border-top: 1px solid var(--edge);
+  }
+
+  .stub { padding: 44px 10px; text-align: center; }
+  .window h2 { position: relative; }
+  .close {
+    position: absolute;
+    top: 50%; right: 14px;
+    transform: translateY(-50%);
+    width: 26px; height: 26px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+    color: var(--dim);
+    border: 1px solid var(--edge);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: color .15s ease, background .15s ease;
+  }
+  .close:hover { color: var(--gold); background: rgba(106, 86, 55, .5); }
+
+  #status { position: fixed; bottom: 12px; left: 0; right: 0; text-align: center; font-size: 12px; color: var(--dim); }
+</style>
+</head>
+<body>
+  <div class="bg"></div>
+
+  <div class="layout">
+    <div class="window">
+      <h2>Настройки<span class="close" id="x" title="Закрыть">&#10005;</span></h2>
+
+      <div class="body">
+        <div class="tabs">
+          <div class="tab active" data-page="video">Видео</div>
+          <div class="tab" data-page="sound">Звук</div>
+          <div class="tab" data-page="control">Управление</div>
+          <div class="tab" data-page="profile">Профиль</div>
+          <div class="tab" data-page="keys">Горячие клавиши</div>
+        </div>
+
+        <div class="pages">
+          <!-- ВИДЕО -->
+          <div class="page active" data-page="video">
+            <div class="column">
+              <h3>Экран</h3>
+              <label>Вертикальная синхронизация
+                <select data-option="VSyncMode">
+                  <option value="vsmNone">Выключена</option>
+                  <option value="vsmSync">Включена</option>
+                </select>
+              </label>
+              <label>Сглаживание
+                <select data-option="AntiAliasing">
+                  <option value="aaNone">Нет</option>
+                  <option value="aa2x">2x</option>
+                  <option value="aa4x">4x</option>
+                  <option value="aa8x">8x</option>
+                </select>
+              </label>
+              <label>Тональная обработка
+                <select data-option="HDRType">
+                  <option value="hdrNone">Нет</option>
+                  <option value="hdrSimple">Простая</option>
+                  <option value="hdrFull">Полная</option>
+                </select>
+              </label>
+              <label class="check"><input type="checkbox" data-option="FXAAEnable"> FXAA</label>
+              <label class="check"><input type="checkbox" data-option="SSAOEnable"> SSAO</label>
+            </div>
+
+            <div class="column">
+              <h3>Качество</h3>
+              <label>Разрешение теневых карт
+                <select data-option="ShadowMap">
+                  <option value="sm1024">1024x1024</option>
+                  <option value="sm2048">2048x2048</option>
+                  <option value="sm4096">4096x4096</option>
+                </select>
+              </label>
+              <label>Фильтрация текстур
+                <select data-option="TextureFilteringQuality">
+                  <option value="tfIsotropic">Изотропная</option>
+                  <option value="tfAnisotropic4x">Анизотропная 4x</option>
+                  <option value="tfAnisotropic8x">Анизотропная 8x</option>
+                  <option value="tfAnisotropic16x">Анизотропная 16x</option>
+                </select>
+              </label>
+              <label>Качество отражений
+                <select data-option="WaterReflection">
+                  <option value="wrNone">Нет</option>
+                  <option value="wrLow">Низкое</option>
+                  <option value="wrMedium">Среднее</option>
+                  <option value="wrHigh">Высокое</option>
+                </select>
+              </label>
+              <label class="check"><input type="checkbox" data-option="ShadowMapEnabled"> Теневые карты</label>
+              <p class="note">Меняется сразу, без «Принять» — видно на месте.</p>
+            </div>
+          </div>
+
+          <!-- ЗВУК -->
+          <div class="page" data-page="sound">
+            <div class="column">
+              <h3>Громкость</h3>
+              <div class="slider"><div class="head"><span>Общая</span><b>—</b></div>
+                <input type="range" min="0" max="100" data-option="sndmaster"></div>
+              <div class="slider"><div class="head"><span>Музыка</span><b>—</b></div>
+                <input type="range" min="0" max="100" data-option="sndmusic"></div>
+              <div class="slider"><div class="head"><span>Эффекты</span><b>—</b></div>
+                <input type="range" min="0" max="100" data-option="sndfx"></div>
+            </div>
+            <div class="column">
+              <h3>Окружение</h3>
+              <div class="slider"><div class="head"><span>Атмосфера</span><b>—</b></div>
+                <input type="range" min="0" max="100" data-option="sndambient"></div>
+              <div class="slider"><div class="head"><span>Интерфейс</span><b>—</b></div>
+                <input type="range" min="0" max="100" data-option="sndinterface"></div>
+              <label class="check"><input type="checkbox" data-option="sndmute"> Без звука</label>
+            </div>
+          </div>
+
+          <!-- УПРАВЛЕНИЕ -->
+          <div class="page" data-page="control">
+            <div class="column">
+              <h3>Прокрутка</h3>
+              <div class="slider"><div class="head"><span>Мышью у края</span><b>—</b></div>
+                <input type="range" min="0" max="100" data-option="mousescrollspeed"></div>
+              <div class="slider"><div class="head"><span>Клавишами</span><b>—</b></div>
+                <input type="range" min="0" max="100" data-option="keyscrollspeed"></div>
+              <div class="slider"><div class="head"><span>Средней кнопкой</span><b>—</b></div>
+                <input type="range" min="0" max="100" data-option="middlemousescrollspeed"></div>
+              <div class="slider"><div class="head"><span>Колесом</span><b>—</b></div>
+                <input type="range" min="0" max="100" data-option="wheelspeed"></div>
+            </div>
+            <div class="column">
+              <h3>Поведение</h3>
+              <label class="check"><input type="checkbox" data-option="bclipmouse"> Фиксация мыши в окне</label>
+              <label class="check"><input type="checkbox" data-option="bfreezoom"> Снятие ограничения с камеры</label>
+              <label class="check"><input type="checkbox" data-option="bautosave"> Автосохранение</label>
+              <label class="check"><input type="checkbox" data-option="bcenterfirstrow"> Центрировать первый ряд</label>
+              <label class="check"><input type="checkbox" data-option="binfiniteonleftclick"> Бесконечный найм по клику</label>
+              <label class="check"><input type="checkbox" data-option="bsearchenemyinfront"> Искать врага впереди</label>
+              <label class="check"><input type="checkbox" data-option="bselectallunitsonz"> Выделять всех по Z</label>
+            </div>
+          </div>
+
+          <!-- ПРОФИЛЬ -->
+          <div class="page" data-page="profile">
+            <div class="column">
+              <h3>Профиль</h3>
+              <p class="note">
+                Язык игры: <b id="lang">—</b><br><br>
+                Смена языка и разрешения перезапускает интерфейс игры, поэтому переносится отдельно —
+                чтобы не уронить страницу вместе с ним.
+              </p>
+            </div>
+          </div>
+
+          <!-- ГОРЯЧИЕ КЛАВИШИ -->
+          <div class="page" data-page="keys">
+            <div class="stub note">
+              Горячие клавиши — отдельный редактор на полторы сотни команд с перехватом нажатий.
+              Пока открывается родным экраном игры.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="btn small" id="accept">Принять</button>
+        <button class="btn small" id="cancel">Отмена</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="status"></div>
+
+<script src="bridge.js"></script>
+<script src="settings.js"></script>
+<script>
+  const status = document.getElementById('status');
+
+  // вкладки
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === tab));
+      document.querySelectorAll('.page').forEach(p =>
+        p.classList.toggle('active', p.dataset.page === tab.dataset.page));
+    });
+  });
+
+  // подпись значения у ползунков
+  function showValue(el) {
+    const head = el.closest('.slider')?.querySelector('b');
+    if (head) head.textContent = el.value + '%';
+  }
+  document.querySelectorAll('input[type=range]').forEach(el => {
+    el.addEventListener('input', () => showValue(el));
+    el.addEventListener('display', () => showValue(el));
+  });
+
+  // изменения уходят в игру сразу
+  document.querySelectorAll('[data-option]').forEach(el => {
+    el.addEventListener('change', () => settings.write(el).catch(e => {
+      status.textContent = 'не удалось записать ' + el.dataset.option + ': ' + e.message;
+    }));
+  });
+
+  // Кнопки окна — тэги из data/gui/menu.inc/showsettings.inc:
+  //   90 «Принять» — игра делает gProfile := gProfileTmp и сохраняет профиль на диск
+  //   91 «Отмена»  — gProfileTmp := gProfile, то есть правки профиля отбрасываются
+  //
+  // Возвращаемся в главное меню переходом на его страницу, а не закрытием браузера:
+  // игра свой главный экран не пересоздаёт, он просто был скрыт под окном настроек.
+  const leave = async (tag, revert) => {
+    try {
+      if (revert) await settings.revertGraphics();
+      await game.tag('EventSettings', tag);
+    } catch (e) {
+      status.textContent = 'ошибка: ' + e.message;
+    }
+    location.href = 'menu.html';
+  };
+
+  document.getElementById('accept').addEventListener('click', () => leave(90, false));
+  document.getElementById('cancel').addEventListener('click', () => leave(91, true));
+  document.getElementById('x').addEventListener('click', () => leave(91, true));
+
+  bridge.whenReady(async ok => {
+    document.querySelectorAll('button').forEach(b => b.disabled = !ok);
+    if (!ok) return (status.textContent = 'мост в игру не поднялся');
+    try {
+      const values = await settings.load();
+      document.getElementById('lang').textContent = values.lang || '—';
+      status.textContent = 'значения прочитаны из игры';
+    } catch (e) {
+      status.textContent = 'не удалось прочитать настройки: ' + e.message;
+    }
+  });
+</script>
+</body>
+</html>
