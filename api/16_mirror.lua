@@ -62,16 +62,27 @@ local function items(h)
     return out
 end
 
+local stats
+
 local function walk(h, out, depth)
-    if depth > 40 or not N.GetGUIElementVisible(h) then return end
+    stats.visited = stats.visited + 1
+    if depth > 40 or N.GetGUIElementVisible(h) == false then
+        stats.hidden = stats.hidden + 1
+        return
+    end
 
     local class = classOf(h)
+    -- Интерфейс партии (HUD) живёт в том же дереве и в меню числится видимым — не наш экран.
+    if class == "TXGroupHUDCollection" then return end
     local press = N.GetGUIElementPressState(h) or ""
     local material = N.GetGUIElementMaterial(h) or ""
     local kind = kindOf(h, class, press, material)
 
     if kind then
+        -- Рамка у движка: y отсчитывается вверх от верхнего края экрана, высота отрицательная
+        -- (сверху вниз). Переводим в обычные экранные координаты.
         local x, y, w, hh = N.GetGUIElementBoundingBox(h)
+        if x then y, hh = -y, math.abs(hh) end
         if x and w > 0 and hh > 0 then
             local e = {
                 id = h, kind = kind, x = x, y = y, w = w, h = hh,
@@ -103,8 +114,10 @@ end
 function mirror.snapshot()
     local top = N.GetGUIElementTopIndexByName("top")
     local out = {}
+    stats = { top = top or 0, visited = 0, hidden = 0 }
     if top and top ~= 0 then walk(top, out, 0) end
-    return { width = N.GetViewerWidth(), height = N.GetViewerHeight(), items = out }
+    -- stats — чтобы по пустому снимку было видно, где потерялись элементы.
+    return { width = N.GetViewerWidth(), height = N.GetViewerHeight(), items = out, stats = stats }
 end
 
 -- Нажатие уходит в состояние, которое игра назначила элементу, с теми же переменными, что ставит
@@ -133,4 +146,30 @@ end
 function mirror.input(h, text)
     N.SetGUIElementText(h, text)
     if (N.GetGUIElementPressState(h) or "") ~= "" then send(h, "change") end
+end
+
+-- Отладка: сырые ответы нативов по первым видимым элементам (с текстом ошибки, если натив упал).
+--   =mirror.debug(8)
+function mirror.debug(limit)
+    local rows, count = {}, 0
+    local function raw(name, ...)
+        local ok, a, b, c, d = pcall(native[name], ...)
+        if not ok then return "ERR " .. tostring(a) end
+        if b ~= nil then return table.concat({ tostring(a), tostring(b), tostring(c), tostring(d) }, ",") end
+        return tostring(a)
+    end
+    local function visit(h, depth)
+        if count >= (limit or 8) or depth > 40 then return end
+        if raw("GetGUIElementVisible", h) == "true" and depth > 0 then
+            count = count + 1
+            rows[#rows + 1] = string.format("%d d=%d vis class=%s name=%s press=%s mat=%s box=%s",
+                h, depth, raw("GetObjectClassNameByHandle", h), raw("GetGUIElementNameByIndex", h),
+                raw("GetGUIElementPressState", h), raw("GetGUIElementMaterial", h),
+                raw("GetGUIElementBoundingBox", h))
+        end
+        local n = tonumber(raw("GetGUIElementChildrenCount", h)) or 0
+        for i = 0, n - 1 do visit(tonumber(raw("GetGUIElementChildrenByIndex", h, i)), depth + 1) end
+    end
+    visit(native.GetGUIElementTopIndexByName("top"), 0)
+    return table.concat(rows, "\n")
 end
