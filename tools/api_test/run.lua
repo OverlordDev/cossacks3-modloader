@@ -13,7 +13,7 @@ dofile(here .. "/fake_game.lua")
 -- Список api/*.lua без модулей файловой системы: имена задаём по шаблону и пробуем открыть.
 local loaded = {}
 for _, name in ipairs({ "00_schema", "01_state", "02_screens_data", "10_profile", "11_options", "12_saves",
-                        "13_players", "14_map", "15_screens", "16_mirror", "17_balance", "90_call" }) do
+                        "13_players", "14_map", "15_screens", "16_mirror", "17_balance", "18_buildings", "90_call" }) do
     local path = root .. "/api/" .. name .. ".lua"
     local chunk, err = loadfile(path, "t", _ENV)
     assert(chunk, err)
@@ -124,6 +124,33 @@ check("balance.set one untouched", FAKE.gPlayer[2].objbase[4][12].weapon[0].dama
 balance.set("rus_strelets", "price[3]", 50)
 check("balance.set price", FAKE.gPlayer[5].objbase[4][12].price[3], 50)
 check("balance.unknown", pcall(balance.find, "nope"), false)
+
+-- buildings: разбор ответа скрипта (сам скрипт исполняет игра)
+do
+    local realExec = game.exec
+    game.exec = function(code)
+        if code:find("_country_GetFixedProduceIndexBySID%(cid") then
+            return "420barracks189001000True1" ..
+                "musketeer1812010,20,0,5,0,03000" ..
+                "pikeman181115,5,0,0,0,02010" ..
+                "upg_bayonet70True1415100,0,0,50,0,060" ..
+                "4musketeer1830,25"
+        end
+        return "True"
+    end
+    local b = buildings.info(777)
+    check("buildings.info sid", b.sid, "barracks18")
+    check("buildings.info built", b.built, true)
+    check("buildings.info produce", #b.produce, 2)
+    check("buildings.info available", b.produce[1].available, true)
+    check("buildings.info blocked", b.produce[2].available, false)
+    check("buildings.info price", b.produce[1].price[4], 5)
+    check("buildings.info upgrade", b.upgrades[1].sid, "upg_bayonet")
+    check("buildings.info queue", b.queue[1].kind, "unit")
+    check("buildings.info progress", b.queue[1].progress, 0.25)
+    check("buildings.produce", buildings.produce(777, "musketeer18", 5), true)
+    game.exec = realExec
+end
 
 print(("api: %d module(s), %d passed, %d failed"):format(#loaded, passed, failed))
 os.exit(failed == 0 and 0 or 1)

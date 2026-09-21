@@ -13,6 +13,11 @@
 --   G.gProfile.sndmaster = 0.5               --  запись
 --   G.gMap.players[2]()                      --> вся запись таблицей
 --
+-- Объект на карте (юнит, здание) — корень obj(<хендл>), его данные TObj:
+--   state.read("obj(39878848)")                    --> { hp = 120, pl = 0, cid = 4, id = 12, bbuilt = true, ... }
+--   state.get("obj(39878848).orders[0].itype")      --  первый заказ в очереди
+--   state.set("obj(39878848).hp", 50)
+--
 -- Какие переменные и поля есть — GAME_STATE.md, он сгенерирован вместе со схемой.
 --
 -- Типы берутся из схемы (00_schema.lua), поэтому нужная функция чтения выбирается сама:
@@ -27,7 +32,8 @@ state = {}
 -- "gMap.players[2].name" -> { "gMap", ".players", "[2]", ".name" }
 local function tokens(path)
     local out = {}
-    local head, rest = path:match("^([%a_][%w_]*)(.*)$")
+    local head, rest = path:match("^(obj%(%d+%))(.*)$")
+    if not head then head, rest = path:match("^([%a_][%w_]*)(.*)$") end
     if not head then error("state: bad path '" .. tostring(path) .. "'", 3) end
     out[1] = head
     for token in rest:gmatch("[%.%[][^%.%[]*") do
@@ -45,9 +51,15 @@ local function fieldOf(typeName, field)
 end
 
 -- Описание значения по пути: { type = "int" | "float" | "string" | "bool" | "<TRecord>" } или массив.
+-- Путь -> выражение скрипта игры: obj(123) — это TObj(_unit_GetTObj(123)).
+local function expr(path)
+    return (path:gsub("^obj%((%d+)%)", "TObj(_unit_GetTObj(%1))"))
+end
+
 local function describe(path)
     local parts = tokens(path)
     local node = SCHEMA.globals[parts[1]]
+    if parts[1]:sub(1, 4) == "obj(" then node = { type = "TObj" } end
     if not node then error("state: unknown global '" .. parts[1] .. "' (see GAME_STATE.md)", 3) end
     for i = 2, #parts do
         local token = parts[i]
@@ -80,6 +92,7 @@ local function toNumber(text)
 end
 
 local function readScalar(path, kind)
+    path = expr(path)
     if kind == "int" then return game.evalInt(path) end
     if kind == "float" then return game.evalFloat(path) end
     if kind == "bool" then return game.evalBool(path) end
@@ -151,7 +164,7 @@ function state.read(path, depth)
 
     local parts = {}
     for i, leaf in ipairs(leaves) do
-        parts[i] = CONVERT[leaf.type](leaf.path)
+        parts[i] = CONVERT[leaf.type](expr(leaf.path))
     end
     local text = game.eval(table.concat(parts, "+#1+"))
 
@@ -194,6 +207,7 @@ function state.set(path, value)
     local node = describe(path)
     local kind = node.type
     if node.array or not SCALAR[kind] then error("state.set: '" .. path .. "' is not a simple value", 2) end
+    path = expr(path)
 
     if kind == "int" then
         game.exec(path .. " := StrToInt(ML_ARG);", tostring(math.floor(tonumber(value) or 0)))

@@ -12,6 +12,16 @@
 #   end;
 #   global gMap : TMap;
 #
+# Вторая часть типов — в data/scripts/dmscript.global, в формате движка:
+#
+#   TCountry : struct.begin
+#      sid = String
+#      fixedproduce = TCountryFixedProduce[gc_country_maxfixedproduce]
+#   struct.end
+#   gCountry = TCountry[gc_MaxCountryCount]
+#
+# Оттуда — страны (что строят здания, улучшения), объект на карте (TObj), заказы (TOrder).
+#
 # Отсюда генерируются:
 #   api/00_schema.lua   — таблица GAME_SCHEMA: типы, их поля, глобальные переменные
 #   GAME_STATE.md       — справочник по тому же, чтобы не открывать скрипты игры
@@ -134,6 +144,50 @@ def parse_classes(path, consts):
     return classes, globals_
 
 
+RE_STRUCT = re.compile(r"^\s*(\w+)\s*:\s*struct\.begin")
+RE_STRUCT_FIELD = re.compile(r"^\s*(\w+)\s*=\s*(\w+)((?:\[[^\]]+\])*)\s*$")
+DMS_SCALARS = {"Integer": "int", "Float": "float", "String": "string", "Boolean": "bool",
+               "Pointer": "int", "SmallInt": "int", "Word": "int", "Byte": "int"}
+
+
+def dms_type(base, dims, consts):
+    """'TCountry', '[gc_A][gc_B]' -> вложенные массивы с нуля до N-1."""
+    node = {"type": DMS_SCALARS.get(base, base)}
+    for dim in reversed(re.findall(r"\[([^\]]+)\]", dims)):
+        n = evaluate(dim, consts)
+        node = {"array": [0, n - 1 if n is not None else None], "of": node}
+    return node
+
+
+def parse_dmscript(path, consts):
+    """Структуры и глобальные переменные из dmscript.global."""
+    classes, globals_ = {}, {}
+    current = None
+    with open(path, encoding="latin-1") as f:
+        for raw in f:
+            line = strip_comment(raw)
+            if not line.strip():
+                continue
+            m = RE_STRUCT.match(line)
+            if m:
+                current = m.group(1)
+                classes[current] = []
+                continue
+            if line.strip() == "struct.end":
+                current = None
+                continue
+            m = RE_STRUCT_FIELD.match(line)
+            # Тип — имя типа (TCountry) или простой; "gc_x = 12" — константа, не переменная.
+            if not m or not (m.group(2) in DMS_SCALARS or m.group(2).startswith("T")):
+                continue
+            node = dms_type(m.group(2), m.group(3), consts)
+            if current:
+                classes[current].append({"name": m.group(1), **node})
+            elif m.group(1).startswith("g"):
+                globals_[m.group(1)] = node
+    return classes, globals_
+
+
 # ---------- вывод ----------
 
 def lua_value(v, indent=""):
@@ -214,6 +268,11 @@ def main():
 
     consts = read_consts(scripts)
     classes, globals_ = parse_classes(os.path.join(scripts, "lib", "classes.script"), consts)
+    dms_classes, dms_globals = parse_dmscript(os.path.join(scripts, "dmscript.global"), consts)
+    for name, fields in dms_classes.items():
+        classes.setdefault(name, fields)  # classes.script главнее: там свежее описание
+    for name, node in dms_globals.items():
+        globals_.setdefault(name, node)
 
     write_schema(os.path.join(here, "api", "00_schema.lua"), classes, globals_)
     write_doc(os.path.join(here, "GAME_STATE.md"), classes, globals_)
