@@ -630,6 +630,7 @@ namespace
         if (k.rfind("num", 0) == 0 && k.size() == 4 && isdigit(static_cast<unsigned char>(k[3])))
             return VK_NUMPAD0 + (k[3] - '0');
         static const std::map<std::string, int> named = {
+            { "lmb", VK_LBUTTON }, { "rmb", VK_RBUTTON }, { "mmb", VK_MBUTTON }, // кнопки мыши
             { "space", VK_SPACE }, { "enter", VK_RETURN }, { "tab", VK_TAB }, { "escape", VK_ESCAPE },
             { "backspace", VK_BACK }, { "delete", VK_DELETE }, { "home", VK_HOME }, { "pageup", VK_PRIOR },
             { "pagedown", VK_NEXT }, { "up", VK_UP }, { "down", VK_DOWN }, { "left", VK_LEFT }, { "right", VK_RIGHT },
@@ -658,7 +659,7 @@ namespace
         }
         bind.vk = ParseKey(rest);
         if (!bind.vk)
-            return luaL_error(L, "input.bind: unknown key '%s' (F1-F12, A-Z, 0-9, Num0-Num9, Space, Enter, arrows...)", spec.c_str());
+            return luaL_error(L, "input.bind: unknown key '%s' (F1-F12, A-Z, 0-9, Num0-Num9, Space, Enter, arrows, LMB/RMB/MMB...)", spec.c_str());
         if (!bind.ctrl && !bind.shift && !bind.alt && (bind.vk == VK_F9))
             LOG_WARN("[%s] input.bind: %s is also used by the modloader", mod->id.c_str(), spec.c_str());
 
