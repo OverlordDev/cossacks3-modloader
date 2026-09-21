@@ -224,6 +224,9 @@ namespace
     // Главный поток игры: обернуть вызовы в состоянии. true — обёртки на месте.
     // Вставки, которые сломали компиляцию: больше не пробуем (иначе Maintain повторяет раз в секунду).
     std::set<std::string> g_failed;
+    // Строки, которые не компилируются обёрнутыми: ключ вставки -> исходные строки. Их не трогаем
+    // больше никогда — проверка вставок идёт раз в секунду, и без этого каждая порождала бы ошибку.
+    std::map<std::string, std::set<std::string>> g_badLines;
 
     // Главный поток игры: обернуть вызовы в состоянии. Каждый вызов — отдельно, со своей проверкой
     // компиляции: строка, которая не компилируется обёрнутой, остаётся как есть, остальные работают.
@@ -232,7 +235,8 @@ namespace
         uint8_t* list = Engine::StateCode(state);
         size_t m = inj.line.find("'ML:");
         std::string marker = inj.line.substr(m, inj.line.find('|', m) - m);
-        int wrapped = 0, skipped = 0;
+        int wrapped = 0, skipped = 0, fresh = 0;
+        std::set<std::string>& bad = g_badLines[inj.event];
         int count = Engine::ListCount(list);
         for (int i = 0; i < count; ++i)
         {
@@ -246,7 +250,7 @@ namespace
             size_t start = original.find_first_not_of(" 	");
             if (start == std::string::npos || original.compare(start, 2, "//") == 0 ||
                 original.find(inj.wrapCall + "(") == std::string::npos || original.find('}') != std::string::npos ||
-                original.find("//") != std::string::npos || !CallArgs(original, inj.wrapCall, &args))
+                original.find("//") != std::string::npos || bad.count(original) || !CallArgs(original, inj.wrapCall, &args))
                 continue;
             size_t end = original.find_last_not_of(" 	");
             std::string core = original.substr(start, end - start + 1);
@@ -261,8 +265,10 @@ namespace
             if (Engine::StateCompileSafe(sm, state))
             {
                 ++wrapped;
+                ++fresh;
                 continue;
             }
+            bad.insert(original);
             Engine::ListDelete(list, i);
             Engine::ListInsert(list, i, original);
             Engine::StateReset(state);
@@ -272,6 +278,8 @@ namespace
         }
         if (skipped)
             Engine::StateCompileSafe(sm, state); // вернуть состояние в рабочий (скомпилированный) вид
+        if (wrapped == 0 && skipped == 0 && fresh == 0 && !bad.empty())
+            return false; // всё, что было, уже известно как непригодное — молча
         if (wrapped == 0)
         {
             g_failed.insert(inj.event);
@@ -281,6 +289,8 @@ namespace
                          skipped ? ", they do not compile wrapped" : "");
             return false;
         }
+        if (fresh == 0 && skipped == 0)
+            return true; // уже было обёрнуто — ничего нового
         LOG_DEV("Events: %s — %d call(s) of %s wrapped in '%s' (%s)%s", inj.event.c_str(), wrapped,
                 inj.wrapCall.c_str(), inj.state.c_str(), inj.library.c_str(),
                 skipped ? (", " + std::to_string(skipped) + " skipped").c_str() : "");
