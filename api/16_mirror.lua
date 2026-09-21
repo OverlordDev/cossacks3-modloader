@@ -90,8 +90,9 @@ local function walk(h, out, depth, clip)
         local w, hh = N.GetGUIElementWidth(h) or 0, N.GetGUIElementHeight(h) or 0
         -- Слой бывает высотой во весь текст, а видимое окно — его родитель: обрезаем по нему.
         local p = N.GetGUIElementParentByIndex(h)
-        local px, py = p and N.GetGUIElementBoundingBox(p)
-        if x and px then
+        local px, py
+        if p and p ~= 0 then px, py = N.GetGUIElementBoundingBox(p) end
+        if x and px and py then
             local pw, ph = N.GetGUIElementWidth(p) or 0, N.GetGUIElementHeight(p) or 0
             if pw > 0 and ph > 0 then
                 local x2, y2 = math.min(x + w, px + pw), math.min(y + hh, py + ph)
