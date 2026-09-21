@@ -14,7 +14,24 @@
 
 mirror = {}
 
-local N = native
+-- Часть нативов падает на элементах «не своего» класса (GetGUIElementText на картинке или
+-- слое — нарушение доступа внутри игры). Модлоадер ловит это и превращает в ошибку Lua,
+-- а здесь она означает просто «у элемента этого свойства нет».
+local N = setmetatable({}, { __index = function(_, name)
+    local f = native[name]
+    return function(...)
+        local ok, a, b, c, d = pcall(f, ...)
+        if ok then return a, b, c, d end
+        return nil
+    end
+end })
+
+-- Классы, у которых текст точно есть; у остальных GetGUIElementText не зовём вовсе.
+local TEXT_CLASSES = { TOSWBaseGuiTextControl = true, TXEditControl = true, TXGuiComboBox = true }
+local function textOf(h, class, press)
+    if not TEXT_CLASSES[class] and press == "" then return "" end
+    return N.GetGUIElementText(h) or ""
+end
 
 -- Пустые и служебные картинки не рисуем: на странице свой фон.
 local function isDecor(material)
@@ -22,26 +39,25 @@ local function isDecor(material)
 end
 
 local function classOf(h)
-    local ok, name = pcall(N.GetObjectClassNameByHandle, h)
-    return ok and name or ""
+    return N.GetObjectClassNameByHandle(h) or ""
 end
 
 local function kindOf(h, class, press, material)
     if class == "TXGuiComboBox" then return "combo" end
     if class == "TXGuiListBox" then return "list" end
     if class == "TXEditControl" then return "input" end
-    local normal = N.GetGUIElementStateNormalMaterial(h)
-    if press ~= "" and normal:find("^checkbox") then return "checkbox" end
+    local normal = press ~= "" and N.GetGUIElementStateNormalMaterial(h) or ""
+    if normal:find("^checkbox") then return "checkbox" end
     if press ~= "" then return "button" end
-    if N.GetGUIElementText(h) ~= "" then return "text" end
+    if textOf(h, class, press) ~= "" then return "text" end
     if not isDecor(material) then return "image" end
     return nil
 end
 
 local function items(h)
     local out = {}
-    for i = 0, N.GetGUIListBoxItemsCount(h) - 1 do
-        out[#out + 1] = N.GetGUIListBoxItemValue(h, i)
+    for i = 0, (N.GetGUIListBoxItemsCount(h) or 0) - 1 do
+        out[#out + 1] = N.GetGUIListBoxItemValue(h, i) or ""
     end
     return out
 end
@@ -50,27 +66,27 @@ local function walk(h, out, depth)
     if depth > 40 or not N.GetGUIElementVisible(h) then return end
 
     local class = classOf(h)
-    local press = N.GetGUIElementPressState(h)
-    local material = N.GetGUIElementMaterial(h)
+    local press = N.GetGUIElementPressState(h) or ""
+    local material = N.GetGUIElementMaterial(h) or ""
     local kind = kindOf(h, class, press, material)
 
     if kind then
         local x, y, w, hh = N.GetGUIElementBoundingBox(h)
-        if w > 0 and hh > 0 then
+        if x and w > 0 and hh > 0 then
             local e = {
                 id = h, kind = kind, x = x, y = y, w = w, h = hh,
-                text = N.GetGUIElementText(h),
-                name = N.GetGUIElementNameByIndex(h),
-                hint = N.GetGUIElementHint(h),
-                tag = N.GetGUIElementTag(h),
-                enabled = N.GetGUIElementEnabled(h),
+                text = textOf(h, class, press),
+                name = N.GetGUIElementNameByIndex(h) or "",
+                hint = N.GetGUIElementHint(h) or "",
+                tag = N.GetGUIElementTag(h) or 0,
+                enabled = N.GetGUIElementEnabled(h) ~= false,
                 material = material,
                 z = depth,
             }
-            if kind == "checkbox" then e.checked = N.GetGUIElementChecked(h) end
+            if kind == "checkbox" then e.checked = N.GetGUIElementChecked(h) == true end
             if kind == "combo" or kind == "list" then
                 e.items = items(h)
-                e.selected = N.GetGUIListBoxItemIndex(h)
+                e.selected = N.GetGUIListBoxItemIndex(h) or -1
             end
             out[#out + 1] = e
         end
@@ -78,31 +94,32 @@ local function walk(h, out, depth)
         if kind == "combo" or kind == "list" or kind == "input" then return end
     end
 
-    for i = 0, N.GetGUIElementChildrenCount(h) - 1 do
-        walk(N.GetGUIElementChildrenByIndex(h, i), out, depth + 1)
+    for i = 0, (N.GetGUIElementChildrenCount(h) or 0) - 1 do
+        local child = N.GetGUIElementChildrenByIndex(h, i)
+        if child and child ~= 0 then walk(child, out, depth + 1) end
     end
 end
 
 function mirror.snapshot()
     local top = N.GetGUIElementTopIndexByName("top")
     local out = {}
-    if top ~= 0 then walk(top, out, 0) end
+    if top and top ~= 0 then walk(top, out, 0) end
     return { width = N.GetViewerWidth(), height = N.GetViewerHeight(), items = out }
 end
 
 -- Нажатие уходит в состояние, которое игра назначила элементу, с теми же переменными, что ставит
 -- сама игра при щелчке мышью (см. _gui_SendTagToStateExt в data/scripts/lib/gui.script).
 local function send(h, status)
-    local state = N.GetGUIElementPressState(h)
+    local state = N.GetGUIElementPressState(h) or ""
     if state == "" or not state:match("^[%w_]+$") then
         error("mirror: element " .. tostring(h) .. " has no press state", 3)
     end
     game.exec(string.format("_gui_SendTagToStateExt('%s', %d, 'c', 'LButton', '%s', %d);",
-        state, N.GetGUIElementTag(h), status, h))
+        state, N.GetGUIElementTag(h) or 0, status, h))
 end
 
 function mirror.click(h)
-    if N.GetGUIElementStateNormalMaterial(h):find("^checkbox") then
+    if (N.GetGUIElementStateNormalMaterial(h) or ""):find("^checkbox") then
         N.SetGUIElementChecked(h, not N.GetGUIElementChecked(h))
     end
     send(h, "button")
@@ -115,5 +132,5 @@ end
 
 function mirror.input(h, text)
     N.SetGUIElementText(h, text)
-    if N.GetGUIElementPressState(h) ~= "" then send(h, "change") end
+    if (N.GetGUIElementPressState(h) or "") ~= "" then send(h, "change") end
 end

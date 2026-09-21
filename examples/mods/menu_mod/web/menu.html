@@ -72,15 +72,15 @@
 
 <script src="bridge.js"></script>
 <script>
-  // Нажатие уходит родному обработчику игры, а страница убирает себя с экрана:
-  // дальше рисует игра, и мышь должна достаться ей.
-  // Экраны, которые мод рисует сам: их страница откроется поверх этой, закрывать нечего.
-  const OWN_SCREENS = [104, 105]; // настройки, загрузка игры
+  // Нажатие уходит родному обработчику игры. Экраны меню мод рисует сам (свои страницы или
+  // зеркало — client.lua), поэтому страницу убираем только там, где дальше рисует игра:
+  // редактор карт и менеджер модов.
+  const GAME_SCREENS = [107, 108];
 
   async function press(tag) {
     try {
       await game.tag('EventMainMenu', tag);
-      if (!OWN_SCREENS.includes(tag))
+      if (GAME_SCREENS.includes(tag))
         await game.close();
     } catch (e) {
       document.getElementById('error').textContent = 'не удалось: ' + e.message;
