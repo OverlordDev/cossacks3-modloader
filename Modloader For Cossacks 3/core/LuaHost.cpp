@@ -1539,6 +1539,24 @@ end
             lua_pop(L, 1);
             lua_setmetatable(L, -2);
             lua_setfield(L, -2, "ui");
+
+            // screens (api/15_screens.lua): перехваты кнопок идут через ui этого мода, поэтому
+            // мод получает свою копию — screens.bind(ui) — и снимаются они вместе с модом.
+            lua_rawgeti(L, LUA_REGISTRYINDEX, g_baseEnvRef[Client]);
+            lua_getfield(L, -1, "screens");
+            if (lua_istable(L, -1))
+            {
+                lua_getfield(L, -1, "bind");
+                if (lua_isfunction(L, -1))
+                {
+                    lua_getfield(L, -4, "ui");
+                    if (Call(1, 1, "screens.bind"))
+                        lua_setfield(L, -4, "screens");
+                }
+                else
+                    lua_pop(L, 1);
+            }
+            lua_pop(L, 2);
         }
 
         lua_newtable(L); // mod — информация о себе и свои файлы

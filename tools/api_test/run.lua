@@ -12,8 +12,8 @@ dofile(here .. "/fake_game.lua")
 
 -- Список api/*.lua без модулей файловой системы: имена задаём по шаблону и пробуем открыть.
 local loaded = {}
-for _, name in ipairs({ "00_schema", "01_state", "10_profile", "11_options", "12_saves",
-                        "13_players", "14_map", "90_call" }) do
+for _, name in ipairs({ "00_schema", "01_state", "02_screens_data", "10_profile", "11_options", "12_saves",
+                        "13_players", "14_map", "15_screens", "90_call" }) do
     local path = root .. "/api/" .. name .. ".lua"
     local chunk, err = loadfile(path, "t", _ENV)
     assert(chunk, err)
@@ -91,6 +91,22 @@ check("options.get", options.get("ShadowMap"), "sm4096")
 -- api_call — то, что зовут страницы
 check("api_call", api_call("profile.get", "name"), "Illia")
 check("api_call nested", api_call("saves.list")[1].date, "20.09.26 12:40")
+
+-- screens: имена кнопок и перехват через ui мода
+local SENT, HOOKS = nil, {}
+ui = { sendTag = function(state, tag) SENT = state .. ":" .. tag end, exec = function() end }
+check("screens.tags", screens.tags("MainMenu").Settings, 104)
+check("screens.button", screens.button("MainMenu", 109), "Exit")
+check("screens.of", screens.of("EventSettings"), "Settings")
+screens.press("MainMenu", "Settings")
+check("screens.press", SENT, "EventMainMenu:104")
+local own = screens.bind({ hookState = function(state, fn) HOOKS[state] = fn end })
+local got
+own.onAnyButton(function(screen, button) got = screen .. "." .. button; return true end)
+check("onAnyButton block", HOOKS.EventMainMenu(1, "c", 101), true)
+check("onAnyButton name", got, "MainMenu.Campaign")
+check("onButton hover skipped", HOOKS.EventMainMenu(1, "m", 101), nil)
+check("modOnly", pcall(screens.onButton, "MainMenu", print), false)
 
 print(("api: %d module(s), %d passed, %d failed"):format(#loaded, passed, failed))
 os.exit(failed == 0 and 0 or 1)
