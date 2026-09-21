@@ -60,11 +60,22 @@ namespace
         return msg == WM_KEYDOWN || msg == WM_KEYUP || msg == WM_CHAR || msg == WM_SYSKEYDOWN || msg == WM_SYSKEYUP;
     }
 
+    // Диагностика ввода (dev): сколько клавиш пришло в окно игры и сколько из них забрали мы.
+    std::atomic<int> g_keysIn = 0, g_keysEatenWeb = 0, g_keysEatenMenu = 0, g_charsIn = 0;
+
     LRESULT CALLBACK WndProc(HWND wnd, UINT msg, WPARAM wp, LPARAM lp)
     {
+        if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN)
+            ++g_keysIn;
+        else if (msg == WM_CHAR)
+            ++g_charsIn;
         // Пока открыт веб-интерфейс, ввод достаётся ему, а не игре. Меню модлоадера важнее обоих.
         if (!g_open && WebUi::OnWndProc(wnd, msg, wp, lp))
+        {
+            if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN)
+                ++g_keysEatenWeb;
             return msg == WM_SETCURSOR ? TRUE : 0;
+        }
 
         if (g_open && g_initialized)
         {
@@ -472,6 +483,12 @@ void Overlay::OnSwapBuffers(HDC dc)
                      WebUi::HasFrame() ? "yes" : "no", dc, dc != lastDc ? " (new)" : "", WindowFromDC(dc),
                      size.x, size.y, viewport[2], viewport[3], drawBuffer, fbo, GetCurrentThreadId());
         }
+        if (Console::Dev() && (g_keysIn || g_charsIn))
+            LOG_DEV("[input] 3s: %d key(s), %d char(s) reached the game window; eaten by web page %d; "
+                    "frames %d; web open %s, HUD mode %s, focus %p, game window %p",
+                    g_keysIn.load(), g_charsIn.load(), g_keysEatenWeb.load(), swaps, WebUi::IsOpen() ? "yes" : "no",
+                    WebUi::Passthrough() ? "yes" : "no", GetFocus(), g_hwnd.load());
+        g_keysIn = g_charsIn = g_keysEatenWeb = 0;
         lastDc = dc;
         lastReport = now;
         swaps = drawn = 0;
