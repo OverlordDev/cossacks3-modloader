@@ -27,7 +27,7 @@
 balance = {}
 
 local PLAYERS = 12
-local cache -- sid (нижний регистр) -> { country, id }
+local cache -- sid (нижний регистр) -> { {country, id, sid}, ... } — одно имя бывает у нескольких наций
 
 -- Все непустые типы одним вызовом скрипта: цикл по gObjProp собирает строку "нация,тип,sid;".
 local function scan()
@@ -62,42 +62,56 @@ end
 local function index()
     if cache then return cache end
     cache = {}
-    for _, t in ipairs(scan()) do cache[t.sid:lower()] = t end
+    for _, t in ipairs(scan()) do
+        local key = t.sid:lower()
+        cache[key] = cache[key] or {}
+        table.insert(cache[key], t)
+    end
     return cache
 end
 
 function balance.types()
     local out = {}
-    for _, t in pairs(index()) do out[#out + 1] = t end
-    table.sort(out, function(a, b) return a.sid < b.sid end)
+    for _, list in pairs(index()) do
+        for _, t in ipairs(list) do out[#out + 1] = t end
+    end
+    table.sort(out, function(a, b) return a.sid < b.sid or (a.sid == b.sid and a.country < b.country) end)
     return out
 end
 
 -- Список типов строится при первом обращении; после смены набора наций в новой партии — сбросить.
 function balance.refresh() cache = nil end
 
-function balance.find(sid)
-    local t = index()[tostring(sid):lower()]
-    if not t then
-        error("balance: unknown unit type '" .. tostring(sid) .. "' (balance.types() lists all)", 2)
+-- Все места, где живёт тип: { {country, id}, ... }.
+local function places(sid, level)
+    local list = index()[tostring(sid):lower()]
+    if not list then
+        error("balance: unknown unit type '" .. tostring(sid) .. "' (balance.types() lists all)", (level or 1) + 2)
     end
+    return list
+end
+
+-- Первое совпадение: нация и номер типа. Остальные нации с тем же именем — balance.places(sid).
+function balance.find(sid)
+    local t = places(sid, 1)[1]
     return t.country, t.id
 end
 
-local function basePath(sid, player)
-    local c, u = balance.find(sid)
-    return string.format("gPlayer[%d].objbase[%d][%d]", player, c, u)
+function balance.places(sid) return places(sid, 1) end
+
+local function basePath(t, player)
+    return string.format("gPlayer[%d].objbase[%d][%d]", player, t.country, t.id)
 end
 
-local function propPath(sid)
-    local c, u = balance.find(sid)
-    return string.format("gObjProp[%d][%d]", c, u)
+local function propPath(t)
+    return string.format("gObjProp[%d][%d]", t.country, t.id)
 end
 
 function balance.get(sid, player)
+    local t = places(sid, 1)[1]
     return {
-        base = state.read(basePath(sid, player or 0), 2),
-        prop = state.read(propPath(sid), 2),
+        base = state.read(basePath(t, player or 0), 2),
+        prop = state.read(propPath(t), 2),
     }
 end
 
@@ -109,8 +123,10 @@ function balance.set(sid, field, value, player)
     local first, last = 0, PLAYERS - 1
     if player then first, last = player, player end
     local sep = field:sub(1, 1) == "[" and "" or "."
-    for p = first, last do
-        state.set(basePath(sid, p) .. sep .. field, value)
+    for _, t in ipairs(places(sid, 1)) do -- у всех наций с этим типом
+        for p = first, last do
+            state.set(basePath(t, p) .. sep .. field, value)
+        end
     end
 end
 
@@ -119,7 +135,9 @@ function balance.setProp(sid, field, value)
         error("balance.setProp: only server/shared scripts can change the game", 2)
     end
     local sep = field:sub(1, 1) == "[" and "" or "."
-    state.set(propPath(sid) .. sep .. field, value)
+    for _, t in ipairs(places(sid, 1)) do
+        state.set(propPath(t) .. sep .. field, value)
+    end
 end
 
 local function flatten(t, prefix, out)
@@ -140,4 +158,87 @@ function balance.dump(sid, player)
     local text = sid .. ":\n  " .. table.concat(lines, "\n  ")
     if log and log.info then log.info(text) end
     return text
+end
+
+-- ---------- как улучшения игры: тип + все живые юниты ----------
+--
+-- balance.set меняет только тип: игра копирует здоровье и скорость в юнита при его появлении,
+-- поэтому уже живые юниты изменения не увидят. Эти функции делают то же, что улучшения самой
+-- игры (data/scripts/lib/player.script): меняют тип и пересчитывают всех живых.
+--
+--   balance.setHP("musketeer18", 500)          -- макс. здоровье; текущее у живых — пропорционально
+--   balance.setDamage("musketeer18", 60)       -- урон всех видов оружия (с учётом улучшений игрока)
+--   balance.setDamage("musketeer18", 60, 1)    -- только оружие 1 (у мушкетёра 0 — штык, 1 — выстрел)
+--   balance.setSpeed("musketeer18", 2)         -- в 2 раза быстрее обычного (1 — как в игре)
+-- Последний аргумент у всех — номер игрока (без него — все игроки).
+
+local function needExec(name)
+    if not game.exec then error("balance." .. name .. ": only server/shared scripts can change the game", 3) end
+end
+
+-- Код для каждой нации с этим типом и каждого игрока; body видит c, u, p, plHnd.
+local function forEach(sid, player, body)
+    local out = {}
+    for _, t in ipairs(places(sid, 2)) do
+        local first, last = player or 0, player or (PLAYERS - 1)
+        out[#out + 1] = string.format([[
+for p := %d to %d do
+begin
+c := %d; u := %d;
+plHnd := GetPlayerHandleByIndex(p);
+%s
+end;]], first, last, t.country, t.id, body)
+    end
+    return "var c, u, p, i, k, plHnd, h : Integer;\nvar pobj : Pointer;\nvar old, ratio : Float;\n" ..
+        table.concat(out, "\n")
+end
+
+-- Цикл по живым объектам этого типа у игрока p: тело видит pobj (TObj) и h (хендл).
+local EACH_UNIT = [[
+if plHnd <> 0 then
+for i := 0 to GetPlayerGameObjectsCountByHandle(plHnd)-1 do
+begin
+h := GetGameObjectHandleByIndex(i, plHnd);
+pobj := _unit_GetTObj(h);
+if (pobj <> nil) and (TObj(pobj).cid = c) and (TObj(pobj).id = u) then
+begin
+%s
+end;
+end;]]
+
+function balance.setHP(sid, maxhp, player)
+    needExec("setHP")
+    maxhp = math.floor(tonumber(maxhp) or 0)
+    game.exec(forEach(sid, player, [[
+old := gPlayer[p].objbase[c][u].maxhp;
+gPlayer[p].objbase[c][u].maxhp := ]] .. maxhp .. [[;
+if old > 0 then
+]] .. EACH_UNIT:format("TObj(pobj).hp := Round(TObj(pobj).hp / old * " .. maxhp .. ");")))
+end
+
+function balance.setDamage(sid, damage, weapon, player)
+    needExec("setDamage")
+    damage = math.floor(tonumber(damage) or 0)
+    local first, last = weapon or 0, weapon or 3
+    game.exec(forEach(sid, player, string.format([[
+for k := %d to %d do
+if gObjProp[c][u].weapon[k].enabled then
+begin
+gPlayer[p].objbase[c][u].weapon[k].damageinit := %d;
+gPlayer[p].objbase[c][u].weapon[k].damage := Floor((gPlayer[p].objbase[c][u].weapon[k].damageinit + gPlayer[p].objbase[c][u].weapon[k].damagestatic) * (1 + gPlayer[p].objbase[c][u].weapon[k].damagepercent / 100));
+end;]], first, last, damage)))
+end
+
+-- Скорость у игры — множитель интервала шага (меньше — быстрее); здесь — понятный множитель скорости.
+function balance.setSpeed(sid, multiplier, player)
+    needExec("setSpeed")
+    local interval = 1 / (tonumber(multiplier) or 1)
+    game.exec(forEach(sid, player, string.format([[
+old := gPlayer[p].objbase[c][u].speed;
+if old <= 0 then old := 1;
+ratio := StrToInt('%d') / 1000000 / old;
+gPlayer[p].objbase[c][u].speed := StrToInt('%d') / 1000000;
+]], math.floor(interval * 1000000 + 0.5), math.floor(interval * 1000000 + 0.5)) .. EACH_UNIT:format([[
+SetGameObjectTrackPointMoveStepIntervalByHandle(h, Floor(GetGameObjectTrackPointMoveStepIntervalByHandle(h) * ratio));
+SetGameObjectTrackPointTurnStepIntervalByHandle(h, Floor(GetGameObjectTrackPointTurnStepIntervalByHandle(h) * ratio));]])))
 end

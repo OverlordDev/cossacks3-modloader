@@ -1,37 +1,30 @@
--- Баланс и события объектов. Шпаргалка: api/17_balance.lua, события — README модлоадера.
+-- Баланс юнитов: статы применяются сами при каждом входе в партию — новой, загруженной из
+-- сохранения, после перезахода. Правьте таблицу ниже и перезагрузите моды (.lua reload).
 --
--- События объектов: function(event, handle, basename)
---   unit.spawn / unit.death / unit.destroy          — юниты
---   building.spawn / building.death / building.destroy — здания
--- handle — хендл объекта (для native.GetGameObject*ByHandle), basename — его тип.
+-- Имена типов — как в логе событий (musketeer18) или списком: =balance.types() в консоли.
+-- Все поля типа: =balance.dump("musketeer18")
+--
+--   hp     = максимальное здоровье (живым пересчитывается пропорционально)
+--   damage = урон всех видов оружия; или таблица по номеру оружия: { [1] = 300 } (у мушкетёра 0 — штык, 1 — выстрел)
+--   speed  = множитель скорости: 1 — как в игре, 2 — вдвое быстрее, 0.5 — вдвое медленнее
+--
+-- Мод shared: server.lua выполняется на всех машинах, у всех игроков статы одинаковые — без рассинхрона.
 
-local kills = {}
+local BALANCE = {
+    musketeer18 = { hp = 2000, damage = { [1] = 300 }, speed = 3 },
+}
 
-events.on("game.start", function()
-    -- Имена типов — balance.types(); поля — GAME_STATE.md (TObjBase).
-    -- Сначала посмотрим, что есть: список типов в лог (первые 20).
-    local types = balance.types()
-    log.info("типов юнитов и зданий: " .. #types)
-    for i = 1, math.min(20, #types) do log.info("  " .. types[i].sid) end
+-- Лог всех событий объектов: появление, гибель, удаление юнитов и зданий.
+-- false — выключить (строк много: на выходе из партии игра «убивает» всех разом).
+local LOG_UNITS = true
 
-    -- Пример правки: всем юнитам первого типа из списка — +50% здоровья.
-    local sid = types[1] and types[1].sid
-    if sid then
-        local hp = balance.get(sid).base.maxhp
-        balance.set(sid, "maxhp", math.floor(hp * 1.5))
-        log.info(string.format("%s: maxhp %d -> %d", sid, hp, balance.get(sid).base.maxhp))
+if LOG_UNITS then
+    local TEXT = { spawn = "появился", death = "погиб", destroy = "удалён" }
+    for _, kind in ipairs({ "unit", "building" }) do
+        for event, text in pairs(TEXT) do
+            events.on(kind .. "." .. event, function(_, handle, basename)
+                log.info(string.format("%s %s %s #%d", kind == "unit" and "юнит" or "здание", text, basename, handle))
+            end)
+        end
     end
-end)
-
-events.on("unit.spawn", function(_, handle, basename)
-    log.info("появился " .. basename .. " #" .. handle)
-end)
-
-events.on("unit.death", function(_, handle, basename)
-    kills[basename] = (kills[basename] or 0) + 1
-    log.info(string.format("погиб %s #%d (всего таких: %d)", basename, handle, kills[basename]))
-end)
-
-events.on("building.death", function(_, handle, basename)
-    log.info("разрушено здание " .. basename .. " #" .. handle)
-end)
+end
