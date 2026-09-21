@@ -95,6 +95,20 @@ namespace
 
     // Код, который получает страница: обёртка над cefQuery с промисами.
     constexpr char kBridgeJs[] = R"js(
+// Значение JS -> литерал Lua. Строки — в длинных скобках, так экранировать ничего не нужно.
+function toLua(v) {
+  if (v === null || v === undefined) return 'nil';
+  if (typeof v === 'boolean') return v ? 'true' : 'false';
+  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : 'nil';
+  if (typeof v === 'string') {
+    let eq = '';
+    while (v.includes(']' + eq + ']')) eq += '=';
+    return '[' + eq + '[' + String.fromCharCode(10) + v + ']' + eq + ']';
+  }
+  if (Array.isArray(v)) return '{' + v.map(toLua).join(', ') + '}';
+  return '{' + Object.entries(v).map(([k, x]) => '[' + toLua(k) + '] = ' + toLua(x)).join(', ') + '}';
+}
+
 window.game = {
   send(request) {
     return new Promise((resolve, reject) => {
@@ -112,6 +126,12 @@ window.game = {
   // Выполнить код мода: game.lua('print(gfx.presets())')
   lua(code) { return this.send('lua ' + code); },
   log(text) { return this.send('log ' + text); },
+  // Библиотека api модлоадера: game.api('saves.list'), game.api('profile.set', 'sndmaster', 0.5).
+  // Аргументы уходят в Lua как есть, ответ возвращается объектом.
+  async api(name, ...args) {
+    const text = await this.lua('api_call(' + [name, ...args].map(toLua).join(', ') + ')');
+    return JSON.parse(text);
+  },
   // Имена файлов в папке рядом со страницей: game.files('../LoadScreen')
   async files(folder) { return JSON.parse(await this.send('files ' + folder)); },
   // Убрать страницу с экрана и вернуть управление игре.

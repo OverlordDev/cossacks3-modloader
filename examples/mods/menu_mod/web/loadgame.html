@@ -92,21 +92,6 @@
   let mode = 'saves';
   let selected = null;
 
-  // Список сохранений игра отдаёт тремя нативами: сколько, имя по номеру, дата по номеру.
-  // Собираем его целиком одним запросом — каждый вызов моста это переход между процессами.
-  function query(kind) {
-    const count = kind === 'saves' ? 'UserGetProfileSavesCount' : 'UserGetProfileReplaysCount';
-    const name = kind === 'saves' ? 'UserGetProfileSaveByIndex' : 'UserGetProfileReplayByIndex';
-    const date = kind === 'saves' ? 'UserGetProfileSaveDateByIndex' : 'UserGetProfileReplayDateByIndex';
-    return `(function()
-      local items = {}
-      for i = 0, native.${count}() - 1 do
-        items[#items + 1] = { name = native.${name}(i), date = native.${date}(i) }
-      end
-      return items
-    end)()`;
-  }
-
   function render(items) {
     selected = null;
     document.getElementById('load').disabled = true;
@@ -139,7 +124,8 @@
   async function refresh() {
     list.innerHTML = '<div class="empty note">читаю список…</div>';
     try {
-      render(await bridge.ask(query(mode)));
+      // Библиотека модлоадера (api/12_saves.lua): список собирается в игре одним запросом.
+      render(await game.api(mode === 'saves' ? 'saves.list' : 'saves.replays.list'));
     } catch (e) {
       list.innerHTML = '<div class="empty note">не удалось прочитать список</div>';
       status.textContent = e.message;
@@ -149,16 +135,15 @@
   // Загрузка и удаление — те же нативы, которыми пользуется родной экран.
   async function load() {
     if (!selected) return;
-    const call = mode === 'saves' ? 'UserProfileLoadMap' : 'UserProfileLoadReplay';
     status.textContent = 'загружаю…';
-    await game.lua(`native.${call}([[${selected}]])`);
+    await game.api(mode === 'saves' ? 'saves.load' : 'saves.replays.load', selected);
     // Не закрываем браузер, а показываем свой экран загрузки: игра как раз начинает грузить карту.
     location.href = 'loading.html';
   }
 
   async function remove() {
     if (!selected || mode !== 'saves') return;
-    await game.lua(`native.UserProfileDeleteMap([[${selected}]])`);
+    await game.api('saves.delete', selected);
     status.textContent = 'удалено: ' + selected;
     await refresh();
   }

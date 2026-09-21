@@ -1332,6 +1332,40 @@ function player(index)
 end
 )lua";
 
+    // ---------- api/*.lua ----------
+
+    // Библиотека поверх игры на Lua: <игра>/modloader/api/*.lua, по порядку имён (00_schema,
+    // 01_state, 10_profile...). Лежит отдельными файлами, чтобы её можно было дописывать без
+    // пересборки модлоадера: поправил файл — .lua reload.
+    void LoadApiFolder(int side)
+    {
+        fs::path dir = ModsDir().parent_path() / L"api";
+        std::error_code ec;
+        std::vector<fs::path> files;
+        for (const auto& entry : fs::directory_iterator(dir, ec))
+            if (entry.is_regular_file(ec) && entry.path().extension() == L".lua")
+                files.push_back(entry.path());
+        std::sort(files.begin(), files.end());
+
+        int loaded = 0;
+        for (const fs::path& file : files)
+        {
+            std::string code, error;
+            if (!ReadFile(file, &code))
+                continue;
+            std::string name = "@api/" + file.filename().string();
+            if (!LoadChunk(code, name, g_baseEnvRef[side], &error))
+            {
+                LOG_ERROR("[lua] %s", error.c_str());
+                continue;
+            }
+            if (Call(0, 0, name))
+                ++loaded;
+        }
+        if (side == Server && loaded)
+            LOG_INFO("[lua] api: %d module(s) from %s", loaded, dir.string().c_str());
+    }
+
     // ---------- окружения ----------
 
     void SetFunc(const char* name, lua_CFunction fn, int modIndex, int side)
@@ -1448,6 +1482,8 @@ end
             SetPlain("sendTag", l_uiSendTag);
             lua_pop(L, 2);
         }
+
+        LoadApiFolder(side);
     }
 
     // Окружение стороны мода: свои log/print/require/events/net/(input)/mod, остальное — из базового.
