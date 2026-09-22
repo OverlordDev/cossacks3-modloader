@@ -1,0 +1,6 @@
+@@ Объект нового юнита — после сердюка.
+@find
+   ObjectItems[*].PropertiesFileName=.\data\objects\units\serdiuk.prop
+@with
+   ObjectItems[*].PropertiesFileName=.\data\objects\units\serdiuk.prop
+   ObjectItems[*].PropertiesFileName=.\data\objects\units\mlserdiuk.prop

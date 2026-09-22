@@ -1,0 +1,8 @@
+@@ Характеристики: как у мушкетёров (тот же блок case), плюс 500 HP — чтобы отличить.
+@find
+'pandur', 'chasseur', 'highlander', 'serdiuk', 'jannisary',
+@with
+'pandur', 'chasseur', 'highlander', 'serdiuk', 'mlserdiuk', 'jannisary',
+
+@end _unit_InitBase
+   if (objprop.sid='mlserdiuk') then objbase.maxhp := 500;

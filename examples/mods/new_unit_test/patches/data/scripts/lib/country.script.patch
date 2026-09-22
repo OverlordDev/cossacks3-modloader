@@ -1,0 +1,13 @@
+@@ 1. Член нации Украина.
+@find
+      if (ukr) then _country_AddMember(country, 'serdiuk', ind, True, gc_country_editorplace_category_infantry, 28, gc_ai_unit_musk17);
+@with
+      if (ukr) then _country_AddMember(country, 'serdiuk', ind, True, gc_country_editorplace_category_infantry, 28, gc_ai_unit_musk17);
+      if (ukr) then _country_AddMember(country, 'mlserdiuk', ind, True, gc_country_editorplace_category_infantry, 28, gc_ai_unit_musk17);
+
+@@ 2. Найм в казарме, клетка (1,1), без требований.
+@find
+      _country_AddFixedProduceWithAccessControl(country, fixedproduceind, member, 'serdiuk', 0, 0, ind, '', '', '');
+@with
+      _country_AddFixedProduceWithAccessControl(country, fixedproduceind, member, 'serdiuk', 0, 0, ind, '', '', '');
+      _country_AddFixedProduceWithAccessControl(country, fixedproduceind, member, 'mlserdiuk', 1, 1, ind, '', '', '');

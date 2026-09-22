@@ -1,0 +1,12 @@
+@@ Иконка кнопки найма — та же картинка, что у сердюка.
+@append
+section.begin {refurl=.\data\hud\ref\reflibmat.mat}
+   Material.Name = icons.unit.mlserdiuk
+   Material.LibTextureName = iconsunits
+   Material.TextureCoord.ImageW = 1024
+   Material.TextureCoord.ImageH = 512
+   Material.TextureCoord.CoordX = 230
+   Material.TextureCoord.CoordY = 92
+   Material.TextureCoord.CoordW = 46
+   Material.TextureCoord.CoordH = 46
+section.end
