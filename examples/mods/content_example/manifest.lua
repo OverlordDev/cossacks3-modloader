@@ -4,7 +4,7 @@ return {
     name = "Content Example",
     version = "0.1.0",
     author = "Illia",
-    description = "Нация «Запорожская Сечь» (как Украина) и юнит «Сердюк-ветеран».",
+    description = "Нации «Запорожская Сечь» (как Украина) и «Монголия» (как татары), юнит «Сердюк-ветеран».",
     enabled = true,
     multiplayer = "required",
 }
