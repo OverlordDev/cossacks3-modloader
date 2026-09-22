@@ -5,6 +5,7 @@
 #include "Hooks.h"
 #include "ScriptPatch.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -104,6 +105,23 @@ namespace
         return false;
     }
 
+    int ManifestPriority(const fs::path& modDir)
+    {
+        std::ifstream in(modDir / L"manifest.lua");
+        std::string line;
+        while (std::getline(in, line))
+        {
+            line.erase(std::min(line.find("--"), line.size()));
+            std::string t;
+            for (char c : line)
+                if (!isspace(static_cast<unsigned char>(c)))
+                    t += c;
+            if (t.rfind("priority=", 0) == 0)
+                return atoi(t.c_str() + 9);
+        }
+        return 0;
+    }
+
     void Scan()
     {
         std::string gameDir = GameDir();
@@ -111,10 +129,17 @@ namespace
         auto state = LoadModState(modloaderDir);
 
         std::error_code ec;
+        // Порядок как у Lua-модов: priority из manifest.lua (меньше — раньше), потом имя папки.
+        // Позже — главнее: его замена файла перекрывает, его патч накладывается последним.
+        std::vector<std::pair<int, fs::directory_entry>> mods;
         for (const auto& entry : fs::directory_iterator(modloaderDir / L"mods", ec))
+            if (entry.is_directory())
+                mods.push_back({ ManifestPriority(entry.path()), entry });
+        std::sort(mods.begin(), mods.end(), [](const auto& a, const auto& b) {
+            return a.first != b.first ? a.first < b.first : a.second.path().filename() < b.second.path().filename();
+        });
+        for (const auto& [priority, entry] : mods)
         {
-            if (!entry.is_directory())
-                continue;
             std::string folder = entry.path().filename().string();
             auto enabled = state.find(folder);
             if (enabled != state.end() ? !enabled->second : ManifestDisabled(entry.path()))
@@ -143,14 +168,17 @@ namespace
                     continue;
                 std::string rel = fs::relative(file.path(), assets, ec).string();
                 std::string key = Normalize(rel, {});
-                if (key.empty() || g_map.count(key))
-                {
-                    if (!key.empty())
-                        LOG_WARN("[assets] %s\\%s is already overridden by another mod — skipped", folder.c_str(), key.c_str());
+                if (key.empty())
                     continue;
-                }
                 std::string full = file.path().string();
-                g_map.emplace(key, GameApi::DelphiString(full));
+                auto prev = std::find_if(g_list.begin(), g_list.end(), [&](const Assets::Override& o) { return o.game == key; });
+                if (prev != g_list.end())
+                {
+                    LOG_WARN("[assets] %s: %s replaces the file from %s (higher priority or later name)", folder.c_str(),
+                             key.c_str(), prev->mod.c_str());
+                    g_list.erase(prev);
+                }
+                g_map.insert_or_assign(key, GameApi::DelphiString(full));
                 g_list.push_back({ folder, key, full });
             }
         }

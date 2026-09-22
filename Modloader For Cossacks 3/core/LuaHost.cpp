@@ -19,6 +19,7 @@
 #include "lualib.h"
 
 #include <algorithm>
+#include <functional>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -57,6 +58,8 @@ namespace
         // перемещение), должно произойти одинаково у всех, иначе расходятся номера объектов.
         bool shared = false;
         bool data = false;   // есть assets/ или patches/ — меняет файлы игры
+        int priority = 0;    // порядок загрузки: больше — позже (и главнее в файлах и патчах)
+        std::vector<std::string> dependencies; // id модов, без которых этот не работает
         std::string multiplayer = "required";
         std::map<std::string, fs::path> files; // имя модуля ("utils", "lib/math") -> путь
         bool enabled = true;
@@ -1695,6 +1698,67 @@ end
         return v;
     }
 
+    // Порядок загрузки: по priority (меньше — раньше), при равном — по имени папки; зависимости всегда
+    // раньше зависящих от них. Мод, которому не хватает зависимости, не грузится.
+    // Тот же порядок у замены файлов и патчей (Assets) — она читает priority из manifest.lua сама.
+    void SortAndCheckDependencies()
+    {
+        std::stable_sort(g_mods.begin(), g_mods.end(), [](const Mod& a, const Mod& b) { return a.priority < b.priority; });
+
+        auto find = [](const std::string& id) -> Mod* {
+            for (Mod& m : g_mods)
+                if (m.error.empty() && m.id == id)
+                    return &m;
+            return nullptr;
+        };
+        // Нет зависимости — ошибка; повторяем, пока что-то меняется (цепочки A -> B -> C).
+        for (bool changed = true; changed;)
+        {
+            changed = false;
+            for (Mod& m : g_mods)
+            {
+                if (!m.error.empty() || !m.enabled)
+                    continue;
+                for (const std::string& id : m.dependencies)
+                {
+                    Mod* dep = find(id);
+                    std::string why = !dep ? "is not installed" : !dep->enabled ? "is disabled" : "";
+                    if (why.empty())
+                        continue;
+                    m.error = "requires mod '" + id + "', which " + why;
+                    LOG_ERROR("[lua] mod '%s' skipped: %s", m.folder.c_str(), m.error.c_str());
+                    changed = true;
+                    break;
+                }
+            }
+        }
+        // Зависимости — раньше: обход в глубину по исходному порядку.
+        std::vector<size_t> order;
+        std::vector<int> state(g_mods.size(), 0); // 0 — не был, 1 — в обходе, 2 — готов
+        std::function<void(size_t)> visit = [&](size_t i) {
+            if (state[i])
+            {
+                if (state[i] == 1 && g_mods[i].error.empty())
+                    LOG_WARN("[lua] mod '%s': circular requires", g_mods[i].folder.c_str());
+                return;
+            }
+            state[i] = 1;
+            for (const std::string& id : g_mods[i].dependencies)
+                for (size_t j = 0; j < g_mods.size(); ++j)
+                    if (g_mods[j].id == id && g_mods[j].error.empty())
+                        visit(j);
+            state[i] = 2;
+            order.push_back(i);
+        };
+        for (size_t i = 0; i < g_mods.size(); ++i)
+            visit(i);
+        std::vector<Mod> ordered;
+        ordered.reserve(g_mods.size());
+        for (size_t i : order)
+            ordered.push_back(std::move(g_mods[i]));
+        g_mods = std::move(ordered);
+    }
+
     bool ReadManifest(Mod& mod)
     {
         fs::path manifest = mod.dir / L"manifest.lua";
@@ -1740,6 +1804,26 @@ end
         lua_getfield(L, t, "enabled");
         mod.enabled = lua_isnil(L, -1) || lua_toboolean(L, -1);
         lua_pop(L, 1);
+
+        lua_getfield(L, t, "priority");
+        mod.priority = lua_isinteger(L, -1) ? static_cast<int>(lua_tointeger(L, -1)) : 0;
+        bool badPriority = !lua_isnil(L, -1) && !lua_isinteger(L, -1);
+        lua_pop(L, 1);
+        lua_getfield(L, t, "requires");
+        if (lua_isstring(L, -1))
+            mod.dependencies.push_back(lua_tostring(L, -1));
+        else if (lua_istable(L, -1))
+            for (lua_Integer i = 1; lua_rawgeti(L, -1, i) == LUA_TSTRING; ++i)
+            {
+                mod.dependencies.push_back(lua_tostring(L, -1));
+                lua_pop(L, 1);
+            }
+        lua_pop(L, lua_istable(L, -1) ? 2 : 1);
+        if (badPriority)
+        {
+            lua_pop(L, 1);
+            return mod.error = "priority must be a whole number", false;
+        }
 
         std::vector<std::string> files;
         lua_getfield(L, t, "files");
@@ -1901,6 +1985,8 @@ end
             }
             g_mods.push_back(std::move(mod));
         }
+
+        SortAndCheckDependencies();
 
         for (size_t i = 0; i < g_mods.size(); ++i)
         {
