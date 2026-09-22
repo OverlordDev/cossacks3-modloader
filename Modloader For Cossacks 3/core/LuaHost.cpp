@@ -2248,11 +2248,19 @@ void LuaHost::Start()
         return;
     subscribed = true;
     Events::Subscribe("game.tick", [](const std::string&, const std::string&) { SaveFlush(); });
+    // Выход из партии — только забыть (в игру не писать: следом может загружаться сейв, и пустая запись
+    // затёрла бы его данные). Новая партия (game.prepare, сейвы через него не идут) — записать пустоту,
+    // иначе переменная игры унесла бы в новый сейв данные прошлой партии.
     for (const char* e : { "game.end", "game.menu" })
         Events::Subscribe(e, [](const std::string&, const std::string&) {
-            if (!g_saveData.empty())
-                g_saveData.clear(), g_saveDirty = true;
+            g_saveData.clear();
+            g_saveDirty = false;
         });
+    Events::Subscribe("game.prepare", [](const std::string&, const std::string&) {
+        g_saveData.clear();
+        g_saveDirty = true;
+        SaveFlush();
+    });
     // OnAfterLoad есть у глобального скрипта каждого игрока — событие приходит несколько раз подряд.
     Events::Subscribe("save.afterload", [](const std::string&, const std::string&) {
         ULONGLONG now = GetTickCount64();
