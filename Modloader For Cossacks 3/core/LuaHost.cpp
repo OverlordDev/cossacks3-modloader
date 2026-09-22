@@ -64,6 +64,7 @@ namespace
         std::string multiplayer = "required";
         std::map<std::string, fs::path> files; // имя модуля ("utils", "lib/math") -> путь
         bool enabled = true;
+        bool builtin = false; // часть модлоадера (modloader/builtin): грузится всегда, не выключается
         bool loaded = false;
         std::string error;
         Env env[2];
@@ -2174,18 +2175,28 @@ end
         std::error_code ec;
         fs::create_directories(root, ec);
 
+        // Встроенные компоненты модлоадера (детектор рассинхронов и т.п.) — первыми, затем моды.
         std::vector<fs::path> dirs;
-        for (const auto& e : fs::directory_iterator(root, ec))
-            if (e.is_directory())
-                dirs.push_back(e.path());
-        std::sort(dirs.begin(), dirs.end()); // порядок загрузки — по имени папки
+        size_t builtinCount = 0;
+        for (const fs::path& base : { ModsDir().parent_path() / L"builtin", root })
+        {
+            size_t from = dirs.size();
+            for (const auto& e : fs::directory_iterator(base, ec))
+                if (e.is_directory())
+                    dirs.push_back(e.path());
+            std::sort(dirs.begin() + from, dirs.end()); // порядок загрузки — по имени папки
+            if (builtinCount == 0 && base != root)
+                builtinCount = dirs.size();
+        }
 
         auto modState = LoadModState();
         g_mods.reserve(dirs.size());
-        for (const auto& dir : dirs)
+        for (size_t d = 0; d < dirs.size(); ++d)
         {
+            const fs::path& dir = dirs[d];
             Mod mod;
             mod.dir = dir;
+            mod.builtin = d < builtinCount;
             mod.folder = ToUtf8(dir.filename());
             if (!ReadManifest(mod))
             {
@@ -2193,8 +2204,10 @@ end
                 g_mods.push_back(std::move(mod));
                 continue;
             }
-            if (auto it = modState.find(mod.id); it != modState.end())
+            if (auto it = modState.find(mod.id); it != modState.end() && !mod.builtin)
                 mod.enabled = it->second;
+            if (mod.builtin)
+                mod.enabled = true;
             bool duplicate = std::any_of(g_mods.begin(), g_mods.end(), [&](const Mod& m) { return m.error.empty() && m.id == mod.id; });
             if (duplicate)
             {
