@@ -17,23 +17,25 @@ events.on("player.order", function(_, order)
     return DEV_BLOCK_ORDERS
 end)
 
--- F10 в партии — замер: чтение всех юнитов из памяти (objects) против старого пути через Pascal.
+-- F10 в партии — замер: чтение юнитов из памяти (objects) против Pascal (state.get) на тех же юнитах.
 input.bind("F10", function()
     if not game.isInGame() then return end
     local list = objects.list()
+    local units = {}
     local t0 = os.clock()
-    local alive = 0
     for _, h in ipairs(list) do
-        local o = objects.read(h)
-        if o and not o.bdead then alive = alive + 1 end
+        local o = objects.read(h)            -- nil для деревьев, камней, ресурсов
+        if o and not o.bdead then units[#units + 1] = h end
     end
-    local fast = os.clock() - t0
-    local mode = objects.status()
-    local n = math.min(#list, 20)
+    local fastAll = os.clock() - t0
+    local n = math.min(#units, 20)
     t0 = os.clock()
-    for i = 1, n do state.get(string.format("obj(%d).hp", list[i])) end
-    local slow = (os.clock() - t0) / math.max(n, 1)
-    log.info(string.format("objects [%s]: %d объектов (%d живых) прочитаны целиком за %.1f мс; " ..
-        "через Pascal одно поле — %.2f мс (всё бы заняло ~%.0f мс)", mode, #list, alive, fast * 1000, slow * 1000,
-        slow * 1000 * #list * 60))
+    for i = 1, n do objects.get(units[i], "hp") end
+    local fastOne = (os.clock() - t0) / math.max(n, 1)
+    t0 = os.clock()
+    for i = 1, n do state.get(string.format("obj(%d).hp", units[i])) end
+    local slowOne = (os.clock() - t0) / math.max(n, 1)
+    log.info(string.format("objects [%s]: %d объектов на карте, %d живых юнитов/зданий, обход всех — %.1f мс. " ..
+        "Одно поле юнита: память %.4f мс, Pascal %.3f мс (в %.0f раз медленнее)", objects.status(), #list, #units,
+        fastAll * 1000, fastOne * 1000, slowOne * 1000, slowOne / math.max(fastOne, 1e-9)))
 end)
