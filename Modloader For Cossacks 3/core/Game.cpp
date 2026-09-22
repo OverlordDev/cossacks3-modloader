@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "Game.h"
+#include "Assets.h"
 #include "Console.h"
 #include "Events.h"
 #include "NativeCall.h"
@@ -64,16 +65,31 @@ void Game::Install()
     };
     // Урон: каждый вызов _misc_DoDamage(кто, кого, урон, ...) в состояниях юнитов, зданий, снарядов.
     struct DamageHook { const char* library; const char* state; };
-    const DamageHook damageHooks[] = {
+    static const DamageHook damageHooks[] = {
         { "units\\unit.aix", "OnAclAnimationReachedAttack" }, // ближний бой и выстрел пехоты
         { "units\\unit.aix", "OnTagStates" },
         { "units\\building.aix", "OnTagStates" },             // башни, форты
         { "misc\\projectile.aix", "DoExplode" },              // ядра, снаряды
         { "misc\\projectile.aix", "DoExplodeCustom" },
     };
-    for (const DamageHook& d : damageHooks)
-        Events::WrapLibraryCalls(d.library, d.state, "_misc_DoDamage", std::string("damage@") + d.library + "/" + d.state,
-            "DScriptSetgDbgString0('ML:unit.damage|'+IntToStr({0})+'|'+IntToStr({1})+'|'+IntToStr({2}))");
+    // Обычно не нужны: unit.damage встроен в саму _misc_DoDamage (ScriptPatch, lib\miscext2.script) и
+    // ловит весь урон. Обёртки — запасной путь, если библиотеку подменить не удалось (например, модлоадер
+    // внедрён в уже запущенную игру). Решаем при первом DoCreate: к нему библиотеки точно прочитаны.
+    static bool damageDecided = false;
+    Events::Subscribe("gui.DoCreate", [](const std::string&, const std::string&) {
+        if (damageDecided)
+            return;
+        damageDecided = true;
+        if (Assets::Built("data\\scripts\\lib\\miscext2.script"))
+        {
+            LOG_DEV("[game] unit.damage comes from _misc_DoDamage itself (patched library)");
+            return;
+        }
+        LOG_WARN("[game] library miscext2.script was not patched — unit.damage falls back to state hooks (misses some damage)");
+        for (const DamageHook& d : damageHooks)
+            Events::WrapLibraryCalls(d.library, d.state, "_misc_DoDamage", std::string("damage@") + d.library + "/" + d.state,
+                "DScriptSetgDbgString0('ML:unit.damage|'+IntToStr({0})+'|'+IntToStr({1})+'|'+IntToStr({2}))");
+    });
 
     // Приказы игрока: ПКМ и режимы (атака точки, патруль, охрана) в OnMouseDown интерфейса.
     // Событие "player.order|вид|цель|x|z|группа"; обработчик вернул true — приказ не отдаётся.

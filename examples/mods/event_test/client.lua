@@ -17,6 +17,7 @@ local CHECKS = {
     { "building.death",    "разрушить здание" },
     { "building.destroy",  "руины здания исчезли" },
     { "player.order",      "любой приказ ПКМ" },
+    { "unit.order",        "любой приказ любому юниту (и ИИ)" },
 }
 -- виды приказов и урона — отдельные галочки
 local ORDER_KINDS = { "move", "attack", "attackpoint", "guard", "build", "enter", "gather", "patrol" }
@@ -102,6 +103,12 @@ end)
 events.on("player.order", function(name, order)
     mark("order:" .. order.kind, string.format("цель=%d x=%.0f z=%.0f", order.target, order.x, order.z))
     if passed[name] and passed[name].detail == "" then passed[name].detail = order.kind end
+end)
+
+events.on("unit.order", function(name, handle, kind, target)
+    if passed[name] and passed[name].detail == "" then
+        passed[name].detail = string.format("юнит %d: %s, цель %d", handle, tostring(kind), target)
+    end
 end)
 
 events.on("game.end", function() report() end)

@@ -27,5 +27,8 @@ namespace Assets
 
     const std::vector<Override>& List();
 
+    // Файл игры (key — "data\\scripts\\lib\\unit.script") уже прочитан движком в собранном с патчами виде.
+    bool Built(const std::string& key);
+
     void Print(); // в консоль: что и каким модом подменено
 }

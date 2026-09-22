@@ -1,0 +1,17 @@
+@@ Патч применяется к data/scripts/lib/miscext2.script при загрузке игры (файл игры не меняется).
+@@ Строки с @@ — комментарии. Команды: @replace @begin @end @before @after @append @find/@with.
+@@ Результат можно посмотреть в modloader/cache/data/scripts/lib/miscext2.script.
+
+@@ 1. Новая функция — ставим перед _misc_DoDamage, чтобы она была объявлена раньше вызова.
+@before _misc_DoDamage
+// patch_example: множитель урона
+function ML_DamageMultiplier : Integer;
+begin
+   Result := 2;
+end;
+
+@@ 2. Правка внутри функции: урон считается из indamage — умножаем.
+@find
+            var damage : Integer = indamage;
+@with
+            var damage : Integer = indamage * ML_DamageMultiplier;

@@ -3,10 +3,14 @@
 #include "Console.h"
 #include "GameApi.h"
 #include "Hooks.h"
+#include "ScriptPatch.h"
 
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <mutex>
+#include <set>
+#include <sstream>
 
 namespace fs = std::filesystem;
 
@@ -24,6 +28,20 @@ namespace
     // Готовые Delphi-строки с путями к файлам модов: отдаются движку как есть и живут до выгрузки.
     std::map<std::string, GameApi::DelphiString> g_map;
     std::vector<Assets::Override> g_list;
+
+    // Патчи скриптов: путь в игре -> файлы .patch модов (по порядку модов). Файл собирается при первом
+    // чтении движком: база (замена из assets, workshop-мод или файл игры) + встроенные правки + патчи,
+    // результат пишется в modloader/cache и отдаётся движку вместо исходного.
+    struct PatchSource { std::string mod, file; };
+    std::map<std::string, std::vector<PatchSource>> g_patches;
+    std::set<std::string> g_pending;         // ещё не собранные (патчи или встроенные правки)
+    std::map<std::string, std::string> g_workshop; // путь в игре -> файл из включённого мода Steam
+    std::set<std::string> g_seen;            // dev-лог: какие скрипты движок читал
+    std::recursive_mutex g_mutex;
+    std::string g_gameDir;
+
+    // Встроенные правки модлоадера — для этих файлов сборка идёт всегда.
+    const char* const kBuiltinFiles[] = { "data\\scripts\\lib\\unit.script", "data\\scripts\\lib\\miscext2.script" };
 
     std::string GameDir()
     {
@@ -84,6 +102,19 @@ namespace
             if (enabled != state.end() && !enabled->second)
                 continue;
 
+            fs::path patches = entry.path() / L"patches";
+            if (fs::is_directory(patches, ec))
+                for (const auto& file : fs::recursive_directory_iterator(patches, ec))
+                {
+                    if (!file.is_regular_file() || file.path().extension() != L".patch")
+                        continue;
+                    fs::path rel = fs::relative(file.path(), patches, ec);
+                    rel.replace_extension(); // unit.script.patch -> unit.script
+                    std::string key = Normalize(rel.string(), {});
+                    g_patches[key].push_back({ folder, file.path().string() });
+                    g_pending.insert(key);
+                }
+
             fs::path assets = entry.path() / L"assets";
             if (!fs::is_directory(assets, ec))
                 continue;
@@ -109,12 +140,128 @@ namespace
 
     std::string g_gameDirKey;
 
+    // Моды Steam Workshop (mods\mods.ini игры): их файлы тоже перекрывают игру, и патч надо накладывать
+    // поверх них, а не поверх исходного файла — иначе мы бы молча выкинули чужие правки.
+    void ScanWorkshop()
+    {
+        std::ifstream in(fs::path(g_gameDir) / L"mods" / L"mods.ini");
+        std::string line, dir;
+        std::vector<std::string> enabled;
+        auto flush = [&](bool disabled) {
+            if (!dir.empty() && !disabled)
+                enabled.push_back(dir);
+            dir.clear();
+        };
+        while (std::getline(in, line))
+        {
+            if (!line.empty() && line.back() == '\r')
+                line.pop_back();
+            size_t eq = line.find('=');
+            if (eq == std::string::npos)
+                continue;
+            std::string k = line.substr(0, eq), v = line.substr(eq + 1);
+            k.erase(0, k.find_first_not_of(" \t"));
+            k.erase(k.find_last_not_of(" \t") + 1);
+            v.erase(0, v.find_first_not_of(" \t"));
+            v.erase(v.find_last_not_of(" \t") + 1);
+            if (k == "dir")
+                dir = v;
+            else if (k == "dis")
+                flush(_stricmp(v.c_str(), "True") == 0);
+        }
+        flush(false);
+        for (const std::string& d : enabled) // поздние в списке главнее — как у движка
+            for (const std::string& key : g_pending)
+            {
+                fs::path f = fs::path(g_gameDir) / d / key;
+                std::error_code ec;
+                if (fs::is_regular_file(f, ec))
+                    g_workshop[key] = f.string();
+            }
+    }
+
+    bool ReadAll(const std::string& path, std::string* out)
+    {
+        std::ifstream in(fs::path(path), std::ios::binary);
+        if (!in)
+            return false;
+        std::ostringstream ss;
+        ss << in.rdbuf();
+        *out = ss.str();
+        return true;
+    }
+
+    // Собрать файл с патчами. Путь к готовому файлу или пусто, если собирать нечего/не вышло.
+    std::string Build(const std::string& key)
+    {
+        std::string base, from;
+        if (auto it = g_map.find(key); it != g_map.end())
+            base = it->second.get(), from = "assets";
+        else if (auto w = g_workshop.find(key); w != g_workshop.end())
+            base = w->second, from = "workshop";
+        else
+            base = (fs::path(g_gameDir) / key).string(), from = "game";
+
+        std::string text;
+        if (!ReadAll(base, &text))
+        {
+            LOG_WARN("[patch] %s: cannot read base file %s", key.c_str(), base.c_str());
+            return {};
+        }
+        int blocks = 0;
+        std::string builtin = ScriptPatch::Builtin(key);
+        if (!builtin.empty())
+            ScriptPatch::Apply(text, builtin, "modloader/" + key);
+        for (const PatchSource& p : g_patches[key])
+        {
+            std::string patch;
+            if (!ReadAll(p.file, &patch))
+                continue;
+            int n = ScriptPatch::Apply(text, patch, p.mod + "/" + key);
+            blocks += n;
+            LOG_INFO("[patch] %s: %d block(s) from %s", key.c_str(), n, p.mod.c_str());
+        }
+
+        fs::path out = fs::path(g_gameDir) / L"modloader" / L"cache" / key;
+        std::error_code ec;
+        fs::create_directories(out.parent_path(), ec);
+        std::ofstream o(out, std::ios::binary | std::ios::trunc);
+        o.write(text.data(), static_cast<std::streamsize>(text.size()));
+        if (!o)
+        {
+            LOG_ERROR("[patch] %s: cannot write %s", key.c_str(), out.string().c_str());
+            return {};
+        }
+        LOG_DEV("[patch] %s built from %s (%s)%s", key.c_str(), from.c_str(), base.c_str(),
+                builtin.empty() ? "" : " + modloader events");
+        return out.string();
+    }
+
+    bool IsScript(const std::string& key)
+    {
+        for (const char* ext : { ".script", ".global", ".source", ".aix", ".inc" })
+            if (key.size() > strlen(ext) && key.compare(key.size() - strlen(ext), strlen(ext), ext) == 0)
+                return true;
+        return false;
+    }
+
     // Вызывается из перехватов: вернуть путь мода или исходный, если подмены нет.
     const char* __cdecl MapPath(const char* path)
     {
-        if (!path || g_map.empty())
+        if (!path)
             return path;
-        auto it = g_map.find(Normalize(path, g_gameDirKey));
+        std::string key = Normalize(path, g_gameDirKey);
+        std::lock_guard lock(g_mutex);
+        if (Console::Dev() && IsScript(key) && key.find(".inc") == std::string::npos && g_seen.insert(key).second)
+            LOG_DEV("[files] engine reads %s", key.c_str());
+        if (g_pending.count(key))
+        {
+            g_pending.erase(key);
+            std::string built = Build(key);
+            if (!built.empty())
+                g_map.insert_or_assign(key, GameApi::DelphiString(built));
+        }
+        auto it = g_map.find(key);
         return it == g_map.end() ? path : it->second.get();
     }
 
@@ -163,17 +310,31 @@ namespace
 
 bool Assets::Install()
 {
-    g_gameDirKey = Normalize(GameDir() + "\\", {});
+    g_gameDir = GameDir();
+    g_gameDirKey = Normalize(g_gameDir + "\\", {});
+    for (const char* key : kBuiltinFiles)
+        g_pending.insert(key);
     Scan();
-    if (g_list.empty())
-        return true; // подменять нечего — перехваты не ставим
+    ScanWorkshop();
+    // Перехваты нужны всегда: встроенные правки скриптов (события модлоадера) собираются при чтении.
 
     bool ok = Hooks::CreateRaw("File open", GameApi::Addr(VaOpenStream), reinterpret_cast<void*>(hkOpenStream), &oOpenStream);
     ok &= Hooks::CreateRaw("File open (archives)", GameApi::Addr(VaOpenStream2), reinterpret_cast<void*>(hkOpenStream2), &oOpenStream2);
     ok &= Hooks::CreateRaw("File exists", GameApi::Addr(VaFileExists), reinterpret_cast<void*>(hkFileExists), &oFileExists);
-    if (ok)
+    if (ok && !g_list.empty())
         LOG_INFO("[assets] %d file(s) from mods will replace game files", static_cast<int>(g_list.size()));
+    if (ok && !g_patches.empty())
+        LOG_INFO("[patch] %d game file(s) will be patched by mods", static_cast<int>(g_patches.size()));
     return ok;
+}
+
+bool Assets::Built(const std::string& key)
+{
+    std::lock_guard lock(g_mutex);
+    if (g_pending.count(key))
+        return false;
+    auto it = g_map.find(key);
+    return it != g_map.end() && Normalize(it->second.get(), g_gameDirKey).rfind("modloader\\cache", 0) == 0;
 }
 
 const std::vector<Assets::Override>& Assets::List()
@@ -183,6 +344,12 @@ const std::vector<Assets::Override>& Assets::List()
 
 void Assets::Print()
 {
+    {
+        std::lock_guard lock(g_mutex);
+        for (const auto& [key, sources] : g_patches)
+            for (const PatchSource& p : sources)
+                Console::Print("  patch %-14s %s%s", p.mod.c_str(), key.c_str(), g_pending.count(key) ? "  (not read by the game yet)" : "");
+    }
     if (g_list.empty())
     {
         Console::Print("No asset overrides. A mod can put files in modloader/mods/<mod>/assets/,");

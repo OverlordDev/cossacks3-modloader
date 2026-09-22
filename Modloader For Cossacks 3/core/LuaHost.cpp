@@ -536,6 +536,35 @@ namespace
             Call(4, 0, who);
             return;
         }
+        // Приказ любому юниту (игрок, ИИ, сеть): function(event, handle, type, target, x, z); true — отменить.
+        if (event == "unit.order")
+        {
+            static const char* const kTypes[] = {
+                "none", "move", "attackobj", "gainres", "produce", "patrol", "attackpoint", "continueattackpoint",
+                "performupgrade", "fishing", "creategates", "buildwallcontinue", "buildwall", "gotomine",
+                "gototransport", "leavetransport", "leavebuilding", "build", "guard", "repair", "exitunits",
+            };
+            std::string p = payload;
+            std::replace(p.begin(), p.end(), ',', '.');
+            int h = 0, type = 0, trg = 0;
+            double x = 0, z = 0;
+            sscanf_s(p.c_str(), "%d|%d|%d|%lf|%lf", &h, &type, &trg, &x, &z);
+            lua_pushinteger(L, h);
+            if (type >= 0 && type < static_cast<int>(std::size(kTypes)))
+                lua_pushstring(L, kTypes[type]);
+            else
+                lua_pushinteger(L, type);
+            lua_pushinteger(L, trg);
+            lua_pushnumber(L, x);
+            lua_pushnumber(L, z);
+            if (Call(6, 1, who))
+            {
+                if (lua_toboolean(L, -1))
+                    Events::RequestBlock();
+                lua_pop(L, 1);
+            }
+            return;
+        }
         // Приказ игрока: function(event, order) — order = {kind, target, x, z, group}; true — отменить.
         if (event == "player.order")
         {

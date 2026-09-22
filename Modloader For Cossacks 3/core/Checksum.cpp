@@ -105,7 +105,24 @@ namespace
         for (int i = 0; i < count; ++i)
             all += StateMachineHash(items[i], filter);
         const char* extra = *reinterpret_cast<const char**>(engine + OffEngineExtra);
-        all += Md5(extra ? extra : "");
+        std::string extraText = extra ? extra : "";
+        if (filter && extraText.find("'ML:") != std::string::npos)
+        {
+            // Если в эту строку попадает текст библиотек скриптов — выкинуть наши вставки (ScriptPatch:
+            // каждая — целая строка с 'ML:'), чтобы хеш совпал с чистой игрой.
+            std::string clean;
+            for (size_t from = 0; from < extraText.size();)
+            {
+                size_t nl = extraText.find('\n', from);
+                size_t next = nl == std::string::npos ? extraText.size() : nl + 1;
+                std::string line = extraText.substr(from, next - from);
+                if (!IsOurLine(line))
+                    clean += line;
+                from = next;
+            }
+            extraText = clean;
+        }
+        all += Md5(extraText);
         return Md5(all);
     }
 
@@ -176,6 +193,15 @@ void Checksum::Print()
         std::string stored;
         ScriptRunner::Call("ML_RET(gstring_checksumlong);", "", &stored);
         Console::Print("  engine (with modloader changes): %s", EngineChecksum().c_str());
+        if (const char* extra = *reinterpret_cast<const char**>(Engine::ScriptEngine() + OffEngineExtra))
+        {
+            std::string head(extra, strnlen(extra, 160));
+            for (char& c : head)
+                if (c == '\r' || c == '\n')
+                    c = ' ';
+            Console::Print("  engine string (+0x90): %d bytes, ML lines: %s, starts: %s", static_cast<int>(strlen(extra)),
+                           strstr(extra, "'ML:") ? "yes" : "no", head.c_str());
+        }
         Console::Print("  replica of engine algorithm:     %s  (must equal the line above)", ComputeChecksum(CurrentProject(), false).c_str());
         Console::Print("  vanilla (reported to lobby):     %s", ComputeChecksum(CurrentProject(), true).c_str());
         Console::Print("  stored by game (last menu):      %s", stored.c_str());
