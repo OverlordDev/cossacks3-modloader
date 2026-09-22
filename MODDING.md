@@ -78,6 +78,7 @@ events.on("unit.death", function(event, handle, basename) ... end)
 | код игры | `game.exec("pascal-код")` (server/shared), `game.eval("выражение")` |
 | переменные игры | `state.read("gMap.players[0]")`, `state.set(путь, значение)` |
 | юниты | `units.selected()`, `units.info(h)`, `units.orders(h)` |
+| быстро, тысячи объектов | `objects.list()`, `objects.read(h)`, `objects.get(h, "orders[0].info.x")` — прямо из памяти |
 | здания | `buildings.info(h)`, `buildings.produce(h, sid, n)`, `buildings.build(sid, x, z)` |
 | баланс | `balance.setHP("musketeer18", 200)`, `balance.setDamage(sid, урон)`, `balance.set(sid, поле, значение)` |
 | экраны | `screens.open(имя)`, `screens.press(имя, кнопка)`, `ui.screen("MainMenu", fn)` |

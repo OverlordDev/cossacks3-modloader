@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <type_traits>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -1196,6 +1197,74 @@ end
     }
 
     // native.<Name> — функция создаётся при первом обращении и кэшируется в таблице. upvalue 1 — сторона.
+    // ---------- API: mem — прямое чтение памяти игры (быстрый доступ к объектам, api/20_objects.lua) ----------
+    // Неверный адрес не роняет игру: чтение под SEH, в ответ nil.
+
+    bool SafeCopy(void* dst, uintptr_t src, size_t n)
+    {
+        if (src < 0x10000)
+            return false;
+        __try
+        {
+            memcpy(dst, reinterpret_cast<const void*>(src), n);
+            return true;
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            return false;
+        }
+    }
+
+    uintptr_t MemAddr(lua_State* L)
+    {
+        return static_cast<uintptr_t>(static_cast<uint32_t>(luaL_checkinteger(L, 1))) +
+               static_cast<uintptr_t>(luaL_optinteger(L, 2, 0));
+    }
+
+    template <typename T>
+    int MemRead(lua_State* L)
+    {
+        T v{};
+        if (!SafeCopy(&v, MemAddr(L), sizeof(T)))
+            return lua_pushnil(L), 1;
+        if constexpr (std::is_floating_point_v<T>)
+            lua_pushnumber(L, static_cast<lua_Number>(v));
+        else
+            lua_pushinteger(L, static_cast<lua_Integer>(v));
+        return 1;
+    }
+
+    // mem.str(p, off) — поле String (AnsiString: указатель на символы, длина перед ними).
+    int l_memStr(lua_State* L)
+    {
+        uint32_t text = 0;
+        if (!SafeCopy(&text, MemAddr(L), 4))
+            return lua_pushnil(L), 1;
+        if (!text)
+            return lua_pushstring(L, ""), 1;
+        int32_t len = 0;
+        if (!SafeCopy(&len, text - 4, 4) || len < 0 || len > (1 << 20))
+            return lua_pushnil(L), 1;
+        std::string out(static_cast<size_t>(len), '\0');
+        if (len && !SafeCopy(out.data(), text, static_cast<size_t>(len)))
+            return lua_pushnil(L), 1;
+        lua_pushstring(L, Text::AnsiToUtf8(out).c_str());
+        return 1;
+    }
+
+    // mem.bytes(p, off, n) — сырые байты строкой (для отладки раскладки).
+    int l_memBytes(lua_State* L)
+    {
+        lua_Integer n = luaL_checkinteger(L, 3);
+        if (n < 0 || n > 65536)
+            return luaL_error(L, "mem.bytes: 0..65536 bytes");
+        std::string out(static_cast<size_t>(n), '\0');
+        if (n && !SafeCopy(out.data(), MemAddr(L), static_cast<size_t>(n)))
+            return lua_pushnil(L), 1;
+        lua_pushlstring(L, out.data(), out.size());
+        return 1;
+    }
+
     int l_nativeIndex(lua_State* L)
     {
         const char* name = luaL_checkstring(L, 2);
@@ -1537,6 +1606,18 @@ end
         lua_setfield(L, -2, "__index");
         lua_setmetatable(L, -2);
         lua_setfield(L, -2, "native");
+
+        lua_newtable(L); // mem
+        SetPlain("i32", MemRead<int32_t>);
+        SetPlain("u32", MemRead<uint32_t>);
+        SetPlain("u16", MemRead<uint16_t>);
+        SetPlain("i16", MemRead<int16_t>);
+        SetPlain("u8", MemRead<uint8_t>);
+        SetPlain("f32", MemRead<float>);
+        SetPlain("f64", MemRead<double>);
+        SetPlain("str", l_memStr);
+        SetPlain("bytes", l_memBytes);
+        lua_setfield(L, -2, "mem");
 
         if (side == Client)
         {

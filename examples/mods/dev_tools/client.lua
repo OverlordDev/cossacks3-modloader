@@ -16,3 +16,24 @@ events.on("player.order", function(_, order)
         order.x, order.z, order.group, DEV_BLOCK_ORDERS and "  -> ОТМЕНЁН" or ""))
     return DEV_BLOCK_ORDERS
 end)
+
+-- F10 в партии — замер: чтение всех юнитов из памяти (objects) против старого пути через Pascal.
+input.bind("F10", function()
+    if not game.isInGame() then return end
+    local list = objects.list()
+    local t0 = os.clock()
+    local alive = 0
+    for _, h in ipairs(list) do
+        local o = objects.read(h)
+        if o and not o.bdead then alive = alive + 1 end
+    end
+    local fast = os.clock() - t0
+    local mode = objects.status()
+    local n = math.min(#list, 20)
+    t0 = os.clock()
+    for i = 1, n do state.get(string.format("obj(%d).hp", list[i])) end
+    local slow = (os.clock() - t0) / math.max(n, 1)
+    log.info(string.format("objects [%s]: %d объектов (%d живых) прочитаны целиком за %.1f мс; " ..
+        "через Pascal одно поле — %.2f мс (всё бы заняло ~%.0f мс)", mode, #list, alive, fast * 1000, slow * 1000,
+        slow * 1000 * #list * 60))
+end)
