@@ -436,6 +436,17 @@ unit {
 }
 ```
 
+Историческое сражение (своя карта в меню «Исторические сражения»):
+
+```lua
+battle {
+    sid = "poltava", from = "battle1",        -- from: battle1..battle8 — позиции и число игроков берутся у него
+    map = "maps/poltava.map",                 -- файл .map внутри папки мода (сделанный в редакторе игры)
+    maxplayers = 4,                           -- по желанию
+    name = { ru = "...", en = "..." }, description = { ru = "...", en = "..." },
+}
+```
+
 Нации игры: aus fra eng spa rus ukr pol swe pru ven tur alg net den por pie sax bav hun swi sco tat lit
 (mis — служебная). Новая нация = копия шаблона. Новый юнит = копия родителя + `base`/`prop`;
 нанимается там же, где родитель. Характеристики можно менять и позже в партии через `balance`.

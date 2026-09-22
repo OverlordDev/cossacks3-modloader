@@ -37,3 +37,14 @@ unit {
     -- свои модель/материал/анимации (имена из actors.lib / .mat / acl.lib):
     -- actor = "mymodel", material = "mymodel", animations = "serdiuk", icon = "icons.unit.serdiuk",
 }
+
+-- Историческое сражение: копия блока сражения-шаблона (позиции, число игроков) со своей картой.
+-- Карта — файл .map внутри мода (сделать в редакторе игры). Для проверки механизма сюда можно положить
+-- копию data/maps/missions/battle1.map под именем maps/poltava.map.
+battle {
+    sid = "poltava",
+    from = "battle1",
+    map = "maps/poltava.map",
+    name = { ru = "Полтава (тест модлоадера)", uk = "Полтава (тест модлоадера)", en = "Poltava (modloader test)" },
+    description = { ru = "Новое сражение из content.lua.", en = "A new battle from content.lua." },
+}

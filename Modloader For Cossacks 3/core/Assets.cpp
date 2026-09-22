@@ -388,6 +388,11 @@ namespace
             g_patches[p.key].push_back({ p.mod, "", p.text });
             g_pending.insert(p.key);
         }
+        for (const Content::Link& l : r.links) // файлы мода по новому пути в игре (карты сражений)
+        {
+            g_map.insert_or_assign(l.key, GameApi::DelphiString(l.source));
+            g_list.push_back({ l.mod + " (content)", l.key, l.source });
+        }
         fs::path dir = fs::path(g_gameDir) / L"modloader" / L"cache" / L"generated";
         for (const Content::File& f : r.files)
         {

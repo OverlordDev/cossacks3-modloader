@@ -48,6 +48,15 @@ namespace
     std::vector<NationDef> g_nations;
     std::vector<UnitDef> g_units;
 
+    struct BattleDef
+    {
+        std::string mod, sid, from, map; // map — путь к .map внутри папки мода
+        std::filesystem::path modDir;
+        int maxPlayers = 0;
+        Names name, description;
+    };
+    std::vector<BattleDef> g_battles;
+
     // ---------- локализация ----------
 
     std::mutex g_locMutex;
@@ -212,7 +221,7 @@ namespace
         }
         lua_newtable(L);
         lua_setfield(L, LUA_REGISTRYINDEX, "ml_defs");
-        for (const char* kind : { "unit", "nation" })
+        for (const char* kind : { "unit", "nation", "battle" })
         {
             lua_pushstring(L, kind);
             lua_pushcclosure(L, l_collect, 1);
@@ -242,7 +251,25 @@ namespace
                 lua_pop(L, 1);
                 continue;
             }
-            if (kind == "nation")
+            if (kind == "battle")
+            {
+                BattleDef b;
+                b.mod = mod.folder;
+                b.modDir = mod.dir;
+                b.sid = sid;
+                b.from = from;
+                b.map = FieldString(L, t, "map");
+                lua_getfield(L, t, "maxplayers");
+                b.maxPlayers = lua_isinteger(L, -1) ? static_cast<int>(lua_tointeger(L, -1)) : 0;
+                lua_pop(L, 1);
+                b.name = FieldNames(L, t, "name");
+                b.description = FieldNames(L, t, "description");
+                if (b.map.empty() || b.map.find("..") != std::string::npos || b.map.find(':') != std::string::npos)
+                    LOG_ERROR("[content] %s: map = \"path/inside/the/mod.map\" is required", who.c_str());
+                else
+                    g_battles.push_back(std::move(b));
+            }
+            else if (kind == "nation")
             {
                 if (sid.size() != 3 || from.size() != 3)
                     LOG_ERROR("[content] %s: nation sid and from must be 3 letters", who.c_str());
@@ -443,12 +470,13 @@ Content::Result Content::Generate(const std::vector<ModDir>& mods, const std::fu
                                   const std::function<std::vector<std::string>(const std::string&)>& listGameDir)
 {
     g_nations.clear();
+    g_battles.clear();
     g_units.clear();
     for (const ModDir& m : mods)
         ReadModContent(m);
 
     Result r;
-    if (g_nations.empty() && g_units.empty())
+    if (g_nations.empty() && g_units.empty() && g_battles.empty())
         return r;
     const std::string me = "content";
     std::map<std::string, std::string> patch; // ключ файла -> текст патча
@@ -736,6 +764,52 @@ Content::Result Content::Generate(const std::vector<ModDir>& mods, const std::fu
         LOG_INFO("[content] unit %s (like %s) from %s: nations %zu, produced in %d place(s)", u.sid.c_str(), u.from.c_str(),
                  u.mod.c_str(), u.nations.size(), produce);
     }
+    // ---- исторические сражения: копия блока сражения-шаблона в battles.cfg со своей картой ----
+    const std::string kBattles = "data\\game\\var\\battles.cfg";
+    std::string battles = g_battles.empty() ? std::string() : readBase(kBattles);
+    std::string newBattles;
+    for (const BattleDef& b : g_battles)
+    {
+        std::string who = b.mod + "/battle '" + b.sid + "'";
+        std::error_code ec;
+        fs::path mapFile = b.modDir / fs::path(std::u8string(b.map.begin(), b.map.end()));
+        if (!fs::is_regular_file(mapFile, ec))
+        {
+            LOG_ERROR("[content] %s: map file not found: %s", who.c_str(), mapFile.string().c_str());
+            continue;
+        }
+        size_t at = battles.find("      Name = " + b.from + "\r\n");
+        if (at == std::string::npos)
+            at = battles.find("      Name = " + b.from + "\n");
+        size_t begin = at == std::string::npos ? at : battles.rfind("   [*] : struct.begin", at);
+        size_t end = at == std::string::npos ? at : battles.find("\n   struct.end", at);
+        if (begin == std::string::npos || end == std::string::npos)
+        {
+            LOG_ERROR("[content] %s: template battle '%s' not found in battles.cfg", who.c_str(), b.from.c_str());
+            continue;
+        }
+        end = battles.find('\n', end + 1);
+        std::string block = battles.substr(begin, (end == std::string::npos ? battles.size() : end) - begin);
+        std::string key = "data\\maps\\missions\\" + b.sid + ".map";
+        block = ReplacePropValue(block, "Name", b.from, b.sid);
+        block = ReplacePropValue(block, "LocaleName", b.from + ".name", b.sid + ".name");
+        block = ReplacePropValue(block, "LocaleDescr", b.from + ".description", b.sid + ".description");
+        block = ReplacePropValue(block, "MapPath", PropValue(block, "MapPath"), ".\\" + key);
+        if (b.maxPlayers > 0)
+            block = ReplacePropValue(block, "MaxPlayers", PropValue(block, "MaxPlayers"), std::to_string(b.maxPlayers));
+        while (!block.empty() && (block.back() == '\n' || block.back() == '\r'))
+            block.pop_back();
+        newBattles += block + "\r\n";
+        r.links.push_back({ key, b.mod, mapFile.string() });
+        AddNames(b.sid + ".name", b.name);
+        AddNames(b.sid + ".description", b.description);
+        if (b.name.empty())
+            g_locAlias[b.sid] = b.from;
+        LOG_INFO("[content] battle %s (like %s) from %s: %s", b.sid.c_str(), b.from.c_str(), b.mod.c_str(), b.map.c_str());
+    }
+    if (!newBattles.empty())
+        add(kBattles, "@find\r\nbattles : section.begin\r\n@with\r\nbattles : section.begin\r\n" + newBattles + "\r\n");
+
     if (!mapping.empty())
     {
         add(kUnit, "@begin _unit_InitBase\r\n   var mlContentSid : String;\r\n\r\n");
@@ -873,13 +947,15 @@ bool Content::InstallLocale()
 
 void Content::Print()
 {
-    if (g_nations.empty() && g_units.empty())
+    if (g_nations.empty() && g_units.empty() && g_battles.empty())
     {
         Console::Print("No content.lua definitions. A mod can add nations and unit types: see MODDING.md");
         return;
     }
     for (const NationDef& n : g_nations)
         Console::Print("  nation %-10s id %-3d like %-4s  (%s)", n.sid.c_str(), n.id, n.from.c_str(), n.mod.c_str());
+    for (const BattleDef& b : g_battles)
+        Console::Print("  battle %-14s like %-14s map %s  (%s)", b.sid.c_str(), b.from.c_str(), b.map.c_str(), b.mod.c_str());
     for (const UnitDef& u : g_units)
     {
         std::string ns;
