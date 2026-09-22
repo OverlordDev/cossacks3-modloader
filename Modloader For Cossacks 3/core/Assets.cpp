@@ -108,6 +108,28 @@ namespace
         return false;
     }
 
+    // id = "..." из manifest.lua: меню пишет в modstate.txt именно id, а папка может называться иначе.
+    std::string ManifestId(const fs::path& modDir)
+    {
+        std::ifstream in(modDir / L"manifest.lua");
+        std::string line;
+        while (std::getline(in, line))
+        {
+            line.erase(std::min(line.find("--"), line.size()));
+            std::string t;
+            for (char c : line)
+                if (!isspace(static_cast<unsigned char>(c)))
+                    t += c;
+            if (t.rfind("id=", 0) == 0 && t.size() > 4 && (t[3] == '"' || t[3] == '\''))
+            {
+                size_t end = t.find(t[3], 4);
+                if (end != std::string::npos)
+                    return t.substr(4, end - 4);
+            }
+        }
+        return {};
+    }
+
     int ManifestPriority(const fs::path& modDir)
     {
         std::ifstream in(modDir / L"manifest.lua");
@@ -144,7 +166,10 @@ namespace
         for (const auto& [priority, entry] : mods)
         {
             std::string folder = entry.path().filename().string();
-            auto enabled = state.find(folder);
+            std::string id = ManifestId(entry.path());
+            auto enabled = state.find(id.empty() ? folder : id);
+            if (enabled == state.end())
+                enabled = state.find(folder);
             if (enabled != state.end() ? !enabled->second : ManifestDisabled(entry.path()))
                 continue;
 

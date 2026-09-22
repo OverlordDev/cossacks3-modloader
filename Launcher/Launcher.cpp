@@ -100,10 +100,15 @@ namespace
             ok = thread != nullptr;
             if (thread)
             {
-                WaitForSingleObject(thread, 30000);
+                if (WaitForSingleObject(thread, 30000) != WAIT_OBJECT_0)
+                {
+                    // Поток ещё читает путь из remote — освобождать память под ним нельзя.
+                    CloseHandle(thread);
+                    return false;
+                }
                 DWORD module = 0; // LoadLibraryW вернула 0 — DLL не загрузилась
                 GetExitCodeThread(thread, &module);
-                ok = module != 0;
+                ok = module != 0 && module != STILL_ACTIVE;
                 CloseHandle(thread);
             }
         }

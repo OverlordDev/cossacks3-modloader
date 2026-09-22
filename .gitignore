@@ -13,3 +13,5 @@ Win32/
 __pycache__/
 tools/blender_osm_addon.py
 tools/3ds/
+
+dist/

@@ -143,7 +143,8 @@ DWORD WINAPI Loader::MainThread(LPVOID param)
         Sleep(50);
 
         exit = DevConsole::GetExitRequest();
-        if ((GetAsyncKeyState(VK_END) & 1) && GameHasFocus())
+        // Выгрузка по End — только для разработки (dev.txt): игроку легко нажать её случайно в партии.
+        if ((GetAsyncKeyState(VK_END) & 1) && GameHasFocus() && Console::Dev())
             exit = DevConsole::ExitRequest::Unload;
     }
 

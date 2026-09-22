@@ -12,6 +12,8 @@ local cfg = {
 }
 
 local nextT = nil
+local active = false    -- хост с модлоадером прислал dw.hello: есть кому сравнивать
+local fast = nil        -- objects читает память напрямую (иначе снимок слишком дорогой)
 local want = nil        -- хост попросил подробный список юнитов этого игрока
 local verdicts = { ok = 0, bad = 0 }
 
@@ -96,7 +98,7 @@ local function sendDetail(t, p, detail)
 end
 
 events.on("game.start", function()
-    nextT, want = nil, nil
+    nextT, want, active, fast = nil, nil, false, nil
     verdicts.ok, verdicts.bad = 0, 0
     if game.mode() == "offline" then
         log.info("одиночная игра: сравнивать не с кем, отпечаток — по Ctrl+Shift+D")
@@ -104,7 +106,18 @@ events.on("game.start", function()
 end)
 
 events.on("game.tick", function()
-    if game.mode() == "offline" then return end
+    if game.mode() == "offline" or not active then return end
+    if fast == nil then
+        -- Первое чтение калибрует objects. Без быстрого режима каждое поле — вызов Pascal,
+        -- и снимок большой партии подвешивал бы игру на сотни миллисекунд: тогда молчим.
+        for i = 0, 15 do
+            local h = objects.list(i)[1]
+            if h then objects.get(h, "hp"); break end
+        end
+        fast = objects.status() == "fast"
+        if not fast then log.warn("objects не в быстром режиме — сверка рассинхронов выключена на эту партию") end
+    end
+    if not fast then return end
     local t = native.GetGameTime()
     if not t then return end
     local slot = math.floor(t / cfg.interval)
@@ -119,6 +132,10 @@ events.on("game.tick", function()
     if p then sendDetail(key, p, detail) end
 end)
 
+net.on("dw.hello", function()
+    if not active then log.info("хост сверяет рассинхроны каждые " .. cfg.interval .. " с игрового времени") end
+    active = true
+end)
 net.on("dw.want", function(data) want = tonumber(data) end)
 net.on("dw.ok", function() verdicts.ok = verdicts.ok + 1 end)
 net.on("dw.report", function(text)

@@ -283,7 +283,7 @@ input.bind("F6", function(key) end)
 -- PageUp, PageDown, Up, Down, Left, Right, LMB, RMB, MMB; модификаторы: "Ctrl+", "Shift+", "Alt+"
 ```
 
-Не занимай F9 (читы модлоадера), Insert (меню), End (выгрузка), F12 (DevTools).
+Не занимай Insert (меню). С dev.txt модлоадер ещё берёт F9 (ресурсы, только одиночка), End (выгрузка), F12 (DevTools).
 
 ### 4.13. web — страницы CEF (client)
 

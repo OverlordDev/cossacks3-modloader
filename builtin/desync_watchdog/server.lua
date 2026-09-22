@@ -142,12 +142,21 @@ events.on("game.start", function()
     fps, details, order = {}, {}, {}
     lastOk, reported = nil, false
     stats.compared, stats.bad = 0, 0
+    lastHello = -1e9
 end)
 
 -- Раз в минуту — сводка. Если отпечатки приходят, а сверок нет, значит в момент снимка у игроков
 -- было разное игровое время (кадр перескочил шаг симуляции) — это тоже видно по этой строке.
+-- Клиенты снимают отпечатки, только когда знают, что хост их ждёт (у хоста без модлоадера
+-- лишние пакеты ни к чему). Повторяем: клиент мог ещё не догрузиться.
+local lastHello = -1e9
 local lastSummary = os.clock()
 events.on("game.tick", function()
+    if game.mode() == "offline" then return end
+    if os.clock() - lastHello >= 10 then
+        lastHello = os.clock()
+        net.broadcast("dw.hello", true)
+    end
     if os.clock() - lastSummary < 60 then return end
     lastSummary = os.clock()
     local single = 0

@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "Cheats.h"
 #include "../core/Console.h"
+#include "../core/Game.h"
 #include "../core/ScriptRunner.h"
 
 namespace
@@ -26,6 +27,7 @@ namespace
 void Cheats::Update()
 {
     bool f9 = GetAsyncKeyState(VK_F9) & 1; // читаем всегда, чтобы сбросить флаг нажатия
-    if (f9 && GameHasFocus())
+    // Только для разработки: с dev.txt и не в сети (в сетевой партии это рассинхрон, да и чит).
+    if (f9 && GameHasFocus() && Console::Dev() && Game::Mode() == Game::LanMode::Offline)
         GameCommand("res all 100000");
 }
