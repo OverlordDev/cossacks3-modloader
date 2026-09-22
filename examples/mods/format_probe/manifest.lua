@@ -6,6 +6,6 @@ return {
     version = "0.1.0",
     author = "Illia",
     description = "Тест формата .oss: крестьяне с «носом» по +X и одним цветом. Выключить после проверки.",
-    enabled = true,
+    enabled = false,
     multiplayer = "optional",
 }
