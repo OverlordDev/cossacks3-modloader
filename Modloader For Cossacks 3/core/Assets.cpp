@@ -4,6 +4,7 @@
 #include "GameApi.h"
 #include "Hooks.h"
 #include "ScriptPatch.h"
+#include "Content.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -33,7 +34,8 @@ namespace
     // Патчи скриптов: путь в игре -> файлы .patch модов (по порядку модов). Файл собирается при первом
     // чтении движком: база (замена из assets, workshop-мод или файл игры) + встроенные правки + патчи,
     // результат пишется в modloader/cache и отдаётся движку вместо исходного.
-    struct PatchSource { std::string mod, file; };
+    struct PatchSource { std::string mod, file, text; }; // text — патч, собранный модлоадером (content.lua)
+    std::vector<Content::ModDir> g_enabledMods;      // включённые моды в порядке загрузки
     std::map<std::string, std::vector<PatchSource>> g_patches;
     std::set<std::string> g_pending;         // ещё не собранные (патчи или встроенные правки)
     std::map<std::string, std::string> g_workshop; // путь в игре -> файл из включённого мода Steam
@@ -144,6 +146,8 @@ namespace
             auto enabled = state.find(folder);
             if (enabled != state.end() ? !enabled->second : ManifestDisabled(entry.path()))
                 continue;
+
+            g_enabledMods.push_back({ folder, entry.path() });
 
             fs::path patches = entry.path() / L"patches";
             if (fs::is_directory(patches, ec))
@@ -260,8 +264,8 @@ namespace
             ScriptPatch::Apply(text, builtin, "modloader/" + key);
         for (const PatchSource& p : g_patches[key])
         {
-            std::string patch;
-            if (!ReadAll(p.file, &patch))
+            std::string patch = p.text;
+            if (patch.empty() && !ReadAll(p.file, &patch))
                 continue;
             int n = ScriptPatch::Apply(text, patch, p.mod + "/" + key);
             blocks += n;
@@ -354,6 +358,54 @@ namespace
     }
 }
 
+namespace
+{
+    // content.lua модов: новые нации и типы юнитов -> патчи и сгенерированные файлы.
+    void GenerateContent()
+    {
+        auto readBase = [](const std::string& key) {
+            std::string path;
+            if (auto it = g_map.find(key); it != g_map.end())
+                path = it->second.get();
+            else
+                path = (fs::path(g_gameDir) / key).string();
+            std::string text;
+            ReadAll(path, &text);
+            return text;
+        };
+        auto listGameDir = [](const std::string& key) {
+            std::vector<std::string> out;
+            std::error_code ec;
+            for (const auto& e : fs::directory_iterator(fs::path(g_gameDir) / key, ec))
+                if (e.is_regular_file())
+                    out.push_back(e.path().filename().string());
+            return out;
+        };
+        Content::Result r = Content::Generate(g_enabledMods, readBase, listGameDir);
+        for (const Content::Patch& p : r.patches)
+        {
+            g_patches[p.key].push_back({ p.mod, "", p.text });
+            g_pending.insert(p.key);
+        }
+        fs::path dir = fs::path(g_gameDir) / L"modloader" / L"cache" / L"generated";
+        for (const Content::File& f : r.files)
+        {
+            fs::path out = dir / f.key;
+            std::error_code ec;
+            fs::create_directories(out.parent_path(), ec);
+            std::ofstream o(out, std::ios::binary | std::ios::trunc);
+            o.write(f.text.data(), static_cast<std::streamsize>(f.text.size()));
+            if (!o)
+            {
+                LOG_ERROR("[content] cannot write %s", out.string().c_str());
+                continue;
+            }
+            g_map.insert_or_assign(f.key, GameApi::DelphiString(out.string()));
+            g_list.push_back({ f.mod + " (content)", f.key, out.string() });
+        }
+    }
+}
+
 bool Assets::Install()
 {
     g_gameDir = GameDir();
@@ -361,6 +413,7 @@ bool Assets::Install()
     for (const char* key : kBuiltinFiles)
         g_pending.insert(key);
     Scan();
+    GenerateContent();
     ScanWorkshop();
     // Перехваты нужны всегда: встроенные правки скриптов (события модлоадера) собираются при чтении.
 
@@ -371,6 +424,7 @@ bool Assets::Install()
         LOG_INFO("[assets] %d file(s) from mods will replace game files", static_cast<int>(g_list.size()));
     if (ok && !g_patches.empty())
         LOG_INFO("[patch] %d game file(s) will be patched by mods", static_cast<int>(g_patches.size()));
+    ok &= Content::InstallLocale();
     return ok;
 }
 

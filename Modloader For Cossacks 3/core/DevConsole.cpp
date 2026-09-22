@@ -5,6 +5,7 @@
 #include "Assets.h"
 #include "Checksum.h"
 #include "Console.h"
+#include "Content.h"
 #include "WebUi.h"
 #include "Engine.h"
 #include "Events.h"
@@ -181,6 +182,7 @@ namespace
             "  .events             счётчики событий\n"
             "  .checksum           хеш скриптов для лобби: движка, чистый (без модлоадера) и сохранённый игрой\n"
             "  =<lua>              выполнить Lua:  =player().gold   =native.GetBuildVersion()\n"
+            "  .content            нации и типы юнитов из content.lua модов\n"
             "  .mods               Lua-моды (modloader/mods/*/manifest.lua) и их статус\n"
             "  .lua reload         перезагрузить все Lua-моды\n"
             "  .natives            количество нативов\n"
@@ -265,6 +267,8 @@ namespace
                 Checksum::Print();
             else if (cmd == "mods")
                 LuaHost::PrintMods();
+            else if (cmd == "content")
+                Content::Print();
             else if (cmd == "assets")
                 Assets::Print();
             else if (cmd == "crashtest")

@@ -7,6 +7,6 @@ return {
     version = "0.1.0",
     author = "Illia",
     description = "Новый юнит Украины mlserdiuk (500 HP) в казарме — тест регистрации типов.",
-    enabled = true,
+    enabled = false,
     multiplayer = "required",
 }

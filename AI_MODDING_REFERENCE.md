@@ -403,6 +403,28 @@ Float — одинарной точности. Многие нативы пад�
 (заведи локальную переменную); итог смотреть в `modloader/cache/<путь>`; ошибка компиляции видна в
 логе как `[engine] Compile script error`. Патч меняет правила игры → `multiplayer = "required"`.
 
+## 6а. Новые нации и юниты — content.lua (данные, не код)
+
+Файл `content.lua` в папке мода. Только вызовы `nation{...}` и `unit{...}` с данными; `load`, `require`,
+файлы недоступны. Выполняется при запуске игры, до Lua-модов.
+
+```lua
+nation { sid = "zap", from = "ukr", name = { ru = "...", en = "..." } }   -- sid: 3 буквы, from: одна из 24 наций игры
+unit {
+    sid = "serdiukvet", from = "serdiuk",       -- from: существующий юнит (data/objects/units/<from>.prop)
+    nations = { "ukr", "zap" },                  -- обязательно
+    cell = { 1, 1 },                             -- клетка панели найма; по умолчанию клетка родителя
+    base = { maxhp = 150, speed = 1.2, ["price[3]"] = 20, ["weapon[1].damage"] = 20 },   -- TObjBase
+    prop = { vision = 900 },                     -- TObjProp
+    name = { ru = "...", en = "..." }, description = { ru = "...", en = "..." },
+    actor = nil, mesh = nil, material = nil, animations = nil, icon = nil,   -- свои ресурсы (имена из .lib/.mat)
+}
+```
+
+Нации игры: aus fra eng spa rus ukr pol swe pru ven tur alg net den por pie sax bav hun swi sco tat lit
+(mis — служебная). Новая нация = копия шаблона. Новый юнит = копия родителя + `base`/`prop`;
+нанимается там же, где родитель. Характеристики можно менять и позже в партии через `balance`.
+
 ## 7. Шаблоны
 
 ### 7.1. Клиентский мод: клавиша и чтение
