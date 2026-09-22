@@ -463,6 +463,20 @@ Content::Result Content::Generate(const std::vector<ModDir>& mods, const std::fu
             LOG_ERROR("[content] %s: nation '%s': unknown template nation '%s'", n.mod.c_str(), n.sid.c_str(), n.from.c_str());
             continue;
         }
+        // tat, lit — пустые слоты игры: ни зданий, ни юнитов. Шаблоном годится только нация со зданиями.
+        bool hasBuildings = false;
+        for (const std::string& f : listGameDir("data\\objects\\buildings"))
+            if (Lower(f).rfind(n.from, 0) == 0)
+            {
+                hasBuildings = true;
+                break;
+            }
+        if (!hasBuildings)
+        {
+            LOG_ERROR("[content] %s: nation '%s': template '%s' has no buildings in the game (tat and lit are empty slots)",
+                      n.mod.c_str(), n.sid.c_str(), n.from.c_str());
+            continue;
+        }
         n.id = kBaseNations + static_cast<int>(nations.size());
         known.insert(n.sid);
         nations.push_back(n);
