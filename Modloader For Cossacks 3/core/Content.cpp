@@ -30,6 +30,8 @@ namespace
     {
         std::string mod, sid, from;
         Names name;
+        std::vector<std::string> remove;               // юниты шаблона, которых у нации нет
+        std::vector<std::pair<std::string, int>> resources; // прибавка к стартовым ресурсам
         int id = -1;
     };
 
@@ -245,7 +247,22 @@ namespace
                 if (sid.size() != 3 || from.size() != 3)
                     LOG_ERROR("[content] %s: nation sid and from must be 3 letters", who.c_str());
                 else
-                    g_nations.push_back({ mod.folder, sid, from, FieldNames(L, t, "name") });
+                {
+                    NationDef n{ mod.folder, sid, from, FieldNames(L, t, "name") };
+                    for (const std::string& r : FieldList(L, t, "remove"))
+                        n.remove.push_back(Lower(r));
+                    lua_getfield(L, t, "resources");
+                    if (lua_istable(L, -1))
+                        for (const char* res : { "food", "wood", "stone", "gold", "iron", "coal" })
+                        {
+                            lua_getfield(L, -1, res);
+                            if (lua_isinteger(L, -1) && lua_tointeger(L, -1) != 0)
+                                n.resources.push_back({ res, static_cast<int>(lua_tointeger(L, -1)) });
+                            lua_pop(L, 1);
+                        }
+                    lua_pop(L, 1);
+                    g_nations.push_back(std::move(n));
+                }
             }
             else
             {
@@ -544,6 +561,65 @@ Content::Result Content::Generate(const std::vector<ModDir>& mods, const std::fu
         }
     }
 
+    if (!nations.empty())
+    {
+        // Особые режимы старта (армия, пушки...) раздают юнитов по startingsettings.cfg — только нациям
+        // из allowedcountries. Новая нация стоит везде, где стоит её шаблон.
+        const std::string kStarting = "data\\game\\var\\startingsettings.cfg";
+        std::string starting = readBase(kStarting);
+        for (const NationDef& n : nations)
+            for (const std::string& line : LinesWith(starting, "[*] = " + n.from))
+            {
+                std::string t = line;
+                t.erase(t.find_last_not_of(" \t") + 1);
+                if (t.size() < n.from.size() || t.compare(t.size() - n.from.size(), n.from.size(), n.from) != 0 ||
+                    t.find("[*] = " + n.from) + 6 + n.from.size() != t.size())
+                    continue; // "[*] = ukrXXX" и т.п.
+                std::string added = line;
+                added.replace(added.find("[*] = " + n.from), 6 + n.from.size(), "[*] = " + n.sid);
+                add(kStarting, InsertAfter(line, added));
+            }
+
+        // remove: у нации нет этих юнитов — не нанимаются нигде, ИИ их не заказывает.
+        std::string removeCalls;
+        for (const NationDef& n : nations)
+            for (const std::string& r : n.remove)
+                removeCalls += "   if (csid='" + n.sid + "') then _ml_RemoveUnit(country, '" + r + "');\r\n";
+        if (!removeCalls.empty())
+        {
+            add(kCountry,
+                "@before _country_Init\r\n"
+                "// modloader content.lua: убрать юнит у нации (найм и роль ИИ)\r\n"
+                "procedure _ml_RemoveUnit(var country : TCountry; const sid : String);\r\n"
+                "begin\r\n"
+                "   var i, k : Integer;\r\n"
+                "   for i:=0 to gc_country_maxfixedproduce-1 do\r\n"
+                "   for k:=0 to gc_country_fixedproduce_maxcount-1 do\r\n"
+                "   if (country.fixedproduce[i].build[k].id=sid) then\r\n"
+                "   country.fixedproduce[i].build[k].id := '';\r\n"
+                "   for i:=0 to gc_country_maxmembers-1 do\r\n"
+                "   if (country.members[i]=sid) then\r\n"
+                "   country.membersairole[i] := gc_ai_unit_none;\r\n"
+                "end;\r\n\r\n"
+                "@end _country_Init\r\n" + removeCalls + "\r\n");
+        }
+
+        // resources: прибавка к стартовым ресурсам нации в любом режиме старта (после раздачи юнитов).
+        std::string give;
+        for (const NationDef& n : nations)
+            for (const auto& [res, amount] : n.resources)
+                give += " if (gMap.players[i].csid='" + n.sid + "') then _res_AddResToPlayerByIndex(i, gc_resource_type_" + res +
+                        ", " + std::to_string(amount) + ");";
+        if (!give.empty())
+        {
+            const std::string kGenerate = "data\\scripts\\common.inc\\dogenerate.inc";
+            std::string line = LineWith(readBase(kGenerate), "CreateStartPointPeasants(i, gMap.players[i].startx, gMap.players[i].starty);");
+            if (line.empty())
+                LOG_WARN("[content] start resources: CreateStartPointPeasants not found in dogenerate.inc — skipped");
+            else
+                add(kGenerate, InsertAfter(line, "      [*] = ;     " + give));
+        }
+    }
     g_nations = nations; // с номерами — для .content
 
     // ---- юниты ----

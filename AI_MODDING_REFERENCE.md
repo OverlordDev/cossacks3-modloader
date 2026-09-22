@@ -409,7 +409,8 @@ Float — одинарной точности. Многие нативы пад�
 файлы недоступны. Выполняется при запуске игры, до Lua-модов.
 
 ```lua
-nation { sid = "zap", from = "ukr", name = { ru = "...", en = "..." } }   -- sid: 3 буквы, from: одна из 24 наций игры
+nation { sid = "zap", from = "ukr", name = { ru = "...", en = "..." },   -- sid: 3 буквы, from: нация игры со зданиями (не tat, lit, mis)
+         remove = { "jannisary" }, resources = { gold = 500 } }         -- убрать юниты шаблона; прибавка к стартовым ресурсам
 unit {
     sid = "serdiukvet", from = "serdiuk",       -- from: существующий юнит (data/objects/units/<from>.prop)
     nations = { "ukr", "zap" },                  -- обязательно
