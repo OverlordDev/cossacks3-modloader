@@ -86,6 +86,24 @@ namespace
         return state;
     }
 
+    // Lua ещё нет, поэтому enabled = false из manifest.lua читаем как текст (строка без комментария).
+    bool ManifestDisabled(const fs::path& modDir)
+    {
+        std::ifstream in(modDir / L"manifest.lua");
+        std::string line;
+        while (std::getline(in, line))
+        {
+            line.erase(std::min(line.find("--"), line.size()));
+            std::string t;
+            for (char c : line)
+                if (c != ' ' && c != '\t' && c != '\r')
+                    t += c;
+            if (t.rfind("enabled=false", 0) == 0)
+                return true;
+        }
+        return false;
+    }
+
     void Scan()
     {
         std::string gameDir = GameDir();
@@ -99,7 +117,7 @@ namespace
                 continue;
             std::string folder = entry.path().filename().string();
             auto enabled = state.find(folder);
-            if (enabled != state.end() && !enabled->second)
+            if (enabled != state.end() ? !enabled->second : ManifestDisabled(entry.path()))
                 continue;
 
             fs::path patches = entry.path() / L"patches";

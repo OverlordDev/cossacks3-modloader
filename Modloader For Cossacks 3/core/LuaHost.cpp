@@ -56,6 +56,7 @@ namespace
         // игре обе стороны считают партию сами, и всё, что меняет мир (создание объектов, их
         // перемещение), должно произойти одинаково у всех, иначе расходятся номера объектов.
         bool shared = false;
+        bool data = false;   // есть assets/ или patches/ — меняет файлы игры
         std::string multiplayer = "required";
         std::map<std::string, fs::path> files; // имя модуля ("utils", "lib/math") -> путь
         bool enabled = true;
@@ -1764,8 +1765,10 @@ end
             mod.entry[Server] = sharedEntry;
             mod.shared = true;
         }
-        if (mod.entry[Client].empty() && mod.entry[Server].empty())
-            return mod.error = "set client = \"...\" and/or server = \"...\"", false;
+        // Мод без скриптов — только данные: замена файлов (assets/) и патчи скриптов игры (patches/).
+        mod.data = fs::is_directory(mod.dir / L"assets") || fs::is_directory(mod.dir / L"patches");
+        if (mod.entry[Client].empty() && mod.entry[Server].empty() && !mod.data)
+            return mod.error = "set client = \"...\" and/or server = \"...\" (or add assets/ or patches/)", false;
         if (mod.multiplayer != "required" && mod.multiplayer != "optional")
             return mod.error = "multiplayer must be \"required\" or \"optional\"", false;
 
@@ -1916,7 +1919,8 @@ end
                 Detach(mod);
             else
                 LOG_INFO("[lua] loaded %s %s (%s) [%s]", mod.id.c_str(), mod.version.c_str(), mod.name.c_str(),
-                         mod.shared ? "shared" : mod.entry[Client].empty() ? "server" : mod.entry[Server].empty() ? "client" : "client+server");
+                         mod.shared ? "shared" : mod.entry[Client].empty() && mod.entry[Server].empty() ? "data"
+                         : mod.entry[Client].empty() ? "server" : mod.entry[Server].empty() ? "client" : "client+server");
         }
 
         size_t loaded = std::count_if(g_mods.begin(), g_mods.end(), [](const Mod& m) { return m.loaded; });
@@ -2203,7 +2207,7 @@ std::vector<LuaHost::ModView> LuaHost::Mods()
     {
         ModStatus status = m.loaded ? ModStatus::Loaded : !m.error.empty() ? ModStatus::Error : ModStatus::Disabled;
         std::string sides = !m.entry[Client].empty() && !m.entry[Server].empty() ? "client+server"
-                          : !m.entry[Server].empty() ? "server" : !m.entry[Client].empty() ? "client" : "";
+                          : !m.entry[Server].empty() ? "server" : !m.entry[Client].empty() ? "client" : m.data ? "data" : "";
         out.push_back({ m.folder, m.id, m.name, m.version, m.author, m.description, m.error, sides, m.multiplayer, status });
     }
     return out;
@@ -2238,7 +2242,7 @@ std::vector<LuaHost::MultiplayerMod> LuaHost::MultiplayerMods()
     std::vector<MultiplayerMod> out;
     for (const Mod& m : g_mods)
     {
-        if (!m.loaded || m.multiplayer != "required" || (!m.shared && m.entry[Server].empty()))
+        if (!m.loaded || m.multiplayer != "required" || (!m.shared && m.entry[Server].empty() && !m.data))
             continue;
         // FNV-1a по путям и содержимому всех файлов мода по порядку; web/ — интерфейс, не партия.
         std::vector<fs::path> files;
