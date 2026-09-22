@@ -36,11 +36,15 @@ local function num(v) return tonumber((tostring(v or ""):gsub(",", "."))) end
 
 local PRIMITIVE = { int = 4, string = 4, Pointer = 4, Byte = 1, Word = 2 }
 
-local function scalarSize(t, p)
+local function scalarSize(node, p)
+    if node.bytes then return node.bytes end -- Byte/Word: в Lua int, в памяти 1/2 байта
+    local t = node.type
     if t == "float" then return p.float end
     if t == "bool" then return p.bool end
     return PRIMITIVE[t]
 end
+
+local function alignUp(off, a) return a > 1 and math.ceil(off / a) * a or off end
 
 local layoutOf
 
@@ -49,7 +53,7 @@ local function nodeSize(node, p)
         local lo, hi = node.array[1], node.array[2]
         return (hi - lo + 1) * nodeSize(node.of, p)
     end
-    local s = scalarSize(node.type, p)
+    local s = scalarSize(node, p)
     if s then return s end
     if SCHEMA.types[node.type] then return layoutOf(node.type, p).size end
     return 4 -- классы (TIntegerList, TPtrList ...) — ссылка
@@ -62,8 +66,16 @@ layoutOf = function(typeName, p)
     if cached and cached.p == p then return cached end
     local fields, off = {}, 0
     for _, f in ipairs(SCHEMA.types[typeName] or {}) do
+        local size = nodeSize(f, p)
+        if p.natural then
+            -- как в Delphi: поле по границе своего размера (не больше 4), вложенная запись — по align
+            local el = f
+            while el.array do el = el.of end
+            local a = scalarSize(el, p) or p.align
+            off = alignUp(off, math.min(a, 4))
+        end
         fields[f.name:lower()] = { off = off, node = f }
-        off = off + nodeSize(f, p)
+        off = off + size
     end
     local size = p.align > 1 and math.ceil(off / p.align) * p.align or off
     local l = { size = size, fields = fields, p = p }
@@ -98,6 +110,8 @@ end
 local function readAt(addr, off, node, p)
     local t = node.type
     if node.array or (SCHEMA.types[t] and not PRIMITIVE[t]) then return nil end -- не скаляр
+    if node.bytes == 1 then return mem.u8(addr, off) end
+    if node.bytes == 2 then return mem.u16(addr, off) end
     if t == "int" then return mem.i32(addr, off) end
     if t == "float" then return p.float == 8 and mem.f64(addr, off) or mem.f32(addr, off) end
     if t == "bool" then
@@ -193,37 +207,58 @@ function objects.calibrate(h)
         add(other)
     end
     if #samples == 0 then return false, "no unit or building to check against" end
+    local best = nil
 
+    for _, natural in ipairs({ false, true }) do
     for _, align in ipairs({ 4, 1, 8 }) do
         for _, fsize in ipairs({ 4, 8 }) do
             for _, bsize in ipairs({ 1, 4 }) do
                 for base = 0, 12, 4 do
-                    local p = { float = fsize, bool = bsize, align = align, base = base }
+                    local p = { float = fsize, bool = bsize, align = align, base = base, natural = natural }
                     layoutCache = {}
                     local good = true
+                    local matched = 0
                     for _, sample in ipairs(samples) do
                         for i, f in ipairs(fields) do
                             local off, node = resolve(f.name, p)
-                            if not off or not same(readAt(sample.addr, off, node, p), sample.slow[i], f.type) then
+                            local fast = off and readAt(sample.addr, off, node, p)
+                            if not off or not same(fast, sample.slow[i], f.type) then
                                 good = false
+                                if not best or matched > best.matched then
+                                    best = { matched = matched, p = p, field = f.name, fast = fast, slow = sample.slow[i],
+                                             off = off, addr = sample.addr }
+                                end
                                 break
                             end
+                            matched = matched + 1
                         end
                         if not good then break end
                     end
                     if good then
                         params, mode = p, "fast"
-                        say("info", string.format("objects: fast access on (TObj %d bytes; float %d, bool %d, align %d, base %d; checked on %d object(s))",
-                            layoutOf("TObj", p).size, fsize, bsize, align, base, #samples))
+                        say("info", string.format("objects: fast access on (TObj %d bytes; float %d, bool %d, align %d, base %d, %s; checked on %d object(s))",
+                            layoutOf("TObj", p).size, fsize, bsize, align, base, natural and "aligned fields" or "packed", #samples))
                         return true
                     end
                 end
             end
         end
     end
+    end
     layoutCache = {}
     mode = "slow"
     say("warn", "objects: memory layout of TObj does not match the schema — falling back to Pascal (slow)")
+    if best then
+        -- для разбора: лучший вариант и где он разошёлся с игрой
+        local b = best.p
+        say("warn", string.format("objects: best guess float %d bool %d align %d base %d %s — %d field(s) matched, " ..
+            "first mismatch '%s' at +%s: memory %s, game %s", b.float, b.bool, b.align, b.base,
+            b.natural and "aligned" or "packed", best.matched, best.field, tostring(best.off), tostring(best.fast), tostring(best.slow)))
+        local bytes = mem.bytes(best.addr, 0, 96)
+        if bytes then
+            say("warn", "objects: TObj bytes 0..95: " .. (bytes:gsub(".", function(c) return string.format("%02x ", c:byte()) end)))
+        end
+    end
     return false, "layout mismatch"
 end
 

@@ -148,11 +148,16 @@ RE_STRUCT = re.compile(r"^\s*(\w+)\s*:\s*struct\.begin")
 RE_STRUCT_FIELD = re.compile(r"^\s*(\w+)\s*=\s*(\w+)((?:\[[^\]]+\])*)\s*$")
 DMS_SCALARS = {"Integer": "int", "Float": "float", "String": "string", "Boolean": "bool",
                "Pointer": "int", "SmallInt": "int", "Word": "int", "Byte": "int"}
+DMS_BYTES = {"Byte": 1, "Word": 2, "SmallInt": 2}
 
 
 def dms_type(base, dims, consts):
     """'TCountry', '[gc_A][gc_B]' -> вложенные массивы с нуля до N-1."""
     node = {"type": DMS_SCALARS.get(base, base)}
+    # Размер в памяти не всегда 4: Byte/Word/SmallInt видны в Lua как int, но objects читает память
+    # и должен знать настоящую ширину поля (api/20_objects.lua).
+    if base in DMS_BYTES:
+        node["bytes"] = DMS_BYTES[base]
     for dim in reversed(re.findall(r"\[([^\]]+)\]", dims)):
         n = evaluate(dim, consts)
         node = {"array": [0, n - 1 if n is not None else None], "of": node}
