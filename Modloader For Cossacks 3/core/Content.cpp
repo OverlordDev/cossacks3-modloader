@@ -835,7 +835,7 @@ namespace
     void* g_lstrAsg = nullptr;
 
     struct Decision { int text; const char* value; };
-    Decision g_decision;
+    thread_local Decision g_decision; // хук возвращает указатель — у каждого потока свой
     std::string g_lang;
     int g_langCheck = 0;
 
@@ -860,9 +860,8 @@ namespace
         return g_lang;
     }
 
-    const char* Pick(const std::string& key, const Names& names)
+    const char* Pick(const std::string& key, const Names& names, const std::string& lang)
     {
-        std::string lang = CurrentLang();
         auto it = names.find(lang);
         if (it == names.end()) it = names.find("*");
         if (it == names.end()) it = names.find("en");
@@ -879,11 +878,17 @@ namespace
     {
         if (!key || !*key)
             return nullptr;
+        thread_local bool inside = false; // натив языка сам может читать локализацию
+        if (inside)
+            return nullptr;
+        inside = true;
+        std::string lang = CurrentLang(); // вне лока: зовёт натив игры
+        inside = false;
         std::lock_guard lock(g_locMutex);
         std::string k = Lower(key);
         if (auto t = g_locText.find(k); t != g_locText.end())
         {
-            g_decision = { 1, Pick(k, t->second) };
+            g_decision = { 1, Pick(k, t->second, lang) };
             return &g_decision;
         }
         // "mlserdiuk" / "mlserdiuk.ext" -> "serdiuk" / "serdiuk.ext"

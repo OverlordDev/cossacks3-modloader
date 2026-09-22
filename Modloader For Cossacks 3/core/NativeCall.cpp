@@ -111,12 +111,14 @@ namespace
     {
         uint32_t eaxValue = 0;
         double fpValue = 0;
+        uint32_t savedEsp = 0; // стек восстанавливаем сами: при неверной сигнатуре натив снимет не столько
         __try
         {
             if (floatResult)
             {
                 __asm
                 {
+                    mov savedEsp, esp
                     mov ecx, count
                     mov esi, data
                 push_f:
@@ -127,6 +129,7 @@ namespace
                     jmp push_f
                 call_f:
                     call fn
+                    mov esp, savedEsp
                     fstp fpValue
                 }
             }
@@ -134,6 +137,7 @@ namespace
             {
                 __asm
                 {
+                    mov savedEsp, esp
                     mov ecx, count
                     mov esi, data
                 push_i:
@@ -144,6 +148,7 @@ namespace
                     jmp push_i
                 call_i:
                     call fn
+                    mov esp, savedEsp
                     mov eaxValue, eax
                 }
             }
@@ -184,6 +189,16 @@ bool NativeCall::Invoke(const Signature& sig, const std::vector<Value>& args, Va
 
     if (sig.result == Type::String)
         stack.push_back(reinterpret_cast<uint32_t>(&stringResult)); // скрытый var Result — первым
+
+    size_t need = 0;
+    for (size_t i = 0; i < sig.params.size(); ++i)
+        need += sig.byRef[i] ? 0 : 1;
+    if (args.size() != need)
+    {
+        if (error)
+            *error = sig.name + ": expected " + std::to_string(need) + " args, got " + std::to_string(args.size());
+        return false;
+    }
 
     size_t argIndex = 0;
     for (size_t i = 0; i < sig.params.size(); ++i)

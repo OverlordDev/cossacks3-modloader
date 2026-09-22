@@ -87,6 +87,8 @@ namespace
     bool g_capturing = false;
     bool g_captured = false;
     std::string g_capture;
+    struct CaptureFrame { bool capturing, captured; std::string value; };
+    std::vector<CaptureFrame> g_captureStack; // game.eval внутри обработчика события внутри game.eval
 
     void __stdcall hkTrampoline(const char* msg)
     {
@@ -529,6 +531,7 @@ void Events::SetScriptArg(const std::string& value)
 
 void Events::BeginCapture()
 {
+    g_captureStack.push_back({ g_capturing, g_captured, std::move(g_capture) });
     g_capturing = true;
     g_captured = false;
     g_capture.clear();
@@ -536,10 +539,19 @@ void Events::BeginCapture()
 
 bool Events::EndCapture(std::string* value)
 {
-    g_capturing = false;
-    if (g_captured && value)
+    bool captured = g_captured;
+    if (captured && value)
         *value = g_capture;
-    return g_captured;
+    if (!g_captureStack.empty())
+    {
+        g_capturing = g_captureStack.back().capturing;
+        g_captured = g_captureStack.back().captured;
+        g_capture = std::move(g_captureStack.back().value);
+        g_captureStack.pop_back();
+    }
+    else
+        g_capturing = g_captured = false;
+    return captured;
 }
 
 void Events::PrintStats()
