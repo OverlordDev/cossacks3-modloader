@@ -1120,6 +1120,9 @@ end
     // (*GUI* — меняет только картинку у этого игрока), кроме запуска состояний, которые могут делать что угодно.
     bool IsClientNative(const std::string& name)
     {
+        // Только читают, но по имени не угадать: нужны objects (api/20_objects.lua) на клиенте.
+        if (name == "StateMachineGetArgDataByInd")
+            return true;
         static const char* prefixes[] = { "Get", "Is", "Has", "Can", "Calc", "Check", "Find", "Count" };
         for (const char* p : prefixes)
             if (name.rfind(p, 0) == 0)
