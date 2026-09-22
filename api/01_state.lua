@@ -32,7 +32,7 @@ state = {}
 -- "gMap.players[2].name" -> { "gMap", ".players", "[2]", ".name" }
 local function tokens(path)
     local out = {}
-    local head, rest = path:match("^(obj%(%d+%))(.*)$")
+    local head, rest = path:match("^(obj%(%-?%d+%))(.*)$")
     if not head then head, rest = path:match("^([%a_][%w_]*)(.*)$") end
     if not head then error("state: bad path '" .. tostring(path) .. "'", 3) end
     out[1] = head
@@ -53,7 +53,7 @@ end
 -- Описание значения по пути: { type = "int" | "float" | "string" | "bool" | "<TRecord>" } или массив.
 -- Путь -> выражение скрипта игры: obj(123) — это TObj(_unit_GetTObj(123)).
 local function expr(path)
-    return (path:gsub("^obj%((%d+)%)", "TObj(_unit_GetTObj(%1))"))
+    return (path:gsub("^obj%((%-?%d+)%)", "TObj(_unit_GetTObj(%1))"))
 end
 
 local function describe(path)
