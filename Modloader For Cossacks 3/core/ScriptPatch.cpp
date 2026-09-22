@@ -261,5 +261,11 @@ std::string ScriptPatch::Builtin(const std::string& key)
     if (key == "data\\scripts\\lib\\miscext2.script")
         return "@begin _misc_DoDamage\r\n"
                "DScriptSetgDbgString0('ML:unit.damage|'+IntToStr(goHnd)+'|'+IntToStr(trgHnd)+'|'+IntToStr(indamage));\r\n";
+    // savedata: строковая глобальная переменная для данных модов — движок сам пишет её в сейв и читает
+    // при загрузке (список serialized в dmscript.source).
+    if (key == "data\\scripts\\dmscript.global")
+        return "@find\r\n   gpointer_register0 = Pointer\r\n@with\r\n   gstring_modloader_save = String\r\n   gpointer_register0 = Pointer\r\n";
+    if (key == "data\\scripts\\dmscript.source")
+        return "@find\r\n      [*] = gbool_recordwascleared\r\n@with\r\n      [*] = gbool_recordwascleared\r\n      [*] = gstring_modloader_save\r\n";
     return {};
 }

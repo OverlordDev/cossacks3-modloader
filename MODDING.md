@@ -86,6 +86,7 @@ events.on("unit.death", function(event, handle, basename) ... end)
 | сеть | `net.send("имя", данные)`, `net.on("имя", fn)`, `net.broadcast(...)` |
 | натив движка | `native.GetCurrentMouseWorldCoord()` (список — `GAME_API.md`) |
 | удобный вывод | `show(таблица)` в консоли |
+| данные в сейве | `savedata.set(ключ, таблица)`, `savedata.get(ключ)`, событие `save.loaded` |
 
 ## 5. Замена файлов — assets/
 

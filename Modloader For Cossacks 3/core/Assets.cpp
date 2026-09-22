@@ -44,7 +44,8 @@ namespace
     std::string g_gameDir;
 
     // Встроенные правки модлоадера — для этих файлов сборка идёт всегда.
-    const char* const kBuiltinFiles[] = { "data\\scripts\\lib\\unit.script", "data\\scripts\\lib\\miscext2.script" };
+    const char* const kBuiltinFiles[] = { "data\\scripts\\lib\\unit.script", "data\\scripts\\lib\\miscext2.script",
+                                          "data\\scripts\\dmscript.global", "data\\scripts\\dmscript.source" };
 
     std::string GameDir()
     {

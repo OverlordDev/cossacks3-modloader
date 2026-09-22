@@ -110,6 +110,10 @@ void Game::Install()
                 ")+'|'+FloatToStr(" + o.x + ")+'|'+FloatToStr(" + o.z + ")+'|'+IntToStr(" + o.group + "))",
             true);
 
+    // Сейв загружен: глобальный скрипт игроков выполняет OnAfterLoad — данные модов уже в переменных.
+    Events::HookLibraryStateCode("units\\global.aix", "OnAfterLoad", "save.afterload",
+        "DScriptSetgDbgString0('ML:save.afterload');");
+
     for (const ObjectHook& h : objectHooks)
     {
         std::string event = std::string(h.kind) + "." + h.event;

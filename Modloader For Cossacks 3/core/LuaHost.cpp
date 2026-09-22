@@ -999,6 +999,130 @@ namespace
 
     // mod.files("LoadScreen") — имена файлов в папке мода. Нужен, чтобы страница могла показать
     // содержимое папки: сама она каталог прочитать не может.
+    // ---------- API: savedata — данные модов внутри сейва игры ----------
+    // Все моды складываются в одну строковую глобальную переменную скриптов gstring_modloader_save
+    // (встроенная правка dmscript.global/.source): движок сам пишет её в файл сохранения и читает при
+    // загрузке. Формат: hex от "<ключ Encode><значение Encode>..." — ключ = "<id мода>\x1f<ключ мода>".
+
+    std::map<std::string, std::string> g_saveData; // полный ключ -> значение в формате Encode
+    bool g_saveDirty = false;
+    ULONGLONG g_saveLoadedAt = 0;
+
+    std::string SaveKey(const Mod& mod, const char* key) { return mod.id + '\x1f' + key; }
+
+    std::string ToHex(const std::string& s)
+    {
+        static const char* d = "0123456789abcdef";
+        std::string out;
+        out.reserve(s.size() * 2);
+        for (unsigned char c : s)
+            out += d[c >> 4], out += d[c & 15];
+        return out;
+    }
+
+    bool FromHex(const std::string& h, std::string* out)
+    {
+        if (h.size() % 2)
+            return false;
+        auto v = [](char c) { return c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : -1; };
+        out->clear();
+        for (size_t i = 0; i < h.size(); i += 2)
+        {
+            int a = v(h[i]), b = v(h[i + 1]);
+            if (a < 0 || b < 0)
+                return false;
+            *out += static_cast<char>(a * 16 + b);
+        }
+        return true;
+    }
+
+    // Записать данные в переменную игры (главный поток). Зовётся на такте, если что-то менялось.
+    void SaveFlush()
+    {
+        if (!g_saveDirty)
+            return;
+        g_saveDirty = false;
+        std::string packed;
+        for (const auto& [k, v] : g_saveData)
+            packed += "s" + std::to_string(k.size()) + ":" + k + v;
+        std::string result;
+        if (!ScriptRunner::Call("gstring_modloader_save := ML_ARG;", ToHex(packed), &result))
+            LOG_WARN("[savedata] cannot write mod data into the game (is the dmscript patch applied?)");
+    }
+
+    // Прочитать данные из переменной игры после загрузки сейва.
+    bool SaveLoad()
+    {
+        std::string hex, packed;
+        if (!ScriptRunner::Call("ML_RET(gstring_modloader_save);", "", &hex) || !FromHex(hex, &packed))
+            return false;
+        std::map<std::string, std::string> data;
+        size_t pos = 0;
+        lua_State* tmp = luaL_newstate(); // только проверить и разрезать записи — без кода
+        while (pos < packed.size())
+        {
+            size_t start = pos;
+            if (!Decode(tmp, packed, pos, 0) || !lua_isstring(tmp, -1))
+                break;
+            std::string key = lua_tostring(tmp, -1);
+            lua_pop(tmp, 1);
+            size_t valueStart = pos;
+            if (!Decode(tmp, packed, pos, 0))
+                break;
+            lua_pop(tmp, 1);
+            data[key] = packed.substr(valueStart, pos - valueStart);
+            (void)start;
+        }
+        lua_close(tmp);
+        g_saveData = std::move(data);
+        g_saveDirty = false;
+        return true;
+    }
+
+    // savedata.set("veterans", tbl) — nil удаляет.
+    int l_saveSet(lua_State* L)
+    {
+        Mod* mod = ModFromUpvalue(L);
+        const char* key = luaL_checkstring(L, 1);
+        std::string full = SaveKey(*mod, key);
+        if (lua_isnoneornil(L, 2))
+            g_saveData.erase(full);
+        else
+        {
+            std::string v;
+            Encode(L, 2, v, 0);
+            g_saveData[full] = v;
+        }
+        g_saveDirty = true;
+        return 0;
+    }
+
+    int l_saveGet(lua_State* L)
+    {
+        Mod* mod = ModFromUpvalue(L);
+        auto it = g_saveData.find(SaveKey(*mod, luaL_checkstring(L, 1)));
+        size_t pos = 0;
+        if (it == g_saveData.end() || !Decode(L, it->second, pos, 0))
+            lua_pushnil(L);
+        return 1;
+    }
+
+    // savedata.keys() -> { "veterans", ... } — ключи этого мода.
+    int l_saveKeys(lua_State* L)
+    {
+        Mod* mod = ModFromUpvalue(L);
+        std::string prefix = mod->id + '\x1f';
+        lua_newtable(L);
+        int n = 0;
+        for (const auto& [k, v] : g_saveData)
+            if (k.rfind(prefix, 0) == 0)
+            {
+                lua_pushstring(L, k.c_str() + prefix.size());
+                lua_rawseti(L, -2, ++n);
+            }
+        return 1;
+    }
+
     int l_modFiles(lua_State* L)
     {
         Mod* mod = ModFromUpvalue(L);
@@ -1753,6 +1877,15 @@ end
 
         lua_newtable(L); // mod — информация о себе и свои файлы
         SetFunc("files", l_modFiles, modIndex, side);
+        lua_setfield(L, -2, "mod");
+
+        lua_newtable(L); // savedata — данные мода внутри сейва игры
+        SetFunc("set", l_saveSet, modIndex, side);
+        SetFunc("get", l_saveGet, modIndex, side);
+        SetFunc("keys", l_saveKeys, modIndex, side);
+        lua_setfield(L, -2, "savedata");
+
+        lua_getfield(L, -1, "mod");
         lua_pushstring(L, mod.id.c_str());      lua_setfield(L, -2, "id");
         lua_pushstring(L, mod.name.c_str());    lua_setfield(L, -2, "name");
         lua_pushstring(L, mod.version.c_str()); lua_setfield(L, -2, "version");
@@ -2108,6 +2241,32 @@ end
 void LuaHost::Start()
 {
     ScriptRunner::RunOnGameThread(LoadAll);
+
+    // savedata: запись — на такте партии; при выходе из партии — сброс; после загрузки сейва — чтение.
+    static bool subscribed = false;
+    if (subscribed)
+        return;
+    subscribed = true;
+    Events::Subscribe("game.tick", [](const std::string&, const std::string&) { SaveFlush(); });
+    for (const char* e : { "game.end", "game.menu" })
+        Events::Subscribe(e, [](const std::string&, const std::string&) {
+            if (!g_saveData.empty())
+                g_saveData.clear(), g_saveDirty = true;
+        });
+    // OnAfterLoad есть у глобального скрипта каждого игрока — событие приходит несколько раз подряд.
+    Events::Subscribe("save.afterload", [](const std::string&, const std::string&) {
+        ULONGLONG now = GetTickCount64();
+        if (now - g_saveLoadedAt < 3000)
+            return;
+        g_saveLoadedAt = now;
+        if (SaveLoad())
+        {
+            LOG_INFO("[savedata] loaded from the save: %zu record(s)", g_saveData.size());
+            Events::Emit("save.loaded");
+        }
+        else
+            LOG_WARN("[savedata] could not read mod data from the save");
+    });
 }
 
 void LuaHost::Reload()
