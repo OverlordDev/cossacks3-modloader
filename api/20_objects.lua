@@ -24,6 +24,12 @@ local params             -- {float = 4|8, bool = 1|4, align = 1|4|8, base = 0..1
 local mode = "not calibrated"
 local warned = false
 
+-- api грузится и туда, где нет log (базовое окружение) — пишем через что есть.
+local function say(level, text)
+    local l = rawget(_ENV, "log")
+    if l and l[level] then l[level](text) else print(text) end
+end
+
 local function num(v) return tonumber((tostring(v or ""):gsub(",", "."))) end
 
 -- ---------- раскладка ----------
@@ -207,7 +213,7 @@ function objects.calibrate(h)
                     end
                     if good then
                         params, mode = p, "fast"
-                        log.info(string.format("objects: fast access on (TObj %d bytes; float %d, bool %d, align %d, base %d; checked on %d object(s))",
+                        say("info", string.format("objects: fast access on (TObj %d bytes; float %d, bool %d, align %d, base %d; checked on %d object(s))",
                             layoutOf("TObj", p).size, fsize, bsize, align, base, #samples))
                         return true
                     end
@@ -217,7 +223,7 @@ function objects.calibrate(h)
     end
     layoutCache = {}
     mode = "slow"
-    log.warn("objects: memory layout of TObj does not match the schema — falling back to Pascal (slow)")
+    say("warn", "objects: memory layout of TObj does not match the schema — falling back to Pascal (slow)")
     return false, "layout mismatch"
 end
 
@@ -227,7 +233,7 @@ local function ensure(h)
         local ok, why = objects.calibrate(h)
         if not ok and why ~= "layout mismatch" and not warned then
             warned = true
-            log.warn("objects: calibration postponed (" .. tostring(why) .. ")")
+            say("warn", "objects: calibration postponed (" .. tostring(why) .. ")")
         end
     end
     return mode == "fast"

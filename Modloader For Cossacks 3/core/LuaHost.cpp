@@ -1934,9 +1934,10 @@ end
             mod.shared = true;
         }
         // Мод без скриптов — только данные: замена файлов (assets/) и патчи скриптов игры (patches/).
-        mod.data = fs::is_directory(mod.dir / L"assets") || fs::is_directory(mod.dir / L"patches");
+        mod.data = fs::is_directory(mod.dir / L"assets") || fs::is_directory(mod.dir / L"patches") ||
+                   fs::is_regular_file(mod.dir / L"content.lua");
         if (mod.entry[Client].empty() && mod.entry[Server].empty() && !mod.data)
-            return mod.error = "set client = \"...\" and/or server = \"...\" (or add assets/ or patches/)", false;
+            return mod.error = "set client = \"...\" and/or server = \"...\" (or add assets/, patches/ or content.lua)", false;
         if (mod.multiplayer != "required" && mod.multiplayer != "optional")
             return mod.error = "multiplayer must be \"required\" or \"optional\"", false;
 
