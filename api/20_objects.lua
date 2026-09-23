@@ -27,7 +27,10 @@ local warned = false
 -- api грузится и туда, где нет log (базовое окружение) — пишем через что есть.
 local function say(level, text)
     local l = rawget(_ENV, "log")
-    if l and l[level] then l[level](text) else print(text) end
+    if l and l[level] then l[level](text) else
+        local p = rawget(_ENV, "print") or rawget(_G, "print")
+        if p then p(text) end
+    end
 end
 
 local function num(v) return tonumber((tostring(v or ""):gsub(",", "."))) end

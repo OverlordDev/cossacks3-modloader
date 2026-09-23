@@ -235,8 +235,9 @@ namespace
 
     // Главный поток игры: обернуть вызовы в состоянии. Каждый вызов — отдельно, со своей проверкой
     // компиляции: строка, которая не компилируется обёрнутой, остаётся как есть, остальные работают.
-    bool ApplyWrap(const Injection& inj, uint8_t* sm, uint8_t* state, bool quiet)
+    bool ApplyWrap(const Injection& inj, uint8_t* sm, uint8_t* state, bool quiet, bool retry = false)
     {
+        std::vector<std::string> skippedNow;
         uint8_t* list = Engine::StateCode(state);
         size_t m = inj.line.find("'ML:");
         std::string marker = inj.line.substr(m, inj.line.find('|', m) - m);
@@ -323,6 +324,7 @@ namespace
             if (inserted)
                 continue;
             bad.insert(original);
+            skippedNow.push_back(original);
             Engine::StateReset(state);
             ++skipped;
             LOG_DEV("Events: %s: line %d of '%s' does not compile wrapped, left as is: %s", inj.event.c_str(), i + 1,
@@ -330,6 +332,14 @@ namespace
         }
         if (skipped)
             Engine::StateCompileSafe(sm, state); // вернуть состояние в рабочий (скомпилированный) вид
+        // Первая компиляция состояния иногда падает не из-за нашей строки (в OnMouseDown отказывала
+        // первая из двух одинаковых строк атаки). Если другие обёртки легли — ещё одна попытка.
+        if (skipped && fresh && !retry)
+        {
+            for (const std::string& line : skippedNow)
+                bad.erase(line);
+            return ApplyWrap(inj, sm, state, quiet, true);
+        }
         if (wrapped == 0 && skipped == 0 && fresh == 0 && !bad.empty())
             return false; // всё, что было, уже известно как непригодное — молча
         if (wrapped == 0)

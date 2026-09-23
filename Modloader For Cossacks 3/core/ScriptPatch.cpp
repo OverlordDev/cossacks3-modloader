@@ -177,7 +177,10 @@ int ScriptPatch::Apply(std::string& text, const std::string& patchText, const st
     for (const Block& b : blocks)
     {
         auto fail = [&](const char* why) {
-            LOG_WARN("[patch] %s:%d: @%s %s — %s, block skipped", who.c_str(), b.line, b.cmd.c_str(), b.arg.c_str(), why);
+            // Ошибка, а не предупреждение: не легший блок — это мод (или нация из content.lua), который
+            // тихо работает не так, обычно после обновления игры, когда строка-якорь поменялась.
+            LOG_ERROR("[patch] %s:%d: @%s %s — %s, block skipped (game updated? the mod needs fixing)", who.c_str(),
+                      b.line, b.cmd.c_str(), b.arg.c_str(), why);
         };
 
         if (b.cmd == "append")
