@@ -556,6 +556,29 @@ Content::Result Content::Generate(const std::vector<ModDir>& mods, const std::fu
 
         // Здания нации: каждое <шаблон>xxx.prop -> <нация>xxx.prop (та же модель, свой sid).
         std::string buildingsObjects = readBase(kBuildingsObjects);
+        // Точки зданий (куда крестьяне сдают ресурсы, где стоят строители, откуда выходят юниты, декаль)
+        // игра берёт из objcustom.cfg по sid (_country_InitObjCustom). Без блока у клона все точки
+        // нулевые: ресурсы несут в центр здания ("resourcepoint on collision"), выход из здания ломается.
+        const std::string kObjCustom = "data\\game\\var\\objcustom.cfg";
+        std::string objCustom = readBase(kObjCustom);
+        std::string newObjCustom;
+        auto cloneObjCustom = [&](const std::string& oldSid, const std::string& newSid) {
+            size_t at = objCustom.find("      sid = " + oldSid + "\r\n");
+            if (at == std::string::npos)
+                at = objCustom.find("      sid = " + oldSid + "\n");
+            if (at == std::string::npos)
+                return; // у здания нет своих точек и в оригинале
+            size_t begin = objCustom.rfind("   [*] : struct.begin", at);
+            size_t end = objCustom.find("\n   struct.end", at);
+            if (begin == std::string::npos || end == std::string::npos)
+                return;
+            end = objCustom.find('\n', end + 1);
+            std::string block = objCustom.substr(begin, (end == std::string::npos ? objCustom.size() : end) - begin);
+            block = ReplacePropValue(block, "sid", oldSid, newSid);
+            while (!block.empty() && (block.back() == '\n' || block.back() == '\r'))
+                block.pop_back();
+            newObjCustom += block + "\r\n";
+        };
         for (const NationDef& n : nations)
         {
             int count = 0;
@@ -578,6 +601,7 @@ Content::Result Content::Generate(const std::vector<ModDir>& mods, const std::fu
                     added.replace(added.find(entry), entry.size(), "\\data\\objects\\buildings\\" + newSid + ".prop");
                     add(kBuildingsObjects, InsertAfter(line, added));
                 }
+                cloneObjCustom(oldSid, newSid);
                 g_locAlias[newSid] = oldSid;
                 ++count;
             }
@@ -587,6 +611,8 @@ Content::Result Content::Generate(const std::vector<ModDir>& mods, const std::fu
             LOG_INFO("[content] nation %s (id %d, like %s) from %s: %d building(s)", n.sid.c_str(), n.id, n.from.c_str(),
                      n.mod.c_str(), count);
         }
+        if (!newObjCustom.empty())
+            add(kObjCustom, "@find\r\nsection.begin\r\n@with\r\nsection.begin\r\n" + newObjCustom + "\r\n");
     }
 
     if (!nations.empty())
