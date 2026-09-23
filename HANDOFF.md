@@ -41,8 +41,8 @@
 загрузка .oss, HUD, быстрый `objects` (1424 юнита за 46 мс).
 
 Ждёт проверки:
-- `desync_watchdog` в сетевой партии (допущение: `GetGameTime` одинаков у всех в момент снимка;
-  если в сводке хоста «сверок: 0», нужен настоящий счётчик шага lockstep из exe);
+- `desync_watchdog` в сетевой партии: снимки делаются в событии `net.sync` (вставка в состояние
+  `ReadLanSyncData` библиотеки progress.aix — команда lockstep, её все выполняют на одном шаге);
 - savedata, битва из `battle{}`, `remove`/`resources` в `content.lua`;
 - checksum с выключенными модами = `3E5A91861D0C4F933996B8FC2F75E7EB`.
 
