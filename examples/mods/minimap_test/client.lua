@@ -135,16 +135,22 @@ local function sendMap()
             if sx and sz then owners[#owners + 1] = { i, sx, sz } end
         end
     end
-    local st = {}
-    for _, p in ipairs(starts or {}) do
-        local who, best = -1, 16 * 16
-        for _, o in ipairs(owners) do
+    -- Каждому игроку — ближайший к его старту слот (игрок может стоять не точно на точке маски).
+    local slotOwner = {}
+    for _, o in ipairs(owners) do
+        local bestSlot, best = nil, math.huge
+        for k, p in ipairs(starts or {}) do
             local d = (o[2] - p[1]) ^ 2 + (o[3] - p[2]) ^ 2
-            if d < best then best, who = d, o[1] end
+            if d < best and not slotOwner[k] then best, bestSlot = d, k end
         end
-        st[#st + 1] = ("[%d,%d,%d]"):format(math.floor(p[1]), math.floor(p[2]), who)
+        if bestSlot then slotOwner[bestSlot] = o[1] end
     end
-    log.info(starts and ("миникарта: %d стартовых точек из %s"):format(#starts, info) or ("миникарта: " .. info))
+    local st = {}
+    for k, p in ipairs(starts or {}) do
+        st[#st + 1] = ("[%d,%d,%d]"):format(math.floor(p[1]), math.floor(p[2]), slotOwner[k] or -1)
+    end
+    log.info(starts and ("миникарта: %d стартовых точек из %s, слоты: %s"):format(#starts, info, table.concat(st, " "))
+        or ("миникарта: " .. info))
     local names = {}
     for i, nm in ipairs(tileNames) do names[i] = ("%q"):format(nm) end
     web.eval(("window.mm && mm.map(%d, %d, %d, [%s], [%s], [%s], [%s], [%s], [%s])"):format(mapW, mapH, n,
