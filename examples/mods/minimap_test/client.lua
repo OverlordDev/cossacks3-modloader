@@ -43,7 +43,7 @@ local function sendMap()
     local n = cfg.grid
     local rows = {}
     for gy = 0, n - 1 do
-        local z = mapH / 2 - (gy + 0.5) * mapH / n     -- сверху — большие z
+        local z = -mapH / 2 + (gy + 0.5) * mapH / n    -- сверху — меньшие z (как у миникарты игры)
         local row = {}
         for gx = 0, n - 1 do
             local x = -mapW / 2 + (gx + 0.5) * mapW / n
@@ -51,10 +51,25 @@ local function sendMap()
         end
         rows[#rows + 1] = table.concat(row, ",")
     end
+    -- Леса и камни: объекты «природы» (игрок 12) — сколько их в каждой клетке. Тёмные пятна, как у игры.
+    local forest = {}
+    for k = 1, n * n do forest[k] = 0 end
+    for _, h in ipairs(objects.list(12)) do
+        local x, z = objects.pos(h)
+        if x then
+            local gx = math.floor((x + mapW / 2) / mapW * n)
+            local gy = math.floor((z + mapH / 2) / mapH * n)
+            if gx >= 0 and gx < n and gy >= 0 and gy < n then
+                local k = gy * n + gx + 1
+                forest[k] = forest[k] + 1
+            end
+        end
+    end
     for i = 0, 11 do colors[i] = playerColor(i) end
     local cs = {}
     for i = 0, 11 do cs[#cs + 1] = ("%q"):format(colors[i]) end
-    web.eval(("window.mm && mm.map(%d, %d, %d, [%s], [%s])"):format(mapW, mapH, n, table.concat(rows, ","), table.concat(cs, ",")))
+    web.eval(("window.mm && mm.map(%d, %d, %d, [%s], [%s], [%s])"):format(mapW, mapH, n, table.concat(rows, ","),
+        table.concat(cs, ","), table.concat(forest, ",")))
     sentMap = true
 end
 
@@ -73,7 +88,15 @@ local function sendUnits()
             end
         end
     end
-    local cx, _, cz = native.GetCameraTargetPosition()
+    -- Куда смотрит камера: луч от камеры через её цель до земли (цель бывает не на земле).
+    local cx, cz
+    local ex, ey, ez = native.GetCameraAbsolutePosition()
+    local tx, ty, tz = native.GetCameraTargetPosition()
+    if ex and tx then
+        local ground = native.RayCastHeight(tx, tz) or 0
+        local t = (ey - ty) ~= 0 and (ey - ground) / (ey - ty) or 1
+        cx, cz = ex + (tx - ex) * t, ez + (tz - ez) * t
+    end
     web.eval(("window.mm && mm.units(%q, %s, %s)"):format(table.concat(parts, ";"),
         tostring(cx and math.floor(cx) or "null"), tostring(cz and math.floor(cz) or "null")))
 end
