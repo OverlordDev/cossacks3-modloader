@@ -11,40 +11,51 @@
     border: 3px solid #b8914a; border-radius: 6px; background: #1a1a1a;
     box-shadow: 0 4px 16px rgba(0, 0, 0, .6); overflow: hidden;
   }
-  #mm img { width: 100%; height: 100%; display: block; image-rendering: auto; }
+  #mm img { width: 100%; height: 100%; display: block; }
   #info {
     position: fixed; right: 16px; top: 330px; width: 262px; color: #f0e2c0; text-shadow: 0 1px 2px #000;
     background: rgba(0, 0, 0, .55); padding: 4px 6px; box-sizing: border-box; border-radius: 4px;
+  }
+  /* Закрывает место родной миникарты: она рисуется (её снимаем), но игрок видит нашу панель. */
+  #cover {
+    position: fixed; display: none; background: #14120e; border: 2px solid #5a4a2a; box-sizing: border-box;
+    color: #8a7a5a; align-items: center; justify-content: center; text-align: center;
   }
 </style>
 </head>
 <body>
 <div id="mm"><img id="img" alt=""></div>
 <div id="info">ждём картинку…</div>
+<div id="cover">миникарта<br>перенесена</div>
 <script>
-  // Lua кладёт свежую картинку в mm_a.bmp / mm_b.bmp по очереди и зовёт mm.show(имя).
-  // Грузим новую в фоне и подменяем, когда загрузилась, — без мигания.
+  // Lua снимает миникарту игры в mm.bmp (файл подменяется целиком) и зовёт mm.show.
+  // Грузим новую картинку в фоне и подменяем, когда загрузилась, — без мигания.
   const img = document.getElementById('img');
   const info = document.getElementById('info');
-  let frames = 0, last = performance.now(), fps = 0, mode = 'скрыта (Visible false)', size = '';
-
-  function status() { info.textContent = `кадров/с: ${fps.toFixed(1)}  ${size}  · родная: ${mode} · Ctrl+M`; }
+  const cover = document.getElementById('cover');
+  let frames = 0, last = performance.now(), fps = 0, size = '', loading = false;
 
   window.mm = {
     show(file) {
+      if (loading) return;          // прошлая ещё грузится — этот кадр пропускаем
+      loading = true;
       const next = new Image();
       next.onload = () => {
+        loading = false;
         img.src = next.src;
         size = `${next.naturalWidth}×${next.naturalHeight}`;
         frames++;
         const now = performance.now();
         if (now - last >= 1000) { fps = frames * 1000 / (now - last); frames = 0; last = now; }
-        status();
+        info.textContent = `кадров/с: ${fps.toFixed(1)}  ${size} · Ctrl+M — родная`;
       };
-      next.onerror = () => { info.textContent = 'не удалось загрузить ' + file; };
+      next.onerror = () => { loading = false; info.textContent = 'не удалось загрузить ' + file; };
       next.src = file + '?' + Date.now();   // без кеша: файл тот же, картинка новая
     },
-    mode(text) { mode = text; status(); },
+    cover(x, y, w, h, on) {
+      Object.assign(cover.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px',
+                                   display: on ? 'flex' : 'none' });
+    },
   };
 </script>
 </body>

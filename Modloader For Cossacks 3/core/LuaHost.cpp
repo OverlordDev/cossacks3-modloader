@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "CrashHandler.h"
 #include "LuaHost.h"
+#include "Overlay.h"
 #include "Console.h"
 #include "Events.h"
 #include "Game.h"
@@ -1418,6 +1419,18 @@ end
 
     // gfx.<Name> — как native.<Name>, но только нативы графики (GfxApi::IsGraphicsNative) и без
     // деления на стороны: картинка у каждого своя, на ход партии не влияет.
+    // gfx.capture(path, x, y, w, h) — снимок части кадра игры в BMP (в ближайшем кадре, без страницы и меню).
+    int l_gfxCapture(lua_State* L)
+    {
+        std::string path = luaL_checkstring(L, 1);
+        int x = static_cast<int>(luaL_checkinteger(L, 2)), y = static_cast<int>(luaL_checkinteger(L, 3));
+        int w = static_cast<int>(luaL_checkinteger(L, 4)), h = static_cast<int>(luaL_checkinteger(L, 5));
+        if (w <= 0 || h <= 0 || w > 4096 || h > 4096 || path.find("..") != std::string::npos)
+            return luaL_error(L, "gfx.capture: bad size or path");
+        Overlay::QueueCapture(path, x, y, w, h);
+        return 0;
+    }
+
     int l_gfxIndex(lua_State* L)
     {
         const char* name = luaL_checkstring(L, 2);
@@ -1763,6 +1776,7 @@ end
             SetPlain("set", l_fxSet);
             SetPlain("apply", l_fxApply);
             lua_setfield(L, -2, "fx");
+            SetPlain("capture", l_gfxCapture);
 
             lua_setfield(L, -2, "gfx");
         }
