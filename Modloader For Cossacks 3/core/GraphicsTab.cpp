@@ -409,6 +409,9 @@ void GraphicsTab::Draw()
             g_yaw = v.yaw;
             g_distance = v.distance;
         }
+        std::vector<NativeCall::Value> focal; // var-параметры: min, max, power
+        if (CallNativeOut("GetCameraFocalLengthInfo", {}, &focal) && !focal.empty() && focal[0].f > 1.0f)
+            g_focal = focal[0].f;
     }
 
     bool viewChanged = ImGui::SliderFloat("Tilt", &g_pitch, 5.0f, 85.0f, "%.0f°");
@@ -418,17 +421,21 @@ void GraphicsTab::Draw()
     viewChanged |= ImGui::SliderFloat("Distance", &g_distance, 20.0f, 400.0f, "%.0f");
 
     // Сдвиг камеры по осям. X/Z тянутся мышью (Ctrl+клик — ввести число), Y — высота над землёй.
+    // Сдвиг — разовый: Keep не включает, углы и зум остаются игровыми.
     float oldX = g_moveX, oldZ = g_moveZ;
+    bool moved = false;
     if (ImGui::DragFloat("Move X", &g_moveX, 0.5f, -1000.0f, 1000.0f, "%.1f"))
     {
         g_pendingX += g_moveX - oldX;
-        viewChanged = true;
+        moved = true;
     }
     if (ImGui::DragFloat("Move Z", &g_moveZ, 0.5f, -1000.0f, 1000.0f, "%.1f"))
     {
         g_pendingZ += g_moveZ - oldZ;
-        viewChanged = true;
+        moved = true;
     }
+    if (moved && !viewChanged && !g_keepCamera)
+        ApplyView();
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Перенос точки, на которую смотрит камера. Тянуть мышью, Ctrl+клик — ввести число.");
     viewChanged |= ImGui::SliderFloat("Height (Y)", &g_lift, -20.0f, 200.0f, "%.1f");
