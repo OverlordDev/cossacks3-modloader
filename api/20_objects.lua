@@ -28,7 +28,7 @@ local warned = false
 local function say(level, text)
     local l = rawget(_ENV, "log")
     if l and l[level] then l[level](text) else
-        local p = rawget(_ENV, "print") or rawget(_G, "print")
+        local p = rawget(_ENV, "print")
         if p then p(text) end
     end
 end
