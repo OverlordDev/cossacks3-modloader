@@ -7,11 +7,12 @@
 
 local cfg = {
     fps = 4,        -- обновлений точек в секунду
+    camFps = 20,    -- обновлений рамки камеры в секунду
     grid = 160,     -- клеток рельефа по стороне
 }
 
 local opened, sentMap = false, false
-local lastSend, lastCheck = 0, 0
+local lastSend, lastCheck, lastCam = 0, 0, 0
 local showNative = false
 local mapW, mapH = 0, 0
 local colors = {}   -- игрок -> "#rrggbb"
@@ -159,6 +160,16 @@ local function sendMap()
 end
 
 -- Точки: "игрок,x,z,здание;..." — координаты мира, целые.
+-- Куда смотрит камера: луч от камеры через её цель до земли (цель бывает не на земле). Часто и дёшево.
+local function sendCamera()
+    local ex, ey, ez = native.GetCameraAbsolutePosition()
+    local tx, ty, tz = native.GetCameraTargetPosition()
+    if not ex or not tx then return end
+    local ground = native.RayCastHeight(tx, tz) or 0
+    local t = (ey - ty) ~= 0 and (ey - ground) / (ey - ty) or 1
+    web.eval(("window.mm && mm.cam(%.1f, %.1f)"):format(ex + (tx - ex) * t, ez + (tz - ez) * t))
+end
+
 local function sendUnits()
     local parts = {}
     for i = 0, 11 do
@@ -173,17 +184,7 @@ local function sendUnits()
             end
         end
     end
-    -- Куда смотрит камера: луч от камеры через её цель до земли (цель бывает не на земле).
-    local cx, cz
-    local ex, ey, ez = native.GetCameraAbsolutePosition()
-    local tx, ty, tz = native.GetCameraTargetPosition()
-    if ex and tx then
-        local ground = native.RayCastHeight(tx, tz) or 0
-        local t = (ey - ty) ~= 0 and (ey - ground) / (ey - ty) or 1
-        cx, cz = ex + (tx - ex) * t, ez + (tz - ez) * t
-    end
-    web.eval(("window.mm && mm.units(%q, %s, %s)"):format(table.concat(parts, ";"),
-        tostring(cx and math.floor(cx) or "null"), tostring(cz and math.floor(cz) or "null")))
+    web.eval(("window.mm && mm.units(%q)"):format(table.concat(parts, ";")))
 end
 
 events.on("game.tick", function()
@@ -206,7 +207,12 @@ events.on("game.tick", function()
             end
         end
     end
-    if not opened or not sentMap or now - lastSend < 1 / cfg.fps or not ourPage() then return end
+    if not opened or not sentMap or not ourPage() then return end
+    if now - lastCam >= 1 / cfg.camFps then
+        lastCam = now
+        sendCamera()
+    end
+    if now - lastSend < 1 / cfg.fps then return end
     lastSend = now
     sendUnits()
 end)

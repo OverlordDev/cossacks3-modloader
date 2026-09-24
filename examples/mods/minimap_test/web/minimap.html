@@ -19,7 +19,7 @@
 </style>
 </head>
 <body>
-<div id="mm"><canvas id="bg" width="256" height="256"></canvas><canvas id="fg" width="256" height="256"></canvas></div>
+<div id="mm"><canvas id="bg" width="256" height="256"></canvas><canvas id="fg" width="256" height="256"></canvas><canvas id="cam" width="256" height="256"></canvas></div>
 <div id="info">ждём данные карты…</div>
 <script>
   // Данные шлёт client.lua мода: mm.map(...) — один раз, mm.units(...) — несколько раз в секунду.
@@ -101,7 +101,7 @@
       }
     },
 
-    units(list, cx, cz) {
+    units(list) {
       fg.clearRect(0, 0, S, S);
       let count = 0;
       if (list) for (const item of list.split(';')) {
@@ -111,23 +111,63 @@
         else fg.fillRect(px(x) - 1, py(z) - 1, 2, 2);
         count++;
       }
-      if (cx !== null && cz !== null) {                     // куда смотрит камера
-        fg.strokeStyle = '#fff'; fg.lineWidth = 1;
-        fg.strokeRect(px(cx) - 14, py(cz) - 10, 28, 20);
-      }
       updates++;
       const now = performance.now();
       if (now - last >= 1000) { ups = updates * 1000 / (now - last); updates = 0; last = now; }
-      info.textContent = `объектов: ${count} · обновлений/с: ${ups.toFixed(1)} · клик — камера · Ctrl+M — родная`;
+      info.textContent = `объектов: ${count} · обновлений/с: ${ups.toFixed(1)} · клик/тянуть — камера · Ctrl+M — родная`;
+    },
+
+    // Где камера сейчас (точка на земле). Рамка плавно доезжает; пока тянем мышью — стоит под курсором.
+    cam(x, z) {
+      camReal = [x, z];
+      if (!camShown) camShown = [x, z];
+      if (settleAt && performance.now() > settleAt) { // камера доехала: запоминаем промах и дальше его вычитаем
+        settleAt = 0;
+        corr[0] += wanted[0] - x; corr[1] += wanted[1] - z;
+        corr = corr.map(v => Math.max(-60, Math.min(60, v)));
+      }
     },
   };
 
-  // Клик по миникарте — камера едет в эту точку.
-  document.getElementById('mm').addEventListener('mousedown', e => {
-    const r = e.currentTarget.getBoundingClientRect();
-    const x = (e.clientX - r.left) / r.width * W - W / 2;
-    const z = (e.clientY - r.top) / r.height * H - H / 2;
-    if (window.game) game.lua(`native.SetMainCameraMoveToTargetXZ(${x.toFixed(1)}, ${z.toFixed(1)}); native.SetMainCameraMoveToTarget(true)`);
+  // ---------- рамка камеры: плавно, 60 кадров/с ----------
+  const cam = document.getElementById('cam').getContext('2d');
+  let camReal = null, camShown = null, dragging = false, wanted = [0, 0], corr = [0, 0], settleAt = 0, lastSent = 0;
+  function frame() {
+    const target = dragging ? wanted : camReal;
+    if (target && camShown) {
+      camShown[0] += (target[0] - camShown[0]) * 0.35;
+      camShown[1] += (target[1] - camShown[1]) * 0.35;
+      cam.clearRect(0, 0, S, S);
+      cam.strokeStyle = '#fff'; cam.lineWidth = 1.5;
+      cam.strokeRect(Math.round(px(camShown[0]) - 14) + 0.5, Math.round(py(camShown[1]) - 10) + 0.5, 28, 20);
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  // ---------- клик и перетаскивание: камера едет в точку ----------
+  // Игра двигает «цель» камеры, а рамка — точка на земле, куда камера смотрит; между ними сдвиг.
+  // Его меряем после каждого перемещения (corr) и вычитаем.
+  const mmEl = document.getElementById('mm');
+  function worldAt(e) {
+    const r = mmEl.getBoundingClientRect();
+    return [(e.clientX - r.left) / r.width * W - W / 2, (e.clientY - r.top) / r.height * H - H / 2];
+  }
+  function moveTo(e, force) {
+    wanted = worldAt(e);
+    const now = performance.now();
+    if (!force && now - lastSent < 40) return;          // не чаще 25 раз в секунду
+    lastSent = now;
+    const x = (wanted[0] + corr[0]).toFixed(1), z = (wanted[1] + corr[1]).toFixed(1);
+    if (window.game) game.lua(`native.SetMainCameraMoveToTargetXZ(${x}, ${z}); native.SetMainCameraMoveToTarget(true)`);
+  }
+  mmEl.addEventListener('mousedown', e => { dragging = true; settleAt = 0; moveTo(e, true); e.preventDefault(); });
+  window.addEventListener('mousemove', e => { if (dragging) moveTo(e, false); });
+  window.addEventListener('mouseup', e => {
+    if (!dragging) return;
+    dragging = false;
+    moveTo(e, true);
+    settleAt = performance.now() + 900;                  // когда камера доедет — сверим, куда попали
   });
 </script>
 </body>
