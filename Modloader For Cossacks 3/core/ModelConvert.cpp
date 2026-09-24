@@ -590,25 +590,100 @@ bool ModelConvert::ImageToDds(const std::string& image, bool playerColor, std::s
         lh = nh;
     }
 
+    // DXT5, как все текстуры игры: несжатую DDS движок не рисует (кадр молча пропускается).
+    std::vector<std::pair<UINT, UINT>> sizes;
+    for (UINT sw = w, sh = h;; sw = std::max(1u, sw / 2), sh = std::max(1u, sh / 2))
+    {
+        sizes.push_back({ sw, sh });
+        if (sw == 1 && sh == 1)
+            break;
+    }
+    auto blocksOf = [](UINT sw, UINT sh) { return static_cast<uint32_t>(std::max(1u, (sw + 3) / 4) * std::max(1u, (sh + 3) / 4) * 16); };
+
     std::string out = "DDS ";
     uint32_t header[31] = {};
     header[0] = 124;                                                   // dwSize
-    header[1] = 0x1 | 0x2 | 0x4 | 0x8 | 0x1000 | 0x20000;              // CAPS HEIGHT WIDTH PITCH PIXELFORMAT MIPMAPCOUNT
+    header[1] = 0x1 | 0x2 | 0x4 | 0x1000 | 0x20000 | 0x80000;          // CAPS HEIGHT WIDTH PIXELFORMAT MIPMAPCOUNT LINEARSIZE
     header[2] = h;
     header[3] = w;
-    header[4] = w * 4;                                                 // pitch
+    header[4] = blocksOf(w, h);                                        // размер верхнего уровня
     header[6] = static_cast<uint32_t>(levels.size());
     header[18] = 32;                                                   // pixel format size
-    header[19] = 0x41;                                                 // RGB | ALPHAPIXELS
-    header[21] = 32;
-    header[22] = 0x00FF0000;
-    header[23] = 0x0000FF00;
-    header[24] = 0x000000FF;
-    header[25] = 0xFF000000;
+    header[19] = 0x4;                                                  // FOURCC
+    header[20] = 0x35545844;                                           // "DXT5"
     header[26] = 0x1000 | 0x400000 | 0x8;                              // TEXTURE | MIPMAP | COMPLEX
     out.append(reinterpret_cast<const char*>(header), sizeof(header));
-    for (const auto& l : levels)
-        out.append(reinterpret_cast<const char*>(l.data()), l.size());
+
+    for (size_t li = 0; li < levels.size(); ++li)
+    {
+        const std::vector<uint8_t>& img = levels[li];
+        UINT sw = sizes[li].first, sh = sizes[li].second;
+        for (UINT by = 0; by < std::max(1u, (sh + 3) / 4); ++by)
+            for (UINT bx = 0; bx < std::max(1u, (sw + 3) / 4); ++bx)
+            {
+                uint8_t px4[16][4]; // BGRA, края повторяются
+                for (int i = 0; i < 16; ++i)
+                {
+                    UINT x = std::min(bx * 4 + i % 4, sw - 1), y = std::min(by * 4 + i / 4, sh - 1);
+                    memcpy(px4[i], &img[(static_cast<size_t>(y) * sw + x) * 4], 4);
+                }
+                // альфа: 8 уровней между max и min
+                uint8_t a0 = 0, a1 = 255;
+                for (auto& p : px4) { a0 = std::max(a0, p[3]); a1 = std::min(a1, p[3]); }
+                uint64_t abits = 0;
+                if (a0 != a1)
+                    for (int i = 0; i < 16; ++i)
+                    {
+                        int best = 0, bestErr = 1 << 30;
+                        for (int k = 0; k < 8; ++k)
+                        {
+                            int v = k == 0 ? a0 : k == 1 ? a1 : ((8 - k) * a0 + (k - 1) * a1) / 7;
+                            int e = std::abs(v - px4[i][3]);
+                            if (e < bestErr) { bestErr = e; best = k; }
+                        }
+                        abits |= static_cast<uint64_t>(best) << (3 * i);
+                    }
+                out += static_cast<char>(a0);
+                out += static_cast<char>(a1);
+                for (int k = 0; k < 6; ++k)
+                    out += static_cast<char>((abits >> (8 * k)) & 0xFF);
+                // цвет: концы — min/max по каналам, 4 цвета
+                int lo[3] = { 255, 255, 255 }, hi[3] = { 0, 0, 0 };
+                for (auto& p : px4)
+                    for (int c = 0; c < 3; ++c) { lo[c] = std::min<int>(lo[c], p[c]); hi[c] = std::max<int>(hi[c], p[c]); }
+                auto to565 = [](const int bgr[3]) { return static_cast<uint16_t>(((bgr[2] >> 3) << 11) | ((bgr[1] >> 2) << 5) | (bgr[0] >> 3)); };
+                uint16_t c0 = to565(hi), c1 = to565(lo);
+                if (c0 < c1) std::swap(c0, c1);
+                auto from565 = [](uint16_t c, int bgr[3]) {
+                    bgr[2] = ((c >> 11) & 31) * 255 / 31; bgr[1] = ((c >> 5) & 63) * 255 / 63; bgr[0] = (c & 31) * 255 / 31;
+                };
+                int pal[4][3];
+                from565(c0, pal[0]);
+                from565(c1, pal[1]);
+                for (int c = 0; c < 3; ++c)
+                {
+                    pal[2][c] = (2 * pal[0][c] + pal[1][c]) / 3;
+                    pal[3][c] = (pal[0][c] + 2 * pal[1][c]) / 3;
+                }
+                uint32_t cbits = 0;
+                if (c0 != c1)
+                    for (int i = 0; i < 16; ++i)
+                    {
+                        int best = 0, bestErr = 1 << 30;
+                        for (int k = 0; k < 4; ++k)
+                        {
+                            int e = 0;
+                            for (int c = 0; c < 3; ++c)
+                                e += (pal[k][c] - px4[i][c]) * (pal[k][c] - px4[i][c]);
+                            if (e < bestErr) { bestErr = e; best = k; }
+                        }
+                        cbits |= static_cast<uint32_t>(best) << (2 * i);
+                    }
+                out.append(reinterpret_cast<const char*>(&c0), 2);
+                out.append(reinterpret_cast<const char*>(&c1), 2);
+                out.append(reinterpret_cast<const char*>(&cbits), 4);
+            }
+    }
     *dds = std::move(out);
     return true;
 }
