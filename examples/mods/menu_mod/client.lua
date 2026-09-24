@@ -11,8 +11,9 @@
 
 -- Перейти на страницу, не перезагружая её, если она уже открыта: игра перестраивает экраны
 -- по нескольку раз (смена разрешения, возврат из подменю), и перезагрузка на каждый раз — мигание.
+-- Относительный переход — только со своей страницы: иначе адрес соберётся от чужой (миникарты, HUD).
 local function goTo(page)
-    if web.isOpen() then
+    if web.isOpen() and web.url():find("/" .. mod.id .. "/web/", 1, true) then
         web.eval(string.format("if (!location.pathname.endsWith('/%s.html')) location.href = '%s.html'", page, page))
     else
         web.open(page)
