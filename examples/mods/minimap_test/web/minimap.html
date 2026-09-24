@@ -34,7 +34,20 @@
   const py = z => (z + H / 2) / H * S;
 
   window.mm = {
-    map(w, h, n, heights, cols, forest) {
+    map(w, h, n, heights, cols, forest, tiles, names) {
+      // Цвет тайла по имени: известные слова — свои цвета, остальные — оттенок от хеша имени.
+      const tileColor = names.map(nm => {
+        const s = nm.toLowerCase();
+        if (/water|sea|river/.test(s)) return [52, 74, 96];
+        if (/snow|ice/.test(s)) return [210, 214, 218];
+        if (/sand|desert/.test(s)) return [168, 150, 104];
+        if (/road|path|dirt|mud|ground/.test(s)) return [104, 88, 62];
+        if (/rock|stone|cliff|mount/.test(s)) return [110, 106, 98];
+        if (/field|farm|wheat/.test(s)) return [120, 118, 60];
+        if (/grass|meadow|green/.test(s)) return [74, 92, 44];
+        let hsh = 0; for (const c of s) hsh = (hsh * 31 + c.charCodeAt(0)) >>> 0;
+        return [70 + hsh % 50, 80 + (hsh >> 8) % 40, 40 + (hsh >> 16) % 30];
+      });
       W = w; H = h; colors = cols;
       let lo = Infinity, hi = -Infinity;
       for (const v of heights) { if (v < lo) lo = v; if (v > hi) hi = v; }
@@ -43,12 +56,13 @@
         const t = hi > lo ? (heights[i] - lo) / (hi - lo) : 0.5;      // высота 0..1: выше — светлее
         const f = Math.min(1, (forest[i] || 0) / 6);                   // леса и камни — темнее
         const k = (0.85 + t * 0.3) * (1 - f * 0.55);
-        img.data.set([78 * k, 92 * k, 46 * k, 255], i * 4);
+        const c = tileColor[(tiles[i] || 1) - 1] || [78, 92, 46];
+        img.data.set([c[0] * k, c[1] * k, c[2] * k, 255], i * 4);
       }
       // растягиваем сетку на 256x256 через временный canvas (со сглаживанием)
       const tmp = document.createElement('canvas'); tmp.width = n; tmp.height = n;
       tmp.getContext('2d').putImageData(img, 0, 0);
-      bg.imageSmoothingEnabled = true;
+      bg.imageSmoothingEnabled = false; // чёткие клетки, как у игры
       bg.drawImage(tmp, 0, 0, S, S);
       info.textContent = `карта ${w}×${h}`;
     },

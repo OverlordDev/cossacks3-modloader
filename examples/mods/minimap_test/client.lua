@@ -7,7 +7,7 @@
 
 local cfg = {
     fps = 4,        -- обновлений точек в секунду
-    grid = 96,      -- клеток рельефа по стороне
+    grid = 160,     -- клеток рельефа по стороне
 }
 
 local opened, sentMap = false, false
@@ -42,12 +42,25 @@ local function sendMap()
     mapW, mapH = native.GetMapWidth(), native.GetMapHeight()
     local n = cfg.grid
     local rows = {}
+    local tiles, tileIds, tileNames, tileCount = {}, {}, {}, {}
+    local cell = math.max(mapW, mapH) / n
     for gy = 0, n - 1 do
         local z = -mapH / 2 + (gy + 0.5) * mapH / n    -- сверху — меньшие z (как у миникарты игры)
         local row = {}
         for gx = 0, n - 1 do
             local x = -mapW / 2 + (gx + 0.5) * mapW / n
             row[#row + 1] = math.floor((native.RayCastHeight(x, z) or 0) * 10 + 0.5)
+            -- Тип земли (трава, поле, грязь...) — им игра и раскрашивает свою миникарту.
+            local name = native.GetMapMostFrequentTile(math.floor(x), math.floor(z), cell / 2) or ""
+            local id = tileIds[name]
+            if not id then
+                tileNames[#tileNames + 1] = name
+                id = #tileNames
+                tileIds[name] = id
+                tileCount[id] = 0
+            end
+            tileCount[id] = tileCount[id] + 1
+            tiles[#tiles + 1] = id
         end
         rows[#rows + 1] = table.concat(row, ",")
     end
@@ -68,8 +81,17 @@ local function sendMap()
     for i = 0, 11 do colors[i] = playerColor(i) end
     local cs = {}
     for i = 0, 11 do cs[#cs + 1] = ("%q"):format(colors[i]) end
-    web.eval(("window.mm && mm.map(%d, %d, %d, [%s], [%s], [%s])"):format(mapW, mapH, n, table.concat(rows, ","),
-        table.concat(cs, ","), table.concat(forest, ",")))
+    local names = {}
+    for i, nm in ipairs(tileNames) do names[i] = ("%q"):format(nm) end
+    web.eval(("window.mm && mm.map(%d, %d, %d, [%s], [%s], [%s], [%s], [%s])"):format(mapW, mapH, n,
+        table.concat(rows, ","), table.concat(cs, ","), table.concat(forest, ","), table.concat(tiles, ","),
+        table.concat(names, ",")))
+    local stat = {}
+    for i, nm in ipairs(tileNames) do stat[#stat + 1] = { nm, tileCount[i] } end
+    table.sort(stat, function(a, b) return a[2] > b[2] end)
+    local out = {}
+    for i = 1, math.min(12, #stat) do out[#out + 1] = ("%s=%d"):format(stat[i][1], stat[i][2]) end
+    log.info("миникарта: тайлы земли: " .. table.concat(out, ", "))
     sentMap = true
 end
 
