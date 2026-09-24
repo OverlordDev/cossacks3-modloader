@@ -455,7 +455,7 @@ battle {
 model {
     file = "models/house.glb",                               -- внутри мода; все меши сцены с их трансформациями
     osm = "data/actors/buildings/ukr/ukrcen.osm",            -- какую модель игры заменить (путь из .actor)
-    texture = "data/materials/buildings/ukr/ukrcen.dds",     -- по желанию: картинку материала — в эту текстуру игры
+    texture = nil,     -- по желанию: какую текстуру игры заменить; без него — текстура материала с именем модели (ukrcen)
     image = nil,                                             -- по желанию: своя PNG/JPEG в моде вместо картинки из .glb
     playercolor = false,                                     -- true: альфа картинки = где красить цветом игрока
 }

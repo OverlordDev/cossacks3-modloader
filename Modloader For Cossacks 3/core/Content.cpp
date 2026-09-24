@@ -579,7 +579,46 @@ Content::Result Content::Generate(const std::vector<ModDir>& mods, const std::fu
         if (uvOutside > 0)
             LOG_WARN("[content] %s: %d vertices have UV outside 0..1 (tiling) - clamped: with several textures "
                      "a texture cannot repeat", who.c_str(), uvOutside);
-        if (m.texture.empty())
+        // Текстура не указана — ищем её сами: материал игры с именем модели (ukrcen.osm -> материал
+        // ukrcen -> Material.Texture.image), как у зданий и юнитов игры.
+        std::string texture = m.texture;
+        if (texture.empty() && (!images.empty() || !m.image.empty()))
+        {
+            std::string name = Lower(fs::path(m.osm).stem().string());
+            for (const char* lib : { "data\\materials\\buildings\\buildings.mat", "data\\materials\\units\\units.mat",
+                                     "data\\materials\\env\\env.mat", "data\\materials\\misc\\misc.mat" })
+            {
+                std::string text = readBase(lib);
+                std::istringstream in(text);
+                std::string line;
+                bool ours = false;
+                while (std::getline(in, line) && texture.empty())
+                {
+                    size_t eq = line.find('=');
+                    if (eq == std::string::npos)
+                        continue;
+                    std::string k = line.substr(0, eq), v = line.substr(eq + 1);
+                    auto trim = [](std::string& t) {
+                        t.erase(0, t.find_first_not_of(" \t\r"));
+                        t.erase(t.find_last_not_of(" \t\r") + 1);
+                    };
+                    trim(k);
+                    trim(v);
+                    if (k == "Material.Name")
+                        ours = Lower(v) == name;
+                    else if (ours && k == "Material.Texture.image")
+                        texture = v;
+                }
+                if (!texture.empty())
+                    break;
+            }
+            if (texture.empty())
+                LOG_ERROR("[content] %s: no game material '%s' found for the texture - set texture = \"data/materials/....dds\"",
+                          who.c_str(), name.c_str());
+            else
+                LOG_INFO("[content] %s: texture -> %s (material '%s')", who.c_str(), texture.c_str(), name.c_str());
+        }
+        if (texture.empty())
             continue;
         if (!m.image.empty())
         {
@@ -599,7 +638,7 @@ Content::Result Content::Generate(const std::vector<ModDir>& mods, const std::fu
         else if (!ModelConvert::ImageToDds(images, m.playerColor, &dds, &error))
             LOG_ERROR("[content] %s: %s", who.c_str(), error.c_str());
         else
-            r.files.push_back({ key(m.texture), m.mod, std::move(dds) });
+            r.files.push_back({ key(texture), m.mod, std::move(dds) });
     }
     if (g_nations.empty() && g_units.empty() && g_battles.empty())
         return r; // модели уже в r
