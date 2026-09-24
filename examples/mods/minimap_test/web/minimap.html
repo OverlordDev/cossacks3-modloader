@@ -65,23 +65,40 @@
       tmp.getContext('2d').putImageData(img, 0, 0);
       bg.imageSmoothingEnabled = false; // чёткие клетки, как у игры
       bg.drawImage(tmp, 0, 0, S, S);
-      // Границы мирного времени: где меняется ближайшая стартовая точка слота (как у миникарты игры).
+      // Границы мирного времени — как FillOwnerMap игры (common.inc/dogenerate.inc): сетка клеток 4x4,
+      // из стартовой точки каждого слота заливка по соседям (слева, справа, сверху, снизу) слоями,
+      // хозяин клетки — игрок слота (пустой слот — -1). Линии — где у соседних клеток разные хозяева.
       if (starts && starts.length > 1) {
-        const near = (x, y) => {
-          const wx = (x + 0.5) / S * W - W / 2, wz = (y + 0.5) / S * H - H / 2;
-          let best = 0, bd = Infinity;
-          starts.forEach(([sx, sz], i) => { const d = (sx - wx) ** 2 + (sz - wz) ** 2; if (d < bd) { bd = d; best = i; } });
-          return best;
-        };
-        const ids = new Int8Array(S * S);
-        for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) ids[y * S + x] = near(x, y);
-        bg.fillStyle = 'rgba(150, 150, 150, 0.85)';
-        for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
-          const id = ids[y * S + x];
-          if ((x + 1 < S && ids[y * S + x + 1] !== id) || (y + 1 < S && ids[(y + 1) * S + x] !== id)) bg.fillRect(x, y, 1, 1);
+        const CELL = 4, cx = Math.floor(W / CELL), cy = Math.floor(H / CELL);
+        const dist = new Int32Array(cx * cy).fill(-1), owner = new Int32Array(cx * cy).fill(-1);
+        const checked = new Uint8Array(cx * cy);
+        const at = (i, j) => i * cy + j;
+        for (const [sx, sz, who] of starts) {
+          const i = Math.floor((sx + W / 2) / CELL), j = Math.floor((sz + H / 2) / CELL);
+          if (i >= 0 && i < cx && j >= 0 && j < cy) { dist[at(i, j)] = 0; owner[at(i, j)] = who; }
+        }
+        const check = (i, j, d, o) => { const k = at(i, j); if (dist[k] < 0) { dist[k] = d + 1; owner[k] = o; } };
+        for (let d = 0, more = true; more; d++) {
+          more = false;
+          for (let i = 0; i < cx; i++) for (let j = 0; j < cy; j++) {
+            const k = at(i, j);
+            if (dist[k] !== d || checked[k]) continue;
+            const o = owner[k];
+            if (i > 0) check(i - 1, j, d, o);
+            if (i < cx - 1) check(i + 1, j, d, o);
+            if (j > 0) check(i, j - 1, d, o);
+            if (j < cy - 1) check(i, j + 1, d, o);
+            checked[k] = 1; more = true;
+          }
+        }
+        const k = S / cx, kz = S / cy;
+        bg.fillStyle = 'rgba(150, 150, 150, 0.9)';
+        for (let i = 0; i < cx; i++) for (let j = 0; j < cy; j++) {
+          const o = owner[at(i, j)];
+          if (i + 1 < cx && owner[at(i + 1, j)] !== o) bg.fillRect((i + 1) * k - 0.5, j * kz, 1, kz + 0.5);
+          if (j + 1 < cy && owner[at(i, j + 1)] !== o) bg.fillRect(i * k, (j + 1) * kz - 0.5, k + 0.5, 1);
         }
       }
-      info.textContent = `карта ${w}×${h}`;
     },
 
     units(list, cx, cz) {

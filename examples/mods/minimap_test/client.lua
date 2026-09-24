@@ -124,8 +124,25 @@ local function sendMap()
     local cs = {}
     for i = 0, 11 do cs[#cs + 1] = ("%q"):format(colors[i]) end
     local starts, info = maskStarts()
+    -- Чей слот: игрок, чья стартовая позиция рядом с точкой слота; пустой слот — -1 (как в FillOwnerMap игры).
+    local owners = {}
+    for i = 0, 11 do
+        local list = objects.list(i)
+        if #list > 0 then
+            local sx = tonumber(state.get(("gMap.players[%d].startx"):format(i)))
+            local sz = tonumber(state.get(("gMap.players[%d].starty"):format(i)))
+            if sx and sz then owners[#owners + 1] = { i, sx, sz } end
+        end
+    end
     local st = {}
-    for _, p in ipairs(starts or {}) do st[#st + 1] = ("[%d,%d]"):format(math.floor(p[1]), math.floor(p[2])) end
+    for _, p in ipairs(starts or {}) do
+        local who, best = -1, 16 * 16
+        for _, o in ipairs(owners) do
+            local d = (o[2] - p[1]) ^ 2 + (o[3] - p[2]) ^ 2
+            if d < best then best, who = d, o[1] end
+        end
+        st[#st + 1] = ("[%d,%d,%d]"):format(math.floor(p[1]), math.floor(p[2]), who)
+    end
     log.info(starts and ("миникарта: %d стартовых точек из %s"):format(#starts, info) or ("миникарта: " .. info))
     local names = {}
     for i, nm in ipairs(tileNames) do names[i] = ("%q"):format(nm) end
