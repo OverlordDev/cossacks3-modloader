@@ -136,6 +136,10 @@ namespace
     float g_yaw = 0.0f;
     float g_distance = 100.0f;
     bool g_keepCamera = false;
+    // Сдвиг по осям: X/Z — перенос точки взгляда (разово, дальше игрок водит камеру как обычно),
+    // Y — подъём над землёй под точкой взгляда (держится, пока включено «Keep»).
+    float g_moveX = 0.0f, g_moveZ = 0.0f, g_lift = 0.0f;
+    float g_pendingX = 0.0f, g_pendingZ = 0.0f;
 
     struct View { float pitch, yaw, distance, tx, ty, tz; };
 
@@ -159,6 +163,19 @@ namespace
         View v;
         if (!ReadView(&v))
             return;
+        v.tx += g_pendingX;
+        v.tz += g_pendingZ;
+        g_pendingX = g_pendingZ = 0.0f;
+        if (g_lift != 0.0f)
+        {
+            // Высота — от земли, а не от прошлого кадра: иначе подъём копился бы каждый кадр.
+            NativeCall::Value x, z, ground;
+            x.type = z.type = NativeCall::Type::Float;
+            x.f = v.tx;
+            z.f = v.tz;
+            if (CallNative("RayCastHeight", { x, z }, &ground))
+                v.ty = ground.f + g_lift;
+        }
         double pitch = g_pitch * 3.14159265358979 / 180.0;
         double yaw = g_yaw * 3.14159265358979 / 180.0;
         double flat = cos(pitch) * g_distance;
@@ -399,6 +416,24 @@ void GraphicsTab::Draw()
         ImGui::SetTooltip("Угол над целью. В игре всегда 32° — угол не менялся никогда.");
     viewChanged |= ImGui::SliderFloat("Rotate", &g_yaw, -180.0f, 180.0f, "%.0f°");
     viewChanged |= ImGui::SliderFloat("Distance", &g_distance, 20.0f, 400.0f, "%.0f");
+
+    // Сдвиг камеры по осям. X/Z тянутся мышью (Ctrl+клик — ввести число), Y — высота над землёй.
+    float oldX = g_moveX, oldZ = g_moveZ;
+    if (ImGui::DragFloat("Move X", &g_moveX, 0.5f, -1000.0f, 1000.0f, "%.1f"))
+    {
+        g_pendingX += g_moveX - oldX;
+        viewChanged = true;
+    }
+    if (ImGui::DragFloat("Move Z", &g_moveZ, 0.5f, -1000.0f, 1000.0f, "%.1f"))
+    {
+        g_pendingZ += g_moveZ - oldZ;
+        viewChanged = true;
+    }
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Перенос точки, на которую смотрит камера. Тянуть мышью, Ctrl+клик — ввести число.");
+    viewChanged |= ImGui::SliderFloat("Height (Y)", &g_lift, -20.0f, 200.0f, "%.1f");
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Подъём камеры вместе с точкой взгляда над землёй. 0 — как в игре.");
     if (viewChanged)
     {
         g_keepCamera = true;
@@ -420,6 +455,8 @@ void GraphicsTab::Draw()
     {
         g_keepCamera = false;
         g_focal = 400.0f;
+        g_moveX = g_moveZ = g_lift = 0.0f;
+        g_pendingX = g_pendingZ = 0.0f;
         SetString("SetCameraPropertiesFromFile", GetString("GetCameraPropertieFileName"));
     }
     ImGui::SameLine();
