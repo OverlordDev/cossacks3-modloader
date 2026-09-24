@@ -34,7 +34,7 @@
   const py = z => (z + H / 2) / H * S;
 
   window.mm = {
-    map(w, h, n, heights, cols, forest, tiles, names) {
+    map(w, h, n, heights, cols, forest, tiles, names, starts) {
       // Цвет тайла по имени: известные слова — свои цвета, остальные — оттенок от хеша имени.
       const tileColor = names.map(nm => {
         const s = nm.toLowerCase();
@@ -42,11 +42,12 @@
         if (/snow|ice/.test(s)) return [210, 214, 218];
         if (/sand|desert/.test(s)) return [168, 150, 104];
         if (/road|path|dirt|mud|ground/.test(s)) return [104, 88, 62];
-        if (/rock|stone|cliff|mount/.test(s)) return [110, 106, 98];
+        if (/rock|stone|cliff|mount/.test(s)) return [98, 92, 80];
         if (/field|farm|wheat/.test(s)) return [120, 118, 60];
-        if (/grass|meadow|green/.test(s)) return [74, 92, 44];
-        let hsh = 0; for (const c of s) hsh = (hsh * 31 + c.charCodeAt(0)) >>> 0;
-        return [70 + hsh % 50, 80 + (hsh >> 8) % 40, 40 + (hsh >> 16) % 30];
+        if (/grass_ground|ground/.test(s)) return [92, 84, 58];
+        // трава и test* (варианты травы) — почти один тон, как у игры: лёгкий сдвиг по номеру
+        const num = parseInt(s.replace(/\D/g, '')) || 0;
+        return [70 + num % 3 * 3, 84 + num % 4 * 2, 44 + num % 2 * 3];
       });
       W = w; H = h; colors = cols;
       let lo = Infinity, hi = -Infinity;
@@ -64,6 +65,22 @@
       tmp.getContext('2d').putImageData(img, 0, 0);
       bg.imageSmoothingEnabled = false; // чёткие клетки, как у игры
       bg.drawImage(tmp, 0, 0, S, S);
+      // Границы мирного времени: где меняется ближайшая стартовая точка слота (как у миникарты игры).
+      if (starts && starts.length > 1) {
+        const near = (x, y) => {
+          const wx = (x + 0.5) / S * W - W / 2, wz = (y + 0.5) / S * H - H / 2;
+          let best = 0, bd = Infinity;
+          starts.forEach(([sx, sz], i) => { const d = (sx - wx) ** 2 + (sz - wz) ** 2; if (d < bd) { bd = d; best = i; } });
+          return best;
+        };
+        const ids = new Int8Array(S * S);
+        for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) ids[y * S + x] = near(x, y);
+        bg.fillStyle = 'rgba(150, 150, 150, 0.85)';
+        for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+          const id = ids[y * S + x];
+          if ((x + 1 < S && ids[y * S + x + 1] !== id) || (y + 1 < S && ids[(y + 1) * S + x] !== id)) bg.fillRect(x, y, 1, 1);
+        }
+      }
       info.textContent = `карта ${w}×${h}`;
     },
 

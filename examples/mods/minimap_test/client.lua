@@ -37,6 +37,48 @@ local function playerColor(i)
     return ("#%02x%02x%02x"):format(c[1], c[2], c[3])
 end
 
+-- Стартовые точки всех слотов карты — белые пиксели маски генератора (data/gen/terrainmasks/...tga).
+-- Границы мирного времени на миникарте игры — между областями, ближайшими к этим точкам.
+local function maskStarts()
+    local function gen(key)
+        for _, tmp in ipairs({ "True", "False" }) do
+            local v = game.eval(("ParserGetValueByKeyByHandle(_misc_SelectRecordManagerGeneratorParser(%s), '%s')"):format(tmp, key))
+            if v and v ~= "" then return v end
+        end
+    end
+    local dir, name = gen("maskpath"), gen("maskname")
+    if not dir or not name then return nil, "маска генератора не найдена" end
+    local path = (dir .. "\\" .. name):gsub("^%.[\\/]", "")
+    local d = game.readFile(path)
+    if not d or #d < 18 then return nil, "не прочитать " .. path end
+    local w, h = d:byte(13) + d:byte(14) * 256, d:byte(15) + d:byte(16) * 256
+    local bpp, typ, i = d:byte(17) // 8, d:byte(3), 19 + d:byte(1)
+    if (typ ~= 2 and typ ~= 10) or bpp < 3 then return nil, "формат маски не поддержан: " .. path end
+    local starts, k = {}, 0
+    local function pixel(b, g, r)
+        if r > 200 and g > 200 and b > 200 then
+            local col, row = k % w, k // w           -- строки снизу вверх
+            starts[#starts + 1] = { (col + 0.5) / w * mapW - mapW / 2, (row + 0.5) / h * mapH - mapH / 2 }
+        end
+        k = k + 1
+    end
+    while k < w * h and i <= #d do
+        if typ == 2 then
+            pixel(d:byte(i, i + 2)); i = i + bpp
+        else
+            local c = d:byte(i); i = i + 1
+            local n = (c & 127) + 1
+            if c >= 128 then
+                local b, g, r = d:byte(i, i + 2); i = i + bpp
+                for _ = 1, n do pixel(b, g, r) end
+            else
+                for _ = 1, n do pixel(d:byte(i, i + 2)); i = i + bpp end
+            end
+        end
+    end
+    return starts, path
+end
+
 -- Рельеф: высоты сеткой grid x grid -> строка чисел (высота * 10, целые), страница раскрасит.
 local function sendMap()
     mapW, mapH = native.GetMapWidth(), native.GetMapHeight()
@@ -81,11 +123,15 @@ local function sendMap()
     for i = 0, 11 do colors[i] = playerColor(i) end
     local cs = {}
     for i = 0, 11 do cs[#cs + 1] = ("%q"):format(colors[i]) end
+    local starts, info = maskStarts()
+    local st = {}
+    for _, p in ipairs(starts or {}) do st[#st + 1] = ("[%d,%d]"):format(math.floor(p[1]), math.floor(p[2])) end
+    log.info(starts and ("миникарта: %d стартовых точек из %s"):format(#starts, info) or ("миникарта: " .. info))
     local names = {}
     for i, nm in ipairs(tileNames) do names[i] = ("%q"):format(nm) end
-    web.eval(("window.mm && mm.map(%d, %d, %d, [%s], [%s], [%s], [%s], [%s])"):format(mapW, mapH, n,
+    web.eval(("window.mm && mm.map(%d, %d, %d, [%s], [%s], [%s], [%s], [%s], [%s])"):format(mapW, mapH, n,
         table.concat(rows, ","), table.concat(cs, ","), table.concat(forest, ","), table.concat(tiles, ","),
-        table.concat(names, ",")))
+        table.concat(names, ","), table.concat(st, ",")))
     local stat = {}
     for i, nm in ipairs(tileNames) do stat[#stat + 1] = { nm, tileCount[i] } end
     table.sort(stat, function(a, b) return a[2] > b[2] end)

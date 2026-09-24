@@ -151,6 +151,7 @@ game.isAuthority()                    --> true, если эта машина р�
 game.isInGame()                       --> идёт партия
 game.playerIndexOf(from)              --> индекс игрока по отправителю из net.on
 game.side                             --> "client" | "server"
+game.readFile("data/gen/x.tga")      --> байты файла из папки игры (только чтение, путь внутри папки) или nil
 ```
 
 Pascal в `game.exec`: переменные объявляются по месту (`var h : Integer = 5;`), результат —

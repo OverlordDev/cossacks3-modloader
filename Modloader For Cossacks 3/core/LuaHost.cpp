@@ -1431,6 +1431,23 @@ end
         return 0;
     }
 
+    // game.readFile(path) — файл из папки игры (только чтение): "data/gen/terrainmasks/....tga" -> байты или nil.
+    // Путь — внутри папки игры: без "..", без диска и без абсолютного пути.
+    int l_gameReadFile(lua_State* L)
+    {
+        std::string rel = luaL_checkstring(L, 1);
+        if (rel.empty() || rel.find("..") != std::string::npos || rel.find(':') != std::string::npos ||
+            rel[0] == '/' || rel[0] == '\\')
+            return luaL_error(L, "game.readFile: path must be inside the game folder");
+        while (rel.rfind(".\\", 0) == 0 || rel.rfind("./", 0) == 0)
+            rel.erase(0, 2);
+        std::string data;
+        if (!ReadFile(ModsDir().parent_path().parent_path() / fs::path(std::u8string(rel.begin(), rel.end())), &data))
+            return 0;
+        lua_pushlstring(L, data.data(), data.size());
+        return 1;
+    }
+
     int l_gfxIndex(lua_State* L)
     {
         const char* name = luaL_checkstring(L, 2);
@@ -1726,6 +1743,7 @@ end
         lua_newtable(L); // game
         SetPlain("eval", l_gameEval);
         SetPlain("evalInt", l_gameEvalInt);
+        SetPlain("readFile", l_gameReadFile);
         SetPlain("evalFloat", l_gameEvalFloat);
         SetPlain("evalBool", l_gameEvalBool);
         SetPlain("mode", l_gameMode);
