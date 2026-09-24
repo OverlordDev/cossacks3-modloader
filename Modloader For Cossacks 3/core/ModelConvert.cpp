@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "ModelConvert.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <functional>
@@ -382,11 +383,62 @@ namespace
         return std::string(g.bin + off, len);
     }
 
+    // Часть здания по имени верхнего объекта сцены: stage1..stage4 (стадии стройки), stage1a..stage4a
+    // (леса), death1/death2 (руины). Остальное — готовое здание (""). ".001" от Blender отбрасывается.
+    std::string PartOf(std::string name)
+    {
+        for (char& c : name)
+            c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
+        if (size_t dot = name.find('.'); dot != std::string::npos)
+            name.erase(dot);
+        static const char* const kParts[] = { "stage1", "stage2", "stage3", "stage4", "stage1a", "stage2a", "stage3a",
+                                              "stage4a", "death1", "death2" };
+        for (const char* p : kParts)
+            if (name == p)
+                return name;
+        return {};
+    }
+
+    std::vector<int> SceneRoots(const Glb& g)
+    {
+        std::vector<int> roots;
+        const Json* scenes = g.json.Get("scenes");
+        const Json* scene = scenes ? scenes->At(g.json.Int("scene", 0)) : nullptr;
+        if (scene && scene->Get("nodes"))
+            for (const Json& r : scene->Get("nodes")->array)
+                roots.push_back(static_cast<int>(r.number));
+        return roots;
+    }
+
+    std::string NodeName(const Glb& g, int i)
+    {
+        const Json* nodes = g.json.Get("nodes");
+        const Json* n = nodes ? nodes->At(i) : nullptr;
+        return n ? n->Str("name") : std::string();
+    }
+
     void Put32(std::string& s, uint32_t v) { s.append(reinterpret_cast<const char*>(&v), 4); }
     void PutF(std::string& s, float v) { s.append(reinterpret_cast<const char*>(&v), 4); }
 }
 
-bool ModelConvert::GlbToOsm(const std::string& glb, std::string* osm, std::string* image, Stats* stats, std::string* error)
+std::vector<std::string> ModelConvert::GlbParts(const std::string& glb)
+{
+    Glb g;
+    std::string error;
+    std::vector<std::string> parts;
+    if (!ParseGlb(glb, &g, &error))
+        return parts;
+    for (int r : SceneRoots(g))
+    {
+        std::string p = PartOf(NodeName(g, r));
+        if (std::find(parts.begin(), parts.end(), p) == parts.end())
+            parts.push_back(p);
+    }
+    return parts;
+}
+
+bool ModelConvert::GlbToOsm(const std::string& glb, const std::string& part, std::string* osm, std::string* image,
+                            Stats* stats, std::string* error)
 {
     Glb g;
     if (!ParseGlb(glb, &g, error))
@@ -464,22 +516,26 @@ bool ModelConvert::GlbToOsm(const std::string& glb, std::string* osm, std::strin
         return true;
     };
 
-    const Json* scenes = g.json.Get("scenes");
-    const Json* scene = scenes ? scenes->At(g.json.Int("scene", 0)) : nullptr;
-    if (scene && scene->Get("nodes"))
+    std::vector<int> roots = SceneRoots(g);
+    if (roots.empty() && nodes) // без сцены: корни — узлы, которые ничьи не дети
     {
-        for (const Json& root : scene->Get("nodes")->array)
-            if (!visit(static_cast<int>(root.number), Identity(), 0))
-                return false;
+        std::vector<bool> child(nodes->array.size());
+        for (const Json& n : nodes->array)
+            if (const Json* c = n.Get("children"))
+                for (const Json& k : c->array)
+                    if (k.number >= 0 && k.number < child.size())
+                        child[static_cast<size_t>(k.number)] = true;
+        for (size_t i = 0; i < child.size(); ++i)
+            if (!child[i])
+                roots.push_back(static_cast<int>(i));
     }
-    else if (nodes)
-        for (size_t i = 0; i < nodes->array.size(); ++i)
-            if (!visit(static_cast<int>(i), Identity(), 0))
-                return false;
+    for (int root : roots)
+        if (PartOf(NodeName(g, root)) == part && !visit(root, Identity(), 0))
+            return false;
 
     int nv = static_cast<int>(pos.size() / 3), nt = static_cast<int>(tris.size() / 3);
     if (nv == 0 || nt == 0)
-        return *error = "no triangle meshes in the .glb", false;
+        return *error = part.empty() ? "no triangle meshes in the .glb" : "part '" + part + "' has no triangle meshes", false;
 
     // .osm = MD2 (IDP2 v8) с float-вершинами и 32-битными индексами. UV — по одной на вершину.
     const int ofsSkins = 68, ofsUV = ofsSkins + 64, ofsTris = ofsUV + nv * 8, frameSize = 16 + 16 * nv,

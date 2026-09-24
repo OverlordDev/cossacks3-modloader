@@ -533,14 +533,35 @@ Content::Result Content::Generate(const std::vector<ModDir>& mods, const std::fu
             LOG_ERROR("[content] %s: file not found", who.c_str());
             continue;
         }
-        if (!ModelConvert::GlbToOsm(glb, &osm, &image, &st, &error))
+        // Одна модель или здание со стадиями: верхние объекты stage1..4 / stage1a..4a / death1..2 в .glb
+        // становятся <osm без .osm>1.osm ... / _death1.osm — как у зданий игры (building.inc/ontagstates.inc).
+        std::string base = m.osm;
+        if (base.size() > 4 && Lower(base.substr(base.size() - 4)) == ".osm")
+            base.resize(base.size() - 4);
+        bool any = false;
+        for (const std::string& part : ModelConvert::GlbParts(glb))
         {
-            LOG_ERROR("[content] %s: %s", who.c_str(), error.c_str());
+            std::string out = part.empty() ? m.osm
+                            : part.rfind("death", 0) == 0 ? base + "_" + part + ".osm"
+                            : base + part.substr(5) + ".osm"; // stage2a -> <base>2a.osm
+            std::string partImage;
+            if (!ModelConvert::GlbToOsm(glb, part, &osm, &partImage, &st, &error))
+            {
+                LOG_ERROR("[content] %s: %s", who.c_str(), error.c_str());
+                continue;
+            }
+            if (image.empty())
+                image = std::move(partImage);
+            r.files.push_back({ key(out), m.mod, std::move(osm) });
+            any = true;
+            LOG_INFO("[content] model %s%s -> %s: %d vertices, %d triangles, %d mesh(es)", who.c_str(),
+                     part.empty() ? "" : (" [" + part + "]").c_str(), out.c_str(), st.verts, st.tris, st.meshes);
+        }
+        if (!any)
+        {
+            LOG_ERROR("[content] %s: no meshes converted", who.c_str());
             continue;
         }
-        r.files.push_back({ key(m.osm), m.mod, std::move(osm) });
-        LOG_INFO("[content] model %s -> %s: %d vertices, %d triangles, %d mesh(es)", who.c_str(), m.osm.c_str(),
-                 st.verts, st.tris, st.meshes);
         if (m.texture.empty())
             continue;
         if (!m.image.empty() && !readMod(m.image, &image))

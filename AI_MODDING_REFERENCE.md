@@ -464,6 +464,12 @@ model {
 переводит оси, UV и обход треугольников. Путь `osm` — в `.actor` модели (`MeshObjects.LoadFromFile`),
 `texture` — в `.mat` (`Material.Texture.image`). Анимированные модели (.oss) — пока нет.
 
+Стадии стройки и руины здания — в том же .glb: верхние объекты сцены с именами `stage1`…`stage4`
+(стадии стройки), `stage1a`…`stage4a` (леса, если они есть у здания), `death1`, `death2` (руины).
+Остальные объекты — готовое здание. Из `osm = ".../ukrcen.osm"` получаются `ukrcen1.osm`…`ukrcen4.osm`,
+`ukrcen1a.osm`…, `ukrcen_death1.osm`, `ukrcen_death2.osm` — те же имена, что в `.actor` здания
+(игра переключает их сама по ходу стройки, `building.inc/ontagstates.inc`). Нет объекта — остаётся модель игры.
+
 Нации игры: aus fra eng spa rus ukr pol swe pru ven tur alg net den por pie sax bav hun swi sco tat lit
 (mis — служебная). Новая нация = копия шаблона. Новый юнит = копия родителя + `base`/`prop`;
 нанимается там же, где родитель. Характеристики можно менять и позже в партии через `balance`.
