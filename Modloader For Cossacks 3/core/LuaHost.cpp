@@ -1247,7 +1247,7 @@ end
     bool IsClientNative(const std::string& name)
     {
         // Только читают, но по имени не угадать: нужны objects (api/20_objects.lua) на клиенте.
-        if (name == "StateMachineGetArgDataByInd")
+        if (name == "StateMachineGetArgDataByInd" || name == "RayCastHeight") // высота земли — только чтение
             return true;
         static const char* prefixes[] = { "Get", "Is", "Has", "Can", "Calc", "Check", "Find", "Count" };
         for (const char* p : prefixes)

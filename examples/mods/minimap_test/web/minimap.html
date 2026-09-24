@@ -9,54 +9,78 @@
   #mm {
     position: fixed; right: 16px; top: 64px; width: 256px; height: 256px;
     border: 3px solid #b8914a; border-radius: 6px; background: #1a1a1a;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, .6); overflow: hidden;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, .6); overflow: hidden; cursor: crosshair;
   }
-  #mm img { width: 100%; height: 100%; display: block; }
+  #mm canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
   #info {
     position: fixed; right: 16px; top: 330px; width: 262px; color: #f0e2c0; text-shadow: 0 1px 2px #000;
     background: rgba(0, 0, 0, .55); padding: 4px 6px; box-sizing: border-box; border-radius: 4px;
   }
-  /* Закрывает место родной миникарты: она рисуется (её снимаем), но игрок видит нашу панель. */
-  #cover {
-    position: fixed; display: none; background: #14120e; border: 2px solid #5a4a2a; box-sizing: border-box;
-    color: #8a7a5a; align-items: center; justify-content: center; text-align: center;
-  }
 </style>
 </head>
 <body>
-<div id="mm"><img id="img" alt=""></div>
-<div id="info">ждём картинку…</div>
-<div id="cover">миникарта<br>перенесена</div>
+<div id="mm"><canvas id="bg" width="256" height="256"></canvas><canvas id="fg" width="256" height="256"></canvas></div>
+<div id="info">ждём данные карты…</div>
 <script>
-  // Lua снимает миникарту игры в mm.bmp (файл подменяется целиком) и зовёт mm.show.
-  // Грузим новую картинку в фоне и подменяем, когда загрузилась, — без мигания.
-  const img = document.getElementById('img');
+  // Данные шлёт client.lua мода: mm.map(...) — один раз, mm.units(...) — несколько раз в секунду.
+  const S = 256;
+  const bg = document.getElementById('bg').getContext('2d');
+  const fg = document.getElementById('fg').getContext('2d');
   const info = document.getElementById('info');
-  const cover = document.getElementById('cover');
-  let frames = 0, last = performance.now(), fps = 0, size = '', loading = false;
+  let W = 1, H = 1, colors = [], updates = 0, last = performance.now(), ups = 0;
+
+  // Мир -> пиксель миникарты: x слева направо, z снизу вверх.
+  const px = x => (x + W / 2) / W * S;
+  const py = z => (H / 2 - z) / H * S;
 
   window.mm = {
-    show(file) {
-      if (loading) return;          // прошлая ещё грузится — этот кадр пропускаем
-      loading = true;
-      const next = new Image();
-      next.onload = () => {
-        loading = false;
-        img.src = next.src;
-        size = `${next.naturalWidth}×${next.naturalHeight}`;
-        frames++;
-        const now = performance.now();
-        if (now - last >= 1000) { fps = frames * 1000 / (now - last); frames = 0; last = now; }
-        info.textContent = `кадров/с: ${fps.toFixed(1)}  ${size} · Ctrl+M — родная`;
-      };
-      next.onerror = () => { loading = false; info.textContent = 'не удалось загрузить ' + file; };
-      next.src = file + '?' + Date.now();   // без кеша: файл тот же, картинка новая
+    map(w, h, n, heights, cols) {
+      W = w; H = h; colors = cols;
+      let lo = Infinity, hi = -Infinity;
+      for (const v of heights) { if (v < lo) lo = v; if (v > hi) hi = v; }
+      const img = bg.createImageData(n, n);
+      for (let i = 0; i < n * n; i++) {
+        const v = heights[i], t = hi > lo ? (v - lo) / (hi - lo) : 0.5;
+        const water = v < 0;                       // ниже нуля — вода
+        const r = water ? 40 : 70 + t * 90, g = water ? 70 : 95 + t * 70, b = water ? 120 : 45 + t * 40;
+        img.data.set([r, g, b, 255], i * 4);
+      }
+      // растягиваем сетку на 256x256 через временный canvas (со сглаживанием)
+      const tmp = document.createElement('canvas'); tmp.width = n; tmp.height = n;
+      tmp.getContext('2d').putImageData(img, 0, 0);
+      bg.imageSmoothingEnabled = true;
+      bg.drawImage(tmp, 0, 0, S, S);
+      info.textContent = `карта ${w}×${h}`;
     },
-    cover(x, y, w, h, on) {
-      Object.assign(cover.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px',
-                                   display: on ? 'flex' : 'none' });
+
+    units(list, cx, cz) {
+      fg.clearRect(0, 0, S, S);
+      let count = 0;
+      if (list) for (const item of list.split(';')) {
+        const [pl, x, z, built] = item.split(',').map(Number);
+        fg.fillStyle = colors[pl] || '#fff';
+        if (built) fg.fillRect(px(x) - 2, py(z) - 2, 4, 4); // здания крупнее
+        else fg.fillRect(px(x) - 1, py(z) - 1, 2, 2);
+        count++;
+      }
+      if (cx !== null && cz !== null) {                     // куда смотрит камера
+        fg.strokeStyle = '#fff'; fg.lineWidth = 1;
+        fg.strokeRect(px(cx) - 14, py(cz) - 10, 28, 20);
+      }
+      updates++;
+      const now = performance.now();
+      if (now - last >= 1000) { ups = updates * 1000 / (now - last); updates = 0; last = now; }
+      info.textContent = `объектов: ${count} · обновлений/с: ${ups.toFixed(1)} · клик — камера · Ctrl+M — родная`;
     },
   };
+
+  // Клик по миникарте — камера едет в эту точку.
+  document.getElementById('mm').addEventListener('mousedown', e => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width * W - W / 2;
+    const z = H / 2 - (e.clientY - r.top) / r.height * H;
+    if (window.game) game.lua(`native.SetMainCameraMoveToTargetXZ(${x.toFixed(1)}, ${z.toFixed(1)}); native.SetMainCameraMoveToTarget(true)`);
+  });
 </script>
 </body>
 </html>
