@@ -526,7 +526,9 @@ Content::Result Content::Generate(const std::vector<ModDir>& mods, const std::fu
             return in.good() || !out->empty();
         };
         std::string who = m.mod + "/model '" + m.file + "'";
-        std::string glb, osm, image, error;
+        std::string glb, osm, error;
+        std::vector<std::string> images; // картинки материалов .glb (несколько — атлас)
+        int uvOutside = 0;
         ModelConvert::Stats st;
         if (!readMod(m.file, &glb))
         {
@@ -553,14 +555,15 @@ Content::Result Content::Generate(const std::vector<ModDir>& mods, const std::fu
             std::string out = part.empty() ? m.osm
                             : attach ? dir + "attach/" + name + suffix + "a.osm"
                             : base + suffix + ".osm";
-            std::string partImage;
-            if (!ModelConvert::GlbToOsm(glb, part, &osm, &partImage, &st, &error))
+            std::vector<std::string> partImages;
+            if (!ModelConvert::GlbToOsm(glb, part, &osm, &partImages, &st, &error))
             {
                 LOG_ERROR("[content] %s: %s", who.c_str(), error.c_str());
                 continue;
             }
-            if (image.empty())
-                image = std::move(partImage);
+            if (images.empty())
+                images = std::move(partImages); // раскладка атласа одна на весь файл
+            uvOutside += st.uvOutside;
             r.files.push_back({ key(out), m.mod, std::move(osm) });
             any = true;
             LOG_INFO("[content] model %s%s -> %s: %d vertices, %d triangles, %d mesh(es)", who.c_str(),
@@ -571,17 +574,29 @@ Content::Result Content::Generate(const std::vector<ModDir>& mods, const std::fu
             LOG_ERROR("[content] %s: no meshes converted", who.c_str());
             continue;
         }
+        if (images.size() > 1)
+            LOG_INFO("[content] %s: %zu textures -> one atlas", who.c_str(), images.size());
+        if (uvOutside > 0)
+            LOG_WARN("[content] %s: %d vertices have UV outside 0..1 (tiling) - clamped: with several textures "
+                     "a texture cannot repeat", who.c_str(), uvOutside);
         if (m.texture.empty())
             continue;
-        if (!m.image.empty() && !readMod(m.image, &image))
+        if (!m.image.empty())
         {
-            LOG_ERROR("[content] %s: image %s not found", who.c_str(), m.image.c_str());
-            continue;
+            std::string one;
+            if (!readMod(m.image, &one))
+            {
+                LOG_ERROR("[content] %s: image %s not found", who.c_str(), m.image.c_str());
+                continue;
+            }
+            if (images.size() > 1)
+                LOG_WARN("[content] %s: image = replaces %zu textures of the .glb with one", who.c_str(), images.size());
+            images = { one };
         }
         std::string dds;
-        if (image.empty())
+        if (images.empty() || images[0].empty())
             LOG_ERROR("[content] %s: no texture in the .glb (give the material an image or set image = \"...png\")", who.c_str());
-        else if (!ModelConvert::ImageToDds(image, m.playerColor, &dds, &error))
+        else if (!ModelConvert::ImageToDds(images, m.playerColor, &dds, &error))
             LOG_ERROR("[content] %s: %s", who.c_str(), error.c_str());
         else
             r.files.push_back({ key(m.texture), m.mod, std::move(dds) });

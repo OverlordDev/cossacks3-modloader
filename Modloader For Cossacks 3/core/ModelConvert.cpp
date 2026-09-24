@@ -10,8 +10,12 @@
 
 #pragma comment(lib, "windowscodecs.lib")
 
+bool EncodeDds(const std::vector<uint8_t>& px, UINT w, UINT h, std::string* dds);
+
 namespace
 {
+    constexpr float kGutter = 1.0f / 32; // поле клетки атласа (доля её стороны)
+
     // ---------- маленький JSON: хватает для glTF ----------
 
     struct Json
@@ -362,6 +366,50 @@ namespace
         return true;
     }
 
+    // Номер картинки (glTF images[]) базового цвета материала primitive, -1 — нет.
+    int MaterialImageIndex(const Glb& g, const Json& prim)
+    {
+        const Json* mats = g.json.Get("materials");
+        const Json* mat = mats ? mats->At(prim.Int("material", -1)) : nullptr;
+        const Json* pbr = mat ? mat->Get("pbrMetallicRoughness") : nullptr;
+        const Json* tex = pbr ? pbr->Get("baseColorTexture") : nullptr;
+        const Json* textures = g.json.Get("textures");
+        const Json* t = tex && textures ? textures->At(tex->Int("index", -1)) : nullptr;
+        return t ? t->Int("source", -1) : -1;
+    }
+
+    std::string ImageBytes(const Glb& g, int index)
+    {
+        const Json* images = g.json.Get("images");
+        const Json* img = images ? images->At(index) : nullptr;
+        const Json* views = g.json.Get("bufferViews");
+        const Json* bv = img && views ? views->At(img->Int("bufferView", -1)) : nullptr;
+        if (!bv)
+            return {};
+        size_t off = bv->Int("byteOffset", 0), len = bv->Int("byteLength", 0);
+        return off + len <= g.binSize ? std::string(g.bin + off, len) : std::string();
+    }
+
+    // Картинки всех материалов файла по порядку: одна раскладка атласа на весь .glb (у всех частей
+    // здания одна текстура). slotOf[номер картинки glTF] = клетка атласа.
+    void ImageSlots(const Glb& g, std::vector<int>* slotOf, std::vector<int>* images)
+    {
+        const Json* imgs = g.json.Get("images");
+        slotOf->assign(imgs ? imgs->array.size() : 0, -1);
+        if (const Json* meshes = g.json.Get("meshes"))
+            for (const Json& m : meshes->array)
+                if (const Json* prims = m.Get("primitives"))
+                    for (const Json& p : prims->array)
+                    {
+                        int i = MaterialImageIndex(g, p);
+                        if (i >= 0 && i < static_cast<int>(slotOf->size()) && (*slotOf)[i] < 0)
+                        {
+                            (*slotOf)[i] = static_cast<int>(images->size());
+                            images->push_back(i);
+                        }
+                    }
+    }
+
     // Картинка базового цвета материала primitive: байты PNG/JPEG из бинарной части.
     std::string MaterialImage(const Glb& g, const Json& prim)
     {
@@ -437,8 +485,8 @@ std::vector<std::string> ModelConvert::GlbParts(const std::string& glb)
     return parts;
 }
 
-bool ModelConvert::GlbToOsm(const std::string& glb, const std::string& part, std::string* osm, std::string* image,
-                            Stats* stats, std::string* error)
+bool ModelConvert::GlbToOsm(const std::string& glb, const std::string& part, std::string* osm,
+                            std::vector<std::string>* images, Stats* stats, std::string* error)
 {
     Glb g;
     if (!ParseGlb(glb, &g, error))
@@ -446,8 +494,10 @@ bool ModelConvert::GlbToOsm(const std::string& glb, const std::string& part, std
 
     std::vector<float> pos, uv; // игровые координаты и UV — по вершине
     std::vector<int> tris;      // уже в порядке игры
-    int meshes = 0;
-    std::string firstImage;
+    std::vector<int> vslot;     // клетка атласа вершины (-1 — у материала нет картинки)
+    int meshes = 0, outside = 0;
+    std::vector<int> slotOf, imageList;
+    ImageSlots(g, &slotOf, &imageList);
 
     const Json* nodes = g.json.Get("nodes");
     const Json* meshList = g.json.Get("meshes");
@@ -482,6 +532,9 @@ bool ModelConvert::GlbToOsm(const std::string& glb, const std::string& part, std
                         idx.push_back(static_cast<double>(i));
 
                 int first = static_cast<int>(pos.size() / 3);
+                int img = MaterialImageIndex(g, prim);
+                int slot = img >= 0 && img < static_cast<int>(slotOf.size()) ? slotOf[img] : -1;
+                vslot.insert(vslot.end(), n, slot);
                 for (size_t i = 0; i < n; ++i)
                 {
                     const double* m = world.m;
@@ -505,8 +558,6 @@ bool ModelConvert::GlbToOsm(const std::string& glb, const std::string& part, std
                     // glTF — против часовой, игра — по часовой (проверено по объёму моделей игры).
                     tris.insert(tris.end(), mirrored ? std::initializer_list<int>{ a, b, c } : std::initializer_list<int>{ a, c, b });
                 }
-                if (firstImage.empty())
-                    firstImage = MaterialImage(g, prim);
             }
         }
         if (const Json* children = node->Get("children"))
@@ -532,6 +583,28 @@ bool ModelConvert::GlbToOsm(const std::string& glb, const std::string& part, std
     for (int root : roots)
         if (PartOf(NodeName(g, root)) == part && !visit(root, Identity(), 0))
             return false;
+
+    // Несколько картинок — атлас: сетка cols x rows, UV каждой вершины — в клетку её картинки (с полем
+    // kGutter по краям, чтобы мип-уровни не смешивали соседей). Повторяющиеся UV (тайлинг) в атласе
+    // невозможны — зажимаем в 0..1.
+    if (imageList.size() > 1)
+    {
+        int cols = static_cast<int>(std::ceil(std::sqrt(static_cast<double>(imageList.size()))));
+        int rows = (static_cast<int>(imageList.size()) + cols - 1) / cols;
+        for (size_t v = 0; v < vslot.size(); ++v)
+        {
+            int slot = std::max(0, vslot[v]);
+            float& u = uv[v * 2];
+            float& w = uv[v * 2 + 1];
+            if (u < -0.001f || u > 1.001f || w < -0.001f || w > 1.001f)
+                ++outside;
+            u = std::clamp(u, 0.f, 1.f);
+            w = std::clamp(w, 0.f, 1.f);
+            int col = slot % cols, row = slot / cols; // row — сверху вниз по картинке
+            u = (col + kGutter + u * (1 - 2 * kGutter)) / cols;
+            w = (rows - 1 - row + kGutter + w * (1 - 2 * kGutter)) / rows; // v игры растёт вверх
+        }
+    }
 
     int nv = static_cast<int>(pos.size() / 3), nt = static_cast<int>(tris.size() / 3);
     if (nv == 0 || nt == 0)
@@ -566,14 +639,80 @@ bool ModelConvert::GlbToOsm(const std::string& glb, const std::string& part, std
         Put32(out, 1); // во всех моделях игры здесь 1
     }
     *osm = std::move(out);
-    if (image)
-        *image = std::move(firstImage);
+    if (images)
+    {
+        images->clear();
+        for (int i : imageList)
+            images->push_back(ImageBytes(g, i));
+    }
     if (stats)
-        *stats = { nv, nt, meshes };
+        *stats = { nv, nt, meshes, static_cast<int>(imageList.size()), outside };
     return true;
 }
 
-bool ModelConvert::ImageToDds(const std::string& image, bool playerColor, std::string* dds, std::string* error)
+namespace
+{
+    bool Decode(const std::string& image, std::vector<uint8_t>* out, UINT* ow, UINT* oh, std::string* error);
+}
+
+bool ModelConvert::ImageToDds(const std::vector<std::string>& images, bool playerColor, std::string* dds, std::string* error)
+{
+    if (images.empty())
+        return *error = "no images", false;
+    std::vector<std::vector<uint8_t>> decoded(images.size());
+    std::vector<UINT> ws(images.size()), hs(images.size());
+    for (size_t i = 0; i < images.size(); ++i)
+    {
+        if (!Decode(images[i], &decoded[i], &ws[i], &hs[i], error))
+            return *error = "image " + std::to_string(i + 1) + ": " + *error, false;
+        // Альфа = маска цвета игрока. Непрозрачная картинка (альфа везде 255) — значит маски нет.
+        std::vector<uint8_t>& p = decoded[i];
+        bool hasMask = false;
+        for (size_t k = 3; k < p.size() && !hasMask; k += 4)
+            hasMask = p[k] != 255;
+        if (!playerColor || !hasMask)
+            for (size_t k = 3; k < p.size(); k += 4)
+                p[k] = 0;
+    }
+
+    if (images.size() == 1)
+        return EncodeDds(decoded[0], ws[0], hs[0], dds);
+
+    // Атлас: клетки одного размера (степень двойки по самой большой картинке, атлас не больше 4096);
+    // картинка растягивается в клетку за вычетом поля, поле заполняется её краем.
+    int cols = static_cast<int>(std::ceil(std::sqrt(static_cast<double>(images.size()))));
+    int rows = (static_cast<int>(images.size()) + cols - 1) / cols;
+    UINT biggest = 1;
+    for (size_t i = 0; i < images.size(); ++i)
+        biggest = std::max({ biggest, ws[i], hs[i] });
+    UINT cell = 1;
+    while (cell < biggest)
+        cell *= 2;
+    while (cell * static_cast<UINT>(std::max(cols, rows)) > 4096)
+        cell /= 2;
+    UINT w = cell * cols, h = cell * rows;
+    std::vector<uint8_t> px(static_cast<size_t>(w) * h * 4, 0);
+    for (size_t i = 0; i < images.size(); ++i)
+    {
+        UINT col = static_cast<UINT>(i % cols), row = static_cast<UINT>(i / cols);
+        const std::vector<uint8_t>& src = decoded[i];
+        for (UINT y = 0; y < cell; ++y)
+            for (UINT x = 0; x < cell; ++x)
+            {
+                double lu = ((x + 0.5) / cell - kGutter) / (1 - 2 * kGutter);
+                double lv = ((y + 0.5) / cell - kGutter) / (1 - 2 * kGutter);
+                UINT sx = static_cast<UINT>(std::clamp(lu, 0.0, 1.0) * (ws[i] - 1) + 0.5);
+                UINT sy = static_cast<UINT>(std::clamp(lv, 0.0, 1.0) * (hs[i] - 1) + 0.5);
+                memcpy(&px[((static_cast<size_t>(row) * cell + y) * w + col * cell + x) * 4],
+                       &src[(static_cast<size_t>(sy) * ws[i] + sx) * 4], 4);
+            }
+    }
+    return EncodeDds(px, w, h, dds);
+}
+
+namespace
+{
+bool Decode(const std::string& image, std::vector<uint8_t>* out, UINT* ow, UINT* oh, std::string* error)
 {
     HRESULT init = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     bool uninit = SUCCEEDED(init);
@@ -614,15 +753,16 @@ bool ModelConvert::ImageToDds(const std::string& image, bool playerColor, std::s
     }
     if (uninit)
         CoUninitialize();
+    *out = std::move(px);
+    *ow = w;
+    *oh = h;
+    return true;
+}
+}
 
-    // Альфа = маска цвета игрока. Непрозрачная картинка (альфа везде 255) — значит маски нет.
-    bool hasMask = false;
-    for (size_t i = 3; i < px.size() && !hasMask; i += 4)
-        hasMask = px[i] != 255;
-    if (!playerColor || !hasMask)
-        for (size_t i = 3; i < px.size(); i += 4)
-            px[i] = 0;
-
+// Пиксели BGRA -> DDS DXT5 с мип-уровнями.
+bool EncodeDds(const std::vector<uint8_t>& px, UINT w, UINT h, std::string* dds)
+{
     // Мип-уровни: среднее по 2x2 до 1x1.
     std::vector<std::vector<uint8_t>> levels{ px };
     UINT lw = w, lh = h;

@@ -7,7 +7,7 @@
 // экспорт glTF), модлоадер при запуске делает из него то, что понимает движок. Формат игры — MODEL_FORMATS.md.
 namespace ModelConvert
 {
-    struct Stats { int verts = 0, tris = 0, meshes = 0; };
+    struct Stats { int verts = 0, tris = 0, meshes = 0, images = 0, uvOutside = 0; };
 
     // .glb (все меши сцены с их трансформациями, в одну модель) -> статичная .osm.
     // Оси: glTF Y вверх и лицом к +Z -> игра Z вверх и лицом к -Y (как было в Blender); UV v переворачивается,
@@ -16,8 +16,9 @@ namespace ModelConvert
     // "stage1".."stage4" — стадии стройки, "death1"/"death2" — руины; "attach", "stage1a".."stage4a",
     // "death1a"/"death2a" — пристройка здания (леса, лестница, обломки: отдельный объект игры в attach/).
     // Часть = верхний объект сцены с таким именем (в Blender — объект или пустышка-родитель).
-    bool GlbToOsm(const std::string& glb, const std::string& part, std::string* osm, std::string* image, Stats* stats,
-                  std::string* error);
+    // images — картинки материалов (PNG/JPEG) по клеткам атласа; если их больше одной, UV уже пересчитаны в атлас.
+    bool GlbToOsm(const std::string& glb, const std::string& part, std::string* osm, std::vector<std::string>* images,
+                  Stats* stats, std::string* error);
 
     // Какие части есть в .glb ("" — готовое здание).
     std::vector<std::string> GlbParts(const std::string& glb);
@@ -25,5 +26,6 @@ namespace ModelConvert
     // PNG/JPEG/BMP (декодирует Windows) -> DDS DXT5 с мип-уровнями, как текстуры игры.
     // Альфа текстуры в игре — маска цвета игрока (1 — красить). playerColor = false: альфа 0 везде;
     // true: альфа картинки как есть (нет альфы — 0).
-    bool ImageToDds(const std::string& image, bool playerColor, std::string* dds, std::string* error);
+    // Несколько картинок склеиваются в атлас (сетка, та же раскладка, что у UV из GlbToOsm).
+    bool ImageToDds(const std::vector<std::string>& images, bool playerColor, std::string* dds, std::string* error);
 }
