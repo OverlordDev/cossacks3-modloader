@@ -383,16 +383,16 @@ namespace
         return std::string(g.bin + off, len);
     }
 
-    // Часть здания по имени верхнего объекта сцены: stage1..stage4 (стадии стройки), stage1a..stage4a
-    // (леса), death1/death2 (руины). Остальное — готовое здание (""). ".001" от Blender отбрасывается.
+    // Часть здания по имени верхнего объекта сцены: stage1..stage4 (стадии стройки), death1/death2 (руины),
+    // attach, stage1a..stage4a, death1a/death2a — пристройка (леса, лестница, обломки). Остальное — готовое здание (""). ".001" от Blender отбрасывается.
     std::string PartOf(std::string name)
     {
         for (char& c : name)
             c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
         if (size_t dot = name.find('.'); dot != std::string::npos)
             name.erase(dot);
-        static const char* const kParts[] = { "stage1", "stage2", "stage3", "stage4", "stage1a", "stage2a", "stage3a",
-                                              "stage4a", "death1", "death2" };
+        static const char* const kParts[] = { "stage1", "stage2", "stage3", "stage4", "death1", "death2", "attach",
+                                              "stage1a", "stage2a", "stage3a", "stage4a", "death1a", "death2a" };
         for (const char* p : kParts)
             if (name == p)
                 return name;

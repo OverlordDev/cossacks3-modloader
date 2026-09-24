@@ -13,7 +13,8 @@ namespace ModelConvert
     // Оси: glTF Y вверх и лицом к +Z -> игра Z вверх и лицом к -Y (как было в Blender); UV v переворачивается,
     // обход треугольников — по часовой стрелке, как в игре. image — первая картинка материала (PNG/JPEG), если есть.
     // part — какую часть взять: "" — готовое здание (все верхние объекты, кроме частей ниже),
-    // "stage1".."stage4" — стадии стройки, "stage1a".."stage4a" — леса, "death1"/"death2" — руины.
+    // "stage1".."stage4" — стадии стройки, "death1"/"death2" — руины; "attach", "stage1a".."stage4a",
+    // "death1a"/"death2a" — пристройка здания (леса, лестница, обломки: отдельный объект игры в attach/).
     // Часть = верхний объект сцены с таким именем (в Blender — объект или пустышка-родитель).
     bool GlbToOsm(const std::string& glb, const std::string& part, std::string* osm, std::string* image, Stats* stats,
                   std::string* error);

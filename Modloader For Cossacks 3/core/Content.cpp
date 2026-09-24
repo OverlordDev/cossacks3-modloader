@@ -541,9 +541,18 @@ Content::Result Content::Generate(const std::vector<ModDir>& mods, const std::fu
         bool any = false;
         for (const std::string& part : ModelConvert::GlbParts(glb))
         {
+            // Пристройка (леса, лестница, обломки) — отдельный объект игры <имя>a в подпапке attach/:
+            // attach -> attach/<имя>a.osm, stage2a -> attach/<имя>2a.osm, death1a -> attach/<имя>_death1a.osm.
+            size_t slash = base.find_last_of("/\\");
+            std::string dir = slash == std::string::npos ? std::string() : base.substr(0, slash + 1);
+            std::string name = base.substr(slash == std::string::npos ? 0 : slash + 1);
+            bool attach = part == "attach" || (!part.empty() && part.back() == 'a');
+            std::string suffix = part.empty() || part == "attach" ? ""
+                               : part.rfind("death", 0) == 0 ? "_" + part.substr(0, 6)
+                               : part.substr(5, 1);
             std::string out = part.empty() ? m.osm
-                            : part.rfind("death", 0) == 0 ? base + "_" + part + ".osm"
-                            : base + part.substr(5) + ".osm"; // stage2a -> <base>2a.osm
+                            : attach ? dir + "attach/" + name + suffix + "a.osm"
+                            : base + suffix + ".osm";
             std::string partImage;
             if (!ModelConvert::GlbToOsm(glb, part, &osm, &partImage, &st, &error))
             {

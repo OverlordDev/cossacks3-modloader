@@ -464,11 +464,14 @@ model {
 переводит оси, UV и обход треугольников. Путь `osm` — в `.actor` модели (`MeshObjects.LoadFromFile`),
 `texture` — в `.mat` (`Material.Texture.image`). Анимированные модели (.oss) — пока нет.
 
-Стадии стройки и руины здания — в том же .glb: верхние объекты сцены с именами `stage1`…`stage4`
-(стадии стройки), `stage1a`…`stage4a` (леса, если они есть у здания), `death1`, `death2` (руины).
-Остальные объекты — готовое здание. Из `osm = ".../ukrcen.osm"` получаются `ukrcen1.osm`…`ukrcen4.osm`,
-`ukrcen1a.osm`…, `ukrcen_death1.osm`, `ukrcen_death2.osm` — те же имена, что в `.actor` здания
-(игра переключает их сама по ходу стройки, `building.inc/ontagstates.inc`). Нет объекта — остаётся модель игры.
+Стадии стройки и руины здания — в том же .glb: верхние объекты сцены (или пустышки-родители) с именами
+`stage1`…`stage4` (стадии стройки) и `death1`, `death2` (руины); остальные объекты — готовое здание.
+Из `osm = ".../ukrcen.osm"` получаются `ukrcen1.osm`…`ukrcen4.osm`, `ukrcen_death1.osm`, `ukrcen_death2.osm` —
+те же имена, что в `.actor` здания (игра переключает их сама, `building.inc/ontagstates.inc`).
+Леса, лестница и обломки — отдельный дочерний объект здания (`autochildrenproperty` в `.prop`, модели
+в `attach/`, материалы игры `scaffold` и `debris`): объекты `attach`, `stage1a`…`stage4a`, `death1a`, `death2a`
+-> `attach/ukrcena.osm`, `attach/ukrcen1a.osm`…, `attach/ukrcen_death1a.osm`. Их текстура — общая для всех
+строек игры, `texture` модели на них не действует. Нет объекта — остаётся модель игры.
 
 Нации игры: aus fra eng spa rus ukr pol swe pru ven tur alg net den por pie sax bav hun swi sco tat lit
 (mis — служебная). Новая нация = копия шаблона. Новый юнит = копия родителя + `base`/`prop`;
