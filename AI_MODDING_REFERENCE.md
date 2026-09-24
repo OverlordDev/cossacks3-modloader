@@ -448,6 +448,22 @@ battle {
 }
 ```
 
+Своя статичная модель (здание, декор) из Blender — **только .glb** (File → Export → glTF 2.0, формат glTF Binary):
+
+```lua
+model {
+    file = "models/house.glb",                               -- внутри мода; все меши сцены с их трансформациями
+    osm = "data/actors/buildings/ukr/ukrcen.osm",            -- какую модель игры заменить (путь из .actor)
+    texture = "data/materials/buildings/ukr/ukrcen.dds",     -- по желанию: картинку материала — в эту текстуру игры
+    image = nil,                                             -- по желанию: своя PNG/JPEG в моде вместо картинки из .glb
+    playercolor = false,                                     -- true: альфа картинки = где красить цветом игрока
+}
+```
+
+В Blender: Z вверх, лицом к −Y, 1 единица ≈ 1 м; модификаторы применять при экспорте. Модлоадер сам
+переводит оси, UV и обход треугольников. Путь `osm` — в `.actor` модели (`MeshObjects.LoadFromFile`),
+`texture` — в `.mat` (`Material.Texture.image`). Анимированные модели (.oss) — пока нет.
+
 Нации игры: aus fra eng spa rus ukr pol swe pru ven tur alg net den por pie sax bav hun swi sco tat lit
 (mis — служебная). Новая нация = копия шаблона. Новый юнит = копия родителя + `base`/`prop`;
 нанимается там же, где родитель. Характеристики можно менять и позже в партии через `balance`.

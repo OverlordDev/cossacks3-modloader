@@ -177,6 +177,8 @@ unit {
 - Своя карта: `battle { sid = "poltava", from = "battle1", map = "maps/poltava.map", name = {...} }` —
   появится в «Исторических сражениях» (позиции игроков — от шаблона). Игра не сканирует папки с картами:
   список сражений — `game/var/battles.cfg`, его модлоадер и дополняет.
+- Своя модель здания/декора: `model { file = "models/house.glb", osm = "data/actors/.../x.osm", texture = "data/materials/.../x.dds" }` —
+  модлоадер сам делает из `.glb` (экспорт glTF Binary из Blender) модель и текстуру игры. Подробно — AI_MODDING_REFERENCE.md §6а.
 - `.content` в консоли — что описано; `[content]` в логе — что построено.
 - Меняет правила игры → `multiplayer = "required"`. Сохранения с новой нацией не открываются без мода.
 

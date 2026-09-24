@@ -3,6 +3,7 @@
 #include "Console.h"
 #include "GameApi.h"
 #include "Hooks.h"
+#include "ModelConvert.h"
 #include "NativeCall.h"
 #include "Text.h"
 
@@ -56,6 +57,15 @@ namespace
         Names name, description;
     };
     std::vector<BattleDef> g_battles;
+
+    // model { file = "models/house.glb", osm = "data/actors/...", texture = "data/materials/....dds" }
+    struct ModelDef
+    {
+        std::string mod, file, osm, texture, image; // file/image — внутри мода; osm/texture — пути в игре
+        std::filesystem::path modDir;
+        bool playerColor = false;
+    };
+    std::vector<ModelDef> g_models;
 
     // ---------- локализация ----------
 
@@ -221,7 +231,7 @@ namespace
         }
         lua_newtable(L);
         lua_setfield(L, LUA_REGISTRYINDEX, "ml_defs");
-        for (const char* kind : { "unit", "nation", "battle" })
+        for (const char* kind : { "unit", "nation", "battle", "model" })
         {
             lua_pushstring(L, kind);
             lua_pushcclosure(L, l_collect, 1);
@@ -242,6 +252,27 @@ namespace
         {
             int t = lua_gettop(L);
             std::string kind = FieldString(L, t, "__kind");
+            if (kind == "model")
+            {
+                ModelDef m;
+                m.mod = mod.folder;
+                m.modDir = mod.dir;
+                m.file = FieldString(L, t, "file");
+                m.osm = FieldString(L, t, "osm");
+                m.texture = FieldString(L, t, "texture");
+                m.image = FieldString(L, t, "image");
+                lua_getfield(L, t, "playercolor");
+                m.playerColor = lua_toboolean(L, -1);
+                lua_pop(L, 1);
+                auto inside = [](const std::string& p) { return !p.empty() && p.find("..") == std::string::npos && p.find(':') == std::string::npos; };
+                if (!inside(m.file) || !inside(m.osm) || (!m.texture.empty() && !inside(m.texture)) || (!m.image.empty() && !inside(m.image)))
+                    LOG_ERROR("[content] %s/model '%s': file = \"models/x.glb\" and osm = \"data/actors/....osm\" are required",
+                              mod.folder.c_str(), m.file.c_str());
+                else
+                    g_models.push_back(std::move(m));
+                lua_pop(L, 1);
+                continue;
+            }
             std::string sid = Lower(FieldString(L, t, "sid"));
             std::string from = Lower(FieldString(L, t, "from"));
             std::string who = mod.folder + "/" + kind + " '" + sid + "'";
@@ -472,12 +503,61 @@ Content::Result Content::Generate(const std::vector<ModDir>& mods, const std::fu
     g_nations.clear();
     g_battles.clear();
     g_units.clear();
+    g_models.clear();
     for (const ModDir& m : mods)
         ReadModContent(m);
 
     Result r;
+    // Модели: .glb мода -> .osm (и текстура .dds) по пути в игре.
+    for (const ModelDef& m : g_models)
+    {
+        auto key = [](std::string p) {
+            for (char& c : p)
+                c = c == '/' ? '\\' : static_cast<char>(tolower(static_cast<unsigned char>(c)));
+            while (p.rfind(".\\", 0) == 0)
+                p.erase(0, 2);
+            return p;
+        };
+        auto readMod = [&](const std::string& rel, std::string* out) {
+            std::ifstream in(m.modDir / std::filesystem::path(std::u8string(rel.begin(), rel.end())), std::ios::binary);
+            std::ostringstream ss;
+            ss << in.rdbuf();
+            *out = ss.str();
+            return in.good() || !out->empty();
+        };
+        std::string who = m.mod + "/model '" + m.file + "'";
+        std::string glb, osm, image, error;
+        ModelConvert::Stats st;
+        if (!readMod(m.file, &glb))
+        {
+            LOG_ERROR("[content] %s: file not found", who.c_str());
+            continue;
+        }
+        if (!ModelConvert::GlbToOsm(glb, &osm, &image, &st, &error))
+        {
+            LOG_ERROR("[content] %s: %s", who.c_str(), error.c_str());
+            continue;
+        }
+        r.files.push_back({ key(m.osm), m.mod, std::move(osm) });
+        LOG_INFO("[content] model %s -> %s: %d vertices, %d triangles, %d mesh(es)", who.c_str(), m.osm.c_str(),
+                 st.verts, st.tris, st.meshes);
+        if (m.texture.empty())
+            continue;
+        if (!m.image.empty() && !readMod(m.image, &image))
+        {
+            LOG_ERROR("[content] %s: image %s not found", who.c_str(), m.image.c_str());
+            continue;
+        }
+        std::string dds;
+        if (image.empty())
+            LOG_ERROR("[content] %s: no texture in the .glb (give the material an image or set image = \"...png\")", who.c_str());
+        else if (!ModelConvert::ImageToDds(image, m.playerColor, &dds, &error))
+            LOG_ERROR("[content] %s: %s", who.c_str(), error.c_str());
+        else
+            r.files.push_back({ key(m.texture), m.mod, std::move(dds) });
+    }
     if (g_nations.empty() && g_units.empty() && g_battles.empty())
-        return r;
+        return r; // модели уже в r
     const std::string me = "content";
     std::map<std::string, std::string> patch; // ключ файла -> текст патча
     auto add = [&](const std::string& key, const std::string& text) { patch[key] += text; };
@@ -978,13 +1058,15 @@ bool Content::InstallLocale()
 
 void Content::Print()
 {
-    if (g_nations.empty() && g_units.empty() && g_battles.empty())
+    if (g_nations.empty() && g_units.empty() && g_battles.empty() && g_models.empty())
     {
         Console::Print("No content.lua definitions. A mod can add nations and unit types: see MODDING.md");
         return;
     }
     for (const NationDef& n : g_nations)
         Console::Print("  nation %-10s id %-3d like %-4s  (%s)", n.sid.c_str(), n.id, n.from.c_str(), n.mod.c_str());
+    for (const ModelDef& m : g_models)
+        Console::Print("  model  %-24s -> %s  (%s)", m.file.c_str(), m.osm.c_str(), m.mod.c_str());
     for (const BattleDef& b : g_battles)
         Console::Print("  battle %-14s like %-14s map %s  (%s)", b.sid.c_str(), b.from.c_str(), b.map.c_str(), b.mod.c_str());
     for (const UnitDef& u : g_units)
