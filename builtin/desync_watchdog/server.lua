@@ -9,6 +9,8 @@ local order = {}        -- времена по порядку прихода, д
 local lastOk = nil      -- последнее время, когда все совпадали
 local reported = false  -- первое расхождение уже описано
 local stats = { compared = 0, bad = 0 }
+local lastHello = -1e9
+local lastSummary = 0
 
 local function name(who) return "игрок " .. tostring(who) end
 
@@ -143,14 +145,13 @@ events.on("game.start", function()
     lastOk, reported = nil, false
     stats.compared, stats.bad = 0, 0
     lastHello = -1e9
+    lastSummary = os.clock()
 end)
 
 -- Раз в минуту — сводка. Если отпечатки приходят, а сверок нет, значит в момент снимка у игроков
 -- было разное игровое время (кадр перескочил шаг симуляции) — это тоже видно по этой строке.
 -- Клиенты снимают отпечатки, только когда знают, что хост их ждёт (у хоста без модлоадера
 -- лишние пакеты ни к чему). Повторяем: клиент мог ещё не догрузиться.
-local lastHello = -1e9
-local lastSummary = os.clock()
 events.on("game.tick", function()
     if game.mode() == "offline" then return end
     if os.clock() - lastHello >= 10 then

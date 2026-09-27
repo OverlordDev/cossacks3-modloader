@@ -22,6 +22,11 @@
 --
 -- Типы берутся из схемы (00_schema.lua), поэтому нужная функция чтения выбирается сама:
 -- не надо помнить, где evalInt, где evalFloat, а где строка.
+--
+-- Сторона: чтение (get/read/list/type, G.x) — shared (везде); запись (set, G.x = v) —
+-- server/shared/страница (на client нет game.exec — ошибка "only server scripts", проси через net.send).
+-- Ошибки чтения/записи: bad path, unknown global, no field, not an array, unknown bounds,
+-- not a simple value — текстом из describe/list/set (см. функции).
 
 local SCHEMA = GAME_SCHEMA or error("state: GAME_SCHEMA is missing (api/00_schema.lua)")
 
@@ -29,6 +34,8 @@ state = {}
 
 -- ---------- путь -> описание типа ----------
 
+-- tokens(path): разбить путь на токены. Парам: path — "gMap.players[2].name".
+-- Возврат: { "gMap", ".players", "[2]", ".name" }. Ошибки: "state: bad path" при пустом/битом пути.
 -- "gMap.players[2].name" -> { "gMap", ".players", "[2]", ".name" }
 local function tokens(path)
     local out = {}
@@ -42,6 +49,8 @@ local function tokens(path)
     return out
 end
 
+-- fieldOf(typeName, field): описание поля записи из схемы (регистр не важен).
+-- Возврат: описание поля или nil (нет типа/поля). Ошибок не кидает.
 local function fieldOf(typeName, field)
     local fields = SCHEMA.types[typeName]
     if not fields then return nil end
@@ -50,12 +59,17 @@ local function fieldOf(typeName, field)
     end
 end
 
+-- expr(path): путь -> выражение скрипта игры. Парам: path — путь state.
+-- Возврат: Pascal-выражение (obj(123) — это TObj(_unit_GetTObj(123))). Ошибок не кидает.
 -- Описание значения по пути: { type = "int" | "float" | "string" | "bool" | "<TRecord>" } или массив.
 -- Путь -> выражение скрипта игры: obj(123) — это TObj(_unit_GetTObj(123)).
 local function expr(path)
     return (path:gsub("^obj%((%-?%d+)%)", "TObj(_unit_GetTObj(%1))"))
 end
 
+-- describe(path): описание значения по пути из схемы. Парам: path — путь state.
+-- Возврат: узел схемы { type, array, of }. Ошибки: "unknown global", "not an array before ...",
+-- "no field ..." (см. GAME_STATE.md для верных имён).
 local function describe(path)
     local parts = tokens(path)
     local node = SCHEMA.globals[parts[1]]
@@ -78,6 +92,8 @@ end
 
 local SCALAR = { int = true, float = true, string = true, bool = true }
 
+-- state.type(path): имя типа значения. Парам: path — путь. Возврат: "int"/"float"/"string"/"bool"/"array"/имя записи.
+-- Сторона: shared (везде). Ошибки: unknown global/no field/not an array (из describe).
 function state.type(path)
     local node = describe(path)
     if node.array then return "array" end
@@ -86,11 +102,15 @@ end
 
 -- ---------- чтение ----------
 
+-- toNumber(text): строка FloatToStr в число с учётом русской локали (запятая -> точка).
+-- Парам: text — ответ игры. Возврат: number (0 при мусоре). Ошибок не кидает.
 local function toNumber(text)
     -- FloatToStr зависит от локали Windows: в русской раскладке разделитель — запятая.
     return tonumber((tostring(text):gsub(",", "."))) or 0
 end
 
+-- readScalar(path, kind): одно простое значение нужным нативом. Парам: path, kind (int/float/bool/string).
+-- Возврат: number/string/boolean. Сторона: shared (game.eval* везде). Ошибок своих не кидает.
 local function readScalar(path, kind)
     path = expr(path)
     if kind == "int" then return game.evalInt(path) end
@@ -99,6 +119,9 @@ local function readScalar(path, kind)
     return game.eval(path)
 end
 
+-- state.get(path): любое значение по пути (простое, запись или массив).
+-- Парам: path — путь. Возврат: значение / таблица (запись — через read, массив — через list).
+-- Сторона: shared (везде). Ошибки: unknown global/no field (из describe).
 function state.get(path)
     local node = describe(path)
     if node.array then return state.list(path) end
@@ -112,12 +135,17 @@ local SEP = "\1"
 
 local collectValue
 
+-- collect(path, typeName, depth, out, prefix): собрать описания простых полей записи (и вложенных до depth).
+-- Парам: путь, имя типа, глубина, буфер out, префикс ключей. Ошибок не кидает.
 local function collect(path, typeName, depth, out, prefix)
     for _, f in ipairs(SCHEMA.types[typeName] or {}) do
         collectValue(path .. "." .. f.name, f, depth, out, prefix .. f.name)
     end
 end
 
+-- collectValue(path, node, depth, out, key): одно описание в буфер: простое — лист; запись — внутрь;
+-- массив — поэлементно (ключи — числа). Массивы без границ и шире 64 — пропускаются (через state.list).
+-- Ошибок не кидает.
 -- Одно значение: простое — лист; запись — внутрь (если хватает глубины); массив — поэлементно
 -- (ключи элементов — числа: t.price[3], t.weapon[0].damage). Массивы с неизвестными границами
 -- пропускаются.
@@ -143,6 +171,8 @@ local CONVERT = {
     string = function(p) return p end,
 }
 
+-- place(result, key, value): положить значение в таблицу по ключу "a.0.b" (числа — индексами).
+-- Ошибок не кидает.
 local function place(result, key, value)
     local t = result
     for part in key:gmatch("([^%.]+)%.") do
@@ -154,6 +184,10 @@ local function place(result, key, value)
     t[tonumber(last) or last] = value
 end
 
+-- state.read(path, depth): запись таблицей одним вызовом скрипта (поля клеятся через #1).
+-- Парам: path — путь к записи/obj(); depth — вложенность (по умолч. 1).
+-- Возврат: таблица (простое/массив — через state.get). Сторона: shared (везде).
+-- Ошибки: unknown global/no field (из describe).
 function state.read(path, depth)
     local node = describe(path)
     if node.array or SCALAR[node.type] then return state.get(path) end
@@ -183,7 +217,8 @@ function state.read(path, depth)
     return result
 end
 
--- Все элементы массива: state.list("gMap.players") — список записей (или значений).
+-- state.list(path, depth): все элементы массива списком. Парам: path — путь; depth — вложенность записей.
+-- Возврат: список значений/записей. Сторона: shared. Ошибки: "is not an array", "has unknown bounds".
 function state.list(path, depth)
     local node = describe(path)
     if not node.array then error("state.list: '" .. path .. "' is not an array", 2) end
@@ -199,6 +234,8 @@ end
 
 -- ---------- запись ----------
 
+-- state.set(path, value): записать простое поле. Парам: path — путь; value — новое значение.
+-- Сторона: server/shared/страница (на client — ошибка "only server scripts"). Ошибки: "is not a simple value".
 -- Код держим постоянным, а значение передаём аргументом: так игра компилирует его один раз.
 function state.set(path, value)
     if not game.exec then

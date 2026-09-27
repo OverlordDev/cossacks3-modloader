@@ -24,6 +24,7 @@ local params             -- {float = 4|8, bool = 1|4, align = 1|4|8, base = 0..1
 local mode = "not calibrated"
 local warned = false
 
+-- Лог через что есть (log или print): api грузится и без log. Возвращает nil.
 -- api грузится и туда, где нет log (базовое окружение) — пишем через что есть.
 local function say(level, text)
     local l = rawget(_ENV, "log")
@@ -33,12 +34,14 @@ local function say(level, text)
     end
 end
 
+-- Число из ответа игры (запятая тоже десятичная). Возвращает number или nil.
 local function num(v) return tonumber((tostring(v or ""):gsub(",", "."))) end
 
 -- ---------- раскладка ----------
 
 local PRIMITIVE = { int = 4, string = 4, Pointer = 4, Byte = 1, Word = 2 }
 
+-- Размер скалярного поля по параметрам (float/bool зависят от калибровки). Возвращает байты или nil (запись/класс).
 local function scalarSize(node, p)
     if node.bytes then return node.bytes end -- Byte/Word: в Lua int, в памяти 1/2 байта
     local t = node.type
@@ -47,10 +50,12 @@ local function scalarSize(node, p)
     return PRIMITIVE[t]
 end
 
+-- Округлить смещение вверх до границы a. Возвращает смещение.
 local function alignUp(off, a) return a > 1 and math.ceil(off / a) * a or off end
 
 local layoutOf
 
+-- Размер узла схемы (массив = длина * размер элемента; запись — по layoutOf; класс — 4). Возвращает байты.
 local function nodeSize(node, p)
     if node.array then
         local lo, hi = node.array[1], node.array[2]
@@ -62,6 +67,7 @@ local function nodeSize(node, p)
     return 4 -- классы (TIntegerList, TPtrList ...) — ссылка
 end
 
+-- Раскладка записи: смещения полей и общий размер. Кэшируется по параметрам. Возвращает { size=, fields=, p= }.
 -- Движок кладёт поля подряд без выравнивания, размер записи округляет вверх до align.
 layoutOf = function(typeName, p)
     local key = typeName
@@ -86,6 +92,7 @@ layoutOf = function(typeName, p)
     return l
 end
 
+-- Путь "orders[0].info.x" в смещение от начала TObj и узел схемы. Возвращает off, node или nil, текст ошибки. Ошибки: нет поля; индекс вне диапазона; не массив перед [i].
 -- "orders[0].info.x" -> смещение от начала TObj и узел схемы. nil, ошибка — если пути нет.
 local function resolve(path, p)
     local off, typeName, node = p.base, "TObj", nil
@@ -110,6 +117,7 @@ local function resolve(path, p)
     return off, node
 end
 
+-- Прочитать скаляр из памяти по узлу схемы. Возвращает значение или nil (не скаляр/ошибка mem). Сторона: любая.
 local function readAt(addr, off, node, p)
     local t = node.type
     if node.array or (SCHEMA.types[t] and not PRIMITIVE[t]) then return nil end -- не скаляр
@@ -129,6 +137,7 @@ end
 
 -- ---------- адрес объекта ----------
 
+-- Адрес TObj объекта (как _unit_GetTObj через gc_argunit_obj=0). Параметры: h — хендл. Возвращает адрес (число) или nil (нет объекта/не юнит). Сторона: любая (только чтение). Ошибки: нет (неверный h даёт nil).
 -- Как _unit_GetTObj: данные состояния объекта, аргумент gc_argunit_obj (= 0).
 function objects.ptr(h)
     h = math.tointeger(tonumber(h))
@@ -142,10 +151,12 @@ end
 
 -- ---------- калибровка ----------
 
+-- Медленное чтение поля через Pascal (запасной путь). Возвращает значение схемы. Сторона: любая.
 local function slowGet(h, path)
     return state.get(string.format("obj(%d).%s", h, path))
 end
 
+-- Поля для сверки раскладки: все простые поля TObj + вложенные приказов. Возвращает список { name=, type= }. Сторона: любая.
 -- Поля для сверки: все простые поля TObj и несколько вложенных (приказы идут после них в памяти).
 local function probeFields()
     local out = {}
@@ -159,6 +170,7 @@ local function probeFields()
     return out
 end
 
+-- Pascal-выражение для эталонного значения поля. Возвращает строку кода.
 local function toText(f)
     local e = "TObj(_unit_GetTObj(%d))." .. f.name
     if f.type == "float" then return "FloatToStr(" .. e .. ")" end
@@ -166,6 +178,7 @@ local function toText(f)
     return "IntToStr(" .. e .. ")"
 end
 
+-- Совпало ли быстрое значение с эталоном игры (float — с допуском). Возвращает boolean.
 local function same(fast, slow, t)
     if fast == nil then return false end
     if t == "bool" then return fast == (slow == "True" or slow == "1") end
@@ -177,6 +190,7 @@ end
 
 local BASEID_OBJ = 1 -- gc_baseid_obj: юнит или здание (у ресурсов и снарядов другие данные)
 
+-- Эталонные значения полей от игры одним game.eval. Возвращает список строк или nil, ошибка. Сторона: любая.
 -- Значения полей от самой игры (Pascal) — эталон для сверки.
 local function probe(h, fields)
     local parts = {}
@@ -189,12 +203,14 @@ local function probe(h, fields)
     return slow
 end
 
+-- Подобрать раскладку TObj сверкой с игрой (до 3 объектов). Параметры: h — хендл-подсказка (иначе перебор list). Возвращает true или false, причина ("no unit or building to check against" / "layout mismatch"). Сторона: любая (game.eval + mem, мир не меняет). Ошибки: нет (неудача — возвратом, не исключением).
 -- Сверка на нескольких объектах: раскладка должна совпасть на всех, иначе по нулям в полях
 -- можно принять неверную.
 function objects.calibrate(h)
     h = math.tointeger(tonumber(h))
     local fields = probeFields()
     local samples = {}
+    -- Добавить объект в выборку для сверки, если это юнит/здание с эталоном. Возвращает nil.
     local function add(handle)
         if #samples >= 3 then return end
         for _, s in ipairs(samples) do if s.h == handle then return end end
@@ -265,6 +281,7 @@ function objects.calibrate(h)
     return false, "layout mismatch"
 end
 
+-- Калибровка при первом чтении (откладывается без объекта для сверки). Возвращает true, если fast-режим. Сторона: любая. Ошибки: нет (предупреждение в лог один раз).
 -- Калибруем на первом живом объекте, который попросили.
 local function ensure(h)
     if mode == "not calibrated" then
@@ -277,12 +294,14 @@ local function ensure(h)
     return mode == "fast"
 end
 
+-- Режим чтения. Возвращает mode ("fast"|"slow"|"not calibrated") и params (раскладка или nil). Сторона: любая. Ошибки: нет.
 function objects.status()
     return mode, params
 end
 
 -- ---------- чтение ----------
 
+-- Одно поле TObj. Параметры: h — хендл; path — путь ("hp", "orders[0].info.x"). Возвращает значение или nil (не юнит/здание). Сторона: любая (fast — mem, иначе state.get). Ошибки: h не число; неверный путь.
 function objects.get(h, path)
     h = math.tointeger(tonumber(h))
     if not h then error("objects.get: handle must be a number", 2) end
@@ -296,6 +315,7 @@ function objects.get(h, path)
     return slowGet(h, path)
 end
 
+-- Все простые поля TObj таблицей. Параметры: h — хендл. Возвращает таблицу или nil (не юнит/здание). Сторона: любая. Ошибки: h не число.
 function objects.read(h)
     h = math.tointeger(tonumber(h))
     if not h then error("objects.read: handle must be a number", 2) end
@@ -318,12 +338,14 @@ function objects.read(h)
     return out
 end
 
+-- Мировые координаты объекта. Параметры: h — хендл. Возвращает x, z. Сторона: любая (Get-нативы). Ошибки: нет своих (натив падает вне партии).
 function objects.pos(h)
     return native.GetGameObjectPositionXByHandle(h), native.GetGameObjectPositionZByHandle(h)
 end
 
 -- ---------- обход ----------
 
+-- Хендлы объектов игрока. Параметры: player — индекс (nil — все игроки 0..15, включая ресурсы/снаряды). Возвращает { handle, ... }. Сторона: любая. Ошибки: нет.
 function objects.list(player)
     local out = {}
     local first, last = 0, 15
@@ -340,6 +362,7 @@ function objects.list(player)
     return out
 end
 
+-- Вызвать fn(h) для каждого объекта игрока. Параметры: fn — функция; player — индекс (nil — все). Возвращает nil. Сторона: любая. Ошибки: нет своих (ошибки fn пробрасываются).
 function objects.each(fn, player)
     for _, h in ipairs(objects.list(player)) do fn(h) end
 end

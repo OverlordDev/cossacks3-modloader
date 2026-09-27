@@ -10,6 +10,7 @@
 #include "Net.h"
 #include "PostFx.h"
 #include "ScriptRunner.h"
+#include "SteamPresence.h"
 #include "Text.h"
 #include "Ui.h"
 #include "WebUi.h"
@@ -63,6 +64,7 @@ namespace
         int priority = 0;    // порядок загрузки: больше — позже (и главнее в файлах и патчах)
         std::vector<std::string> dependencies; // id модов, без которых этот не работает
         std::string multiplayer = "required";
+        std::map<std::string, bool> permissions; // manifest: permissions = { world_spawn = true, ... }
         std::map<std::string, fs::path> files; // имя модуля ("utils", "lib/math") -> путь
         bool enabled = true;
         bool builtin = false; // часть модлоадера (modloader/builtin): грузится всегда, не выключается
@@ -77,6 +79,7 @@ namespace
 
     lua_State* L = nullptr;
     std::vector<Mod> g_mods;
+    std::vector<int> g_baseSubs; // подписки api-модулей (таймеры): снимаются в Close()
     Mod g_console; // псевдо-мод для строк из консоли (права server)
     int g_baseEnvRef[2] = { LUA_NOREF, LUA_NOREF };
 
@@ -648,6 +651,33 @@ namespace
         return 0;
     }
 
+    // events для api-модулей (таймеры weapon/status/ai/...): базовое окружение
+    // стороны, без привязки к моду. Сторона зашита в upvalue; обработчики работают
+    // везде (как shared): armed only where the caller runs (server gates inside).
+    int l_baseEventsOn(lua_State* L)
+    {
+        int side = static_cast<int>(lua_tointeger(L, lua_upvalueindex(1)));
+        std::string event = luaL_checkstring(L, 1);
+        luaL_checktype(L, 2, LUA_TFUNCTION);
+        lua_pushvalue(L, 2);
+        int ref = luaL_ref(L, LUA_REGISTRYINDEX);
+        std::string who = std::string("api:base:") + SideName(side);
+        int id = Events::Subscribe(event, [ref, side, who](const std::string& name, const std::string& payload) {
+            CallEventHandler(ref, side, true /*everywhere*/, who, name, payload);
+        });
+        g_baseSubs.push_back(id);
+        lua_pushinteger(L, id);
+        return 1;
+    }
+
+    int l_baseEventsOff(lua_State* L)
+    {
+        int id = static_cast<int>(luaL_checkinteger(L, 1));
+        Events::Unsubscribe(id);
+        std::erase(g_baseSubs, id);
+        return 0;
+    }
+
     int l_eventsHook(lua_State* L)
     {
         Events::HookGuiState(luaL_checkstring(L, 1), lua_toboolean(L, 2) != 0);
@@ -1125,6 +1155,34 @@ namespace
         return 1;
     }
 
+    // mods.list() -> { { id=, name=, version=, loaded=, shared=, permissions = {...} }, ... }
+    // Для content.check: какие моды стоят и их версии/разрешения.
+    int l_modsList(lua_State* L)
+    {
+        lua_newtable(L);
+        int n = 0;
+        for (const Mod& m : g_mods)
+        {
+            if (!m.error.empty() || !m.enabled)
+                continue;
+            lua_newtable(L);
+            lua_pushstring(L, m.id.c_str());       lua_setfield(L, -2, "id");
+            lua_pushstring(L, m.name.c_str());     lua_setfield(L, -2, "name");
+            lua_pushstring(L, m.version.c_str());  lua_setfield(L, -2, "version");
+            lua_pushboolean(L, m.loaded);          lua_setfield(L, -2, "loaded");
+            lua_pushboolean(L, m.shared);          lua_setfield(L, -2, "shared");
+            lua_newtable(L);
+            for (const auto& [k, v] : m.permissions)
+            {
+                lua_pushboolean(L, v);
+                lua_setfield(L, -2, k.c_str());
+            }
+            lua_setfield(L, -2, "permissions");
+            lua_rawseti(L, -2, ++n);
+        }
+        return 1;
+    }
+
     int l_modFiles(lua_State* L)
     {
         Mod* mod = ModFromUpvalue(L);
@@ -1253,10 +1311,58 @@ end
         for (const char* p : prefixes)
             if (name.rfind(p, 0) == 0)
                 return true;
-        bool gui = name.find("GUI") != std::string::npos;
         bool runsStates = name.find("ExecuteState") != std::string::npos || name.find("DelayExecute") != std::string::npos ||
                           name.find("TimeExec") != std::string::npos;
-        return gui && !runsStates;
+        if (runsStates)
+            return false;
+        if (name.find("GUI") != std::string::npos)
+            return true;
+        // api/22_camera.lua: free camera and tracks - local view only.
+        if (name.find("Camera") != std::string::npos)
+            return true;
+        // api/26_decals.lua: ground marks - visual only.
+        if (name.find("Decal") != std::string::npos)
+            return true;
+        // api/25_effects.lua: smoke/fire/explosions/highlight - visual (damage via abilities only).
+        if (name.find("PFX") != std::string::npos || name.rfind("Effect", 0) == 0 ||
+            name.find("EffectHighlight") != std::string::npos)
+            return true;
+        // api/24_animation.lua: animations and appearance - visual (no position/world change).
+        // Position (SetGameObjectPosition*), creation and destroy stay server-only.
+        static const char* kVisual[] = {
+            "GameObjectSetFrameAnimationByHandle", "GameObjectSwitchToFrameAnimationByHandle",
+            "GameObjectSwitchToAnimationCyclesByHandle", "GameObjectSwitchToTreeAnimationCyclesByHandle",
+            "GameObjectSwitchToFBAnimationCyclesByHandle", "GameObjectSwitchToFrameAnimationBlendByHandle",
+            "GameObjectSwitchToAnimationCyclesBlendByHandle", "GameObjectSwitchToTreeAnimationCyclesBlendByHandle",
+            "GameObjectSwitchToFBAnimationCyclesBlendByHandle", "GameObjectSwitchToAnimationCyclesDefaultByHandle",
+            "GameObjectSwitchToTreeAnimationCyclesDefaultByHandle", "GameObjectSwitchToFBAnimationCyclesDefaultByHandle",
+            "SetGameObjectCurrentFrameByHandle", "SetGameObjectActorNameByHandle",
+            "SetGameObjectMaterialNameByHandle", "SetGameObjectScaleByHandle",
+            "SetGameObjectVisibleByHandle", "GameObjectRotateAbsoluteByHandle", "GameObjectPointToByHandle",
+            "SetGameObjectAnimationCyclesModeByHandle", "SetGameObjectAnimationCyclesListByHandle",
+            "SetGameObjectFrameAnimationSynchronizeOptionByHandle", "SetGameObjectActorIndexByHandle",
+            "GameObjectResetFrameAnimationBlend",
+        };
+        for (const char* v : kVisual)
+            if (name == v)
+                return true;
+        // api/29_pathfind.lua: synchronous path queries - read-only.
+        if (name.find("CalcPath") != std::string::npos ||
+            name == "TopologyGetPathDistance" ||
+            name == "GroupGetFindPathByHandle" ||
+            name == "RayCastTerrain")
+            return true;
+        // api/34_dbg.lua: debug overlay text - visual only.
+        if (name.rfind("DebugText", 0) == 0)
+            return true;
+        // api/34_dbg.lua draw: figures - visual only.
+        if (name.rfind("DebugDraw", 0) == 0)
+            return true;
+        // api/37_sound.lua: local audio - this player only.
+        if (name.rfind("Snd", 0) == 0 || name.rfind("SetSnd", 0) == 0 ||
+            name.rfind("GetSnd", 0) == 0)
+            return true;
+        return false;
     }
 
     int l_nativeCall(lua_State* L)
@@ -1412,6 +1518,90 @@ end
         }
         lua_pushvalue(L, -1);
         lua_setfield(L, 1, name);
+        return 1;
+    }
+
+    // ---------- API: steam (client-only Rich Presence) ----------
+    // Только главный поток игры (там живёт Steam). Чужие потоки — в очередь.
+    // Строки уже UTF-8 из Lua: в ANSI не перекодируем (русские имена).
+
+    int l_steamAvailable(lua_State* L)
+    {
+        if (!ScriptRunner::IsGameThread())
+        {
+            lua_pushboolean(L, 0);
+            return 1;
+        }
+        lua_pushboolean(L, SteamPresence::Available());
+        return 1;
+    }
+
+    int l_steamStatus(lua_State* L)
+    {
+        if (!ScriptRunner::IsGameThread())
+        {
+            lua_pushstring(L, "not_game_thread");
+            return 1;
+        }
+        lua_pushstring(L, SteamPresence::Status().c_str());
+        return 1;
+    }
+
+    int l_steamSet(lua_State* L)
+    {
+        std::string key = luaL_checkstring(L, 1);
+        std::string value = luaL_checkstring(L, 2);
+        if (!ScriptRunner::IsGameThread())
+        {
+            // Не из сетевого/фонового потока: отложить в безопасный поток игры.
+            ScriptRunner::RunOnGameThread([key, value] { SteamPresence::Set(key, value); });
+            lua_pushboolean(L, 1);
+            return 1;
+        }
+        lua_pushboolean(L, SteamPresence::Set(key, value));
+        return 1;
+    }
+
+    int l_steamClear(lua_State* L)
+    {
+        if (!ScriptRunner::IsGameThread())
+        {
+            ScriptRunner::RunOnGameThread([] { SteamPresence::Clear(); });
+            lua_pushboolean(L, 1);
+            return 1;
+        }
+        lua_pushboolean(L, SteamPresence::Clear());
+        return 1;
+    }
+
+    int l_steamPlayedWith(lua_State* L)
+    {
+        const char* id = luaL_checkstring(L, 1);
+        unsigned long long steamId = strtoull(id, nullptr, 10);
+        if (!steamId)
+            return luaL_error(L, "steam.playedWith: bad SteamID64");
+        if (!ScriptRunner::IsGameThread())
+        {
+            ScriptRunner::RunOnGameThread([steamId] { SteamPresence::PlayedWith(steamId); });
+            lua_pushboolean(L, 1);
+            return 1;
+        }
+        lua_pushboolean(L, SteamPresence::PlayedWith(steamId));
+        return 1;
+    }
+
+    int l_steamMyId(lua_State* L)
+    {
+        if (!ScriptRunner::IsGameThread())
+        {
+            lua_pushnil(L);
+            return 1;
+        }
+        std::string id = SteamPresence::MyId();
+        if (id.empty())
+            lua_pushnil(L);
+        else
+            lua_pushstring(L, id.c_str());
         return 1;
     }
 
@@ -1797,7 +1987,29 @@ end
             SetPlain("capture", l_gfxCapture);
 
             lua_setfield(L, -2, "gfx");
+
+            lua_newtable(L); // steam — Rich Presence локального игрока (client-only)
+            SetPlain("available", l_steamAvailable);
+            SetPlain("status", l_steamStatus);
+            SetPlain("set", l_steamSet);
+            SetPlain("clear", l_steamClear);
+            SetPlain("playedWith", l_steamPlayedWith);
+            SetPlain("myId", l_steamMyId);
+            lua_setfield(L, -2, "steam");
         }
+
+        lua_newtable(L); // events — таймеры api-модулей (снимаются в Close)
+        lua_pushinteger(L, side);
+        lua_pushcclosure(L, l_baseEventsOn, 1);
+        lua_setfield(L, -2, "on");
+        lua_pushcfunction(L, l_baseEventsOff);
+        lua_setfield(L, -2, "off");
+        lua_setfield(L, -2, "events");
+
+        lua_newtable(L); // mods — какие моды загружены (для content.check, всем)
+        lua_pushcfunction(L, l_modsList);
+        lua_setfield(L, -2, "list");
+        lua_setfield(L, -2, "mods");
 
         g_baseEnvRef[side] = luaL_ref(L, LUA_REGISTRYINDEX);
 
@@ -1917,6 +2129,8 @@ end
         SetFunc("get", l_saveGet, modIndex, side);
         SetFunc("keys", l_saveKeys, modIndex, side);
         lua_setfield(L, -2, "savedata");
+
+
 
         lua_getfield(L, -1, "mod");
         lua_pushstring(L, mod.id.c_str());      lua_setfield(L, -2, "id");
@@ -2069,6 +2283,18 @@ end
                 lua_pop(L, 1);
             }
         lua_pop(L, lua_istable(L, -1) ? 2 : 1);
+        lua_getfield(L, t, "permissions");
+        if (lua_istable(L, -1))
+        {
+            lua_pushnil(L);
+            while (lua_next(L, -2))
+            {
+                if (lua_type(L, -2) == LUA_TSTRING && lua_type(L, -1) == LUA_TBOOLEAN)
+                    mod.permissions[lua_tostring(L, -2)] = lua_toboolean(L, -1) != 0;
+                lua_pop(L, 1);
+            }
+        }
+        lua_pop(L, 1);
         if (badPriority)
         {
             lua_pop(L, 1);
@@ -2155,6 +2381,10 @@ end
     {
         if (!L)
             return;
+        SteamPresence::Shutdown(); // убрать статус; steam_api.dll не трогаем
+        for (int id : g_baseSubs)
+            Events::Unsubscribe(id);
+        g_baseSubs.clear();
         for (auto& mod : g_mods)
             Detach(mod);
         Detach(g_console);

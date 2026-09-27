@@ -160,6 +160,38 @@ Lua 5.4. У каждого мода своё окружение на кажду�
 Сеть модов: `net.send` (клиент → хост) и `net.broadcast` (хост → все) идут пакетами игры,
 данные — любые таблицы Lua. Хост определяет отправителя сам (`game.playerIndexOf(from)`).
 
+### 4.5.1. Способности по координатам (`abilities`)
+
+Модуль `abilities` предназначен для авиаударов, баллистики, миномётов и других ударов по
+мировой точке. Он работает на `server`/`shared`, использует штатный `_misc_DoDamage` и
+показывает игровой эффект взрыва: `cannon`, `howitzer`, `grenade` или `none`.
+
+```lua
+-- server.lua
+abilities.define("airstrike", {
+    cooldown = 20, damage = 100000, radius = 10,
+    target = "all", effect = "cannon", ignorePeace = true,
+})
+
+net.on("airstrike.request", function(data, from)
+    local p = game.playerIndexOf(from)
+    local ok, hit, wait = abilities.fire("airstrike", data.x, data.z, { owner = p })
+    net.broadcast("airstrike.result", { ok = ok, hit = hit, wait = wait })
+end)
+```
+
+Клиент передаёт координаты прямо под курсором — выбор юнита не нужен:
+
+```lua
+input.bind("F6", function()
+    local x, _, z = native.GetCurrentMouseWorldCoord()
+    if x then net.send("airstrike.request", { x = x, z = z }) end
+end)
+```
+
+`hit` — количество объектов в радиусе, а не количество убитых объектов. `ignorePeace` позволяет
+способности работать во время мирного периода; включайте его только намеренно.
+
 ### 4.6. Интерфейс: страницы CEF (WebUi) и оверлей
 
 - Chromium (CEF) рисует страницу в текстуру, модлоадер выводит её поверх игры. Страница мода — `web/*.html`.
@@ -176,6 +208,39 @@ Lua 5.4. У каждого мода своё окружение на кажду�
 Особенности, найденные на практике: CEF работает в потоке игры и не должен забирать ввод игры
 (прокачка пропускается, пока в очереди есть ввод); фокус клавиатуры у главной формы игры, не у окна
 рендера; окно браузера живёт в собственном скрытом окне — окна игры пересоздаются.
+
+### 4.5a. Utility Libraries (api/60–70, чистый Lua)
+
+Стандартный слой без C++: `mathx/vec/tablex/stringx/geometry/validate/color` —
+чистые функции (shared-безопасны); `scheduler` (таймеры на game.tick, время
+`GetGameTime`), `query` (`O(n)` сканы записями, building — один batched exec),
+`rng` (splitmix64, `seedFromGame/sharedSeed`, число вызовов обязано совпадать
+у всех игроков), `config` (savedata через `config.link`, dirty+save, версии+
+migrate). Загрузка — автоматически по порядку имён (`validate`/`mathx` раньше
+потребителей не обязательны: связи только на момент вызова). Тесты:
+`tools/api_test/util_{pure,sim,world}.lua`, отчёт `utility tests: p/t`.
+
+### 4.6a. Steam Rich Presence (SteamPresence, client-only)
+
+Мост к уже загруженной игре `steam_api.dll` (`core/SteamPresence.cpp`):
+статус Steam локального игрока — меню, лобби, партия (карта, режим, соперники).
+Правила: НЕ вызываем `SteamAPI_Init/Shutdown`, `SteamwrapFree/APPUnload`;
+только `GetModuleHandleW` (без `LoadLibrary`); `ISteamFriends` — только прямым
+`CreateInterface("SteamFriends017/016/015")` с однократным тихим пробником
+(версионированных `SteamAPI_SteamFriends_vXXX` в сборке нет — проверено dumpbin,
+а маршрут через `ISteamClient` + pipe игры падает в steamclient — проверено
+крашем 2026-09-26 и удалён; первый сбой = вечное отключение моста);
+все вызовы только из главного потока игры (чужие — в очередь
+`ScriptRunner::RunOnGameThread`), каждый вызов Steam — под `CrashHandler::Guard` + SEH.
+Строки UTF-8 без перекодировки. Без Steam — `false`/`"Steam unavailable"`, игра
+не падает. Lua: таблица `steam` только в client-окружении
+(`available/status/set/clear/playedWith/myId`); автостатусы —
+`builtin/steam_presence` (события `game.menu/prepare/start/end`), ручной API —
+`api/58_steam.lua` (лимиты, троттлинг 3 с, дедуп). Очистка — на `game.end`,
+выходе в меню и выгрузке (`LuaHost::Close` → `SteamPresence::Shutdown`).
+Важно: ОТОБРАЖЕНИЕ текста зависит от настройки Rich Presence приложения
+Cossacks 3 в Steamworks; ключи/значения пишутся и читаются всегда.
+SteamID соперников движок не отдаёт — только ники + ручной `playedWith`.
 
 ### 4.7. Проверка модов в сети (ModCheck)
 

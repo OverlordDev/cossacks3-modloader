@@ -70,6 +70,8 @@ local function index()
     return cache
 end
 
+-- balance.types(): все типы юнитов/зданий. Возврат: { { sid, country, id }, ... } по алфавиту.
+-- Сторона: shared (везде). Ошибок не кидает.
 function balance.types()
     local out = {}
     for _, list in pairs(index()) do
@@ -79,7 +81,8 @@ function balance.types()
     return out
 end
 
--- Список типов строится при первом обращении; после смены набора наций в новой партии — сбросить.
+-- balance.refresh(): сбросить кэш типов. Вызывать при смене набора наций в новой партии.
+-- Сторона: shared. Ошибок не кидает.
 function balance.refresh() cache = nil end
 
 -- Все места, где живёт тип: { {country, id}, ... }.
@@ -91,12 +94,15 @@ local function places(sid, level)
     return list
 end
 
--- Первое совпадение: нация и номер типа. Остальные нации с тем же именем — balance.places(sid).
+-- balance.find(sid): нация и номер типа по sid. Парам: sid — имя типа. Возврат: country, id.
+-- Ошибки: "unknown unit type". Остальные нации — balance.places(sid).
 function balance.find(sid)
     local t = places(sid, 1)[1]
     return t.country, t.id
 end
 
+-- balance.places(sid): все места типа. Парам: sid — имя типа. Возврат: { { country, id }, ... }.
+-- Ошибки: "unknown unit type" при неверном sid.
 function balance.places(sid) return places(sid, 1) end
 
 local function basePath(t, player)
@@ -107,6 +113,8 @@ local function propPath(t)
     return string.format("gObjProp[%d][%d]", t.country, t.id)
 end
 
+-- balance.get(sid, player): статы типа. Парам: sid — имя типа; player — игрок (по умолч. 0).
+-- Возврат: { base, prop } (TObjBase, TObjProp, глубина 2). Ошибки: "unknown unit type".
 function balance.get(sid, player)
     local t = places(sid, 1)[1]
     return {
@@ -115,7 +123,8 @@ function balance.get(sid, player)
     }
 end
 
--- field: путь внутри TObjBase: "maxhp", "speed", "price[3]", "weapon[0].damage", "protection[2]".
+-- balance.set(sid, field, value, player): поле TObjBase. Парам: sid — тип; field — путь ("maxhp", "price[3]", "weapon[0].damage"); value — значение; player — игрок (без него — все).
+-- Сторона: server/shared (game.start). Ошибки: "unknown unit type", "only server/shared scripts".
 function balance.set(sid, field, value, player)
     if not game.exec then
         error("balance.set: only server/shared scripts can change the game", 2)
@@ -130,6 +139,8 @@ function balance.set(sid, field, value, player)
     end
 end
 
+-- balance.setProp(sid, field, value): общее поле типа TObjProp. Парам: sid — тип; field — путь; value — значение.
+-- Сторона: server/shared. Ошибки: "unknown unit type", "only server/shared scripts".
 function balance.setProp(sid, field, value)
     if not game.exec then
         error("balance.setProp: only server/shared scripts can change the game", 2)
@@ -151,6 +162,8 @@ local function flatten(t, prefix, out)
     end
 end
 
+-- balance.dump(sid, player): все поля типа текстом в лог. Парам: sid — тип; player — игрок (по умолч. 0).
+-- Возврат: строка дампа. Ошибки: "unknown unit type".
 function balance.dump(sid, player)
     local data = balance.get(sid, player)
     local lines = {}
@@ -206,6 +219,8 @@ begin
 end;
 end;]]
 
+-- balance.setHP(sid, maxhp, player): макс. здоровье типа + живых (пропорционально). Парам: sid — тип; maxhp — число; player — игрок (без него — все).
+-- Сторона: server/shared. Ошибки: "unknown unit type", "only server/shared scripts".
 function balance.setHP(sid, maxhp, player)
     needExec("setHP")
     maxhp = math.floor(tonumber(maxhp) or 0)
@@ -216,6 +231,8 @@ if old > 0 then
 ]] .. EACH_UNIT:format("TObj(pobj).hp := Round(TObj(pobj).hp / old * " .. maxhp .. ");")))
 end
 
+-- balance.setDamage(sid, damage, weapon, player): урон оружия типа + живых. Парам: sid — тип; damage — число; weapon — номер (без него — все); player — игрок (без него — все).
+-- Сторона: server/shared. Ошибки: "unknown unit type", "only server/shared scripts".
 function balance.setDamage(sid, damage, weapon, player)
     needExec("setDamage")
     damage = math.floor(tonumber(damage) or 0)
@@ -229,7 +246,8 @@ gPlayer[p].objbase[c][u].weapon[k].damage := Floor((gPlayer[p].objbase[c][u].wea
 end;]], first, last, damage)))
 end
 
--- Скорость у игры — множитель интервала шага (меньше — быстрее); здесь — понятный множитель скорости.
+-- balance.setSpeed(sid, multiplier, player): скорость типа + живых. Парам: sid — тип; multiplier — во сколько раз (1 — как в игре); player — игрок (без него — все).
+-- У игры — интервал шага (меньше — быстрее); здесь — понятный множитель. Сторона: server/shared.
 function balance.setSpeed(sid, multiplier, player)
     needExec("setSpeed")
     local interval = 1 / (tonumber(multiplier) or 1)

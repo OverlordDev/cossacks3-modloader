@@ -142,7 +142,9 @@ events.on("net.sync", function()
     local p = want
     want = nil
     local c, detail = snapshot(p)
-    outbox = { key = string.format("%.3f", t), c = c, p = p, detail = detail }
+    -- Ключом служит округлённое игровое время в миллисекундах. Строковое
+    -- форматирование float могло дать разные ключи на разных машинах.
+    outbox = { key = math.floor(t * 1000 + 0.5), c = c, p = p, detail = detail }
 end)
 
 net.on("dw.hello", function()
