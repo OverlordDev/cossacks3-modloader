@@ -1026,27 +1026,38 @@ namespace
 
     struct Decision { int text; const char* value; };
     thread_local Decision g_decision; // хук возвращает указатель — у каждого потока свой
+    // Язык читают/обновляют разные потоки (хук локализации + фоновые): всё под мьютексом.
+    // Вызов натива игры оставлен ВНЕ лока (он сам может читать локализацию через этот же хук),
+    // под локом — только счётчик, чтение и запись кэша.
+    std::mutex g_langMutex;
     std::string g_lang;
     int g_langCheck = 0;
 
     std::string CurrentLang()
     {
-        if (g_lang.empty() || ++g_langCheck % 500 == 0)
         {
-            if (const NativeCall::Signature* sig = NativeCall::Find("GetLocaleTableListFileName"))
+            std::lock_guard lock(g_langMutex);
+            if (!g_lang.empty() && ++g_langCheck % 500 != 0)
+                return g_lang;
+        }
+        std::string fresh;
+        if (const NativeCall::Signature* sig = NativeCall::Find("GetLocaleTableListFileName"))
+        {
+            NativeCall::Value v;
+            std::string error;
+            if (NativeCall::Invoke(*sig, {}, &v, &error))
             {
-                NativeCall::Value v;
-                std::string error;
-                if (NativeCall::Invoke(*sig, {}, &v, &error))
-                {
-                    std::string p = Lower(v.s);
-                    size_t e = p.find_last_of("\\/");
-                    size_t b = e == std::string::npos ? std::string::npos : p.find_last_of("\\/", e - 1);
-                    if (b != std::string::npos)
-                        g_lang = p.substr(b + 1, e - b - 1);
-                }
+                std::string p = Lower(v.s);
+                size_t e = p.find_last_of("\\/");
+                size_t b = e == std::string::npos ? std::string::npos : p.find_last_of("\\/", e - 1);
+                if (b != std::string::npos)
+                    fresh = p.substr(b + 1, e - b - 1);
             }
         }
+        std::lock_guard lock(g_langMutex);
+        ++g_langCheck;
+        if (!fresh.empty())
+            g_lang = fresh;
         return g_lang;
     }
 
@@ -1066,6 +1077,7 @@ namespace
     // null — как есть; text=1 — вернуть value; text=0 — искать по ключу value (родитель).
     Decision* __cdecl DecideLocale(const char* table, const char* key)
     {
+        Hooks::InFlight inFlight; // naked-хук выше считает здесь
         if (!key || !*key)
             return nullptr;
         thread_local bool inside = false; // натив языка сам может читать локализацию

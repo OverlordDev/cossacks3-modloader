@@ -141,6 +141,7 @@ namespace
 
     void __cdecl OnLibChecksum(uint8_t* project, char** result)
     {
+        Hooks::InFlight inFlight; // naked-хук выше считает здесь
         AssignDelphiString(result, ComputeChecksum(project, true));
     }
 

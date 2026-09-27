@@ -877,6 +877,23 @@ void WebUi::OnFrame(HWND window)
     if (!IsWindow(window))
         return;
 
+    // Весь CEF обязан жить в одном потоке (g_cefThread — где отработал StartCef):
+    // CreateBrowser/LoadURL/Reload/CloseBrowser/JS-вызовы с чужого потока — UB
+    // внутри libcef. Во время загрузки карты кадры transiently идут с чужого
+    // потока — их пропускаем (держим последний кадр), работу продолжает свой.
+    if (current != g_cefThread)
+    {
+        static DWORD lastWarn = 0; // 4 байта: чтение/запись атомарны на x86
+        DWORD now = GetTickCount();
+        if (now - lastWarn > 5000)
+        {
+            lastWarn = now;
+            LOG_WARN("[web] frame on foreign thread %lu (cef lives on %lu) — CEF calls skipped",
+                     current, g_cefThread);
+        }
+        return;
+    }
+
     if (!g_browser && open) // вкладку закрывали, а CEF остался поднятым — открываем заново
     {
         LOG_INFO("[web] opening %s", url.c_str());

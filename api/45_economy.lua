@@ -53,7 +53,12 @@ end
 
 -- economy.get(player, res): сколько ресурса у игрока. Возврат: число (0, если нет). Сторона: везде (чтение).
 function economy.get(player, res)
-    return needStore("get").get(key(player, res)) or 0
+    local value = needStore("get").get(key(player, res))
+    if value == nil then return 0 end
+    local n = tonumber(value)
+    -- savedata старых версий/чужого мода может вернуть число как строку. Внутри
+    -- economy наружу всегда выходит число, иначе add/consume падают на `string + number`.
+    return n or 0
 end
 
 -- economy.set(player, res, amount): задать количество ресурса. Сторона: только server/shared.

@@ -70,8 +70,10 @@ function game.evalBool(p) return lookup(p) and true or false end
 function game.isInGame() return true end
 
 EXEC_LOG = {}
+EXEC_ARG = {}
 function game.exec(code, arg)
     EXEC_LOG[#EXEC_LOG + 1] = code
+    EXEC_ARG[#EXEC_ARG + 1] = arg
     if code:find("gObjProp%[c%]%[u%]%.sid") then -- balance: цикл по всем типам
         return "4,12,rus_strelets;"
     end
@@ -107,6 +109,51 @@ NATIVE_LOG = {}
 local function log(name, ...)
     NATIVE_LOG[#NATIVE_LOG + 1] = { name = name, args = { ... } }
 end
+
+-- Машина состояний объекта: нужна object.states()/setState (api/28).
+-- SM 9001 принадлежит объекту 100, у него состояния idle/burning/destroyed.
+-- Имена НЕ выдуманы "наугад" - api теперь берёт их отсюда и по ним же проверяет
+-- setState, поэтому фейк должен вести себя как настоящий движок: IndexOfState
+-- для неизвестного имени даёт -1 (а не «портит» объект).
+FAKE_SM = {
+    [9001] = { "idle", "burning", "destroyed" },
+}
+native.GetGameObjectStateMachineHandle = function(h) return h == 100 and 9001 or 0 end
+native.IsGameObjectByHandle = function(h) return h == 100 or h == 501 or h == 777 or h == 1000 end
+native.StateMachineGetVarsCount = function(sm) return #(FAKE_SM[sm] or {}) end
+native.StateMachineGetStateNameByInd = function(sm, i)
+    local list = FAKE_SM[sm]
+    if not list then return "" end
+    return list[i + 1] or ""
+end
+native.StateMachineGetStateIndByName = function(sm, name)
+    for i, s in ipairs(FAKE_SM[sm] or {}) do
+        if s == name then return i end
+    end
+    return -1
+end
+native.GetGameObjectStateNameByHandle = function() return "idle" end
+native.GameObjectSwitchToStateByHandle = function(h, name) log("GameObjectSwitchToStateByHandle", h, name) end
+native.SetGameObjectOnStateDestroyByHandle = function(h, name) log("SetGameObjectOnStateDestroyByHandle", h, name) end
+native.GameObjectCreateProgressStateMachineBehaviour = function(h, f, s)
+    log("GameObjectCreateProgressStateMachineBehaviour", h, f, s) return 61
+end
+
+-- Группа: center читает кэш, который заполняет GroupCalcCentralPositionByHandle.
+-- Без этого натива api/52_group.center падал бы - и БАГ БЫЛ БЫ В API, не в тесте.
+-- Центр группы: GroupGetCentralPosition*ByHandle ТОЛЬКО ЧИТАЕТ кэш, который
+-- заполняет GroupCalcCentralPositionByHandle. Фейк это повторяет: без вызова
+-- calc значения остаются нулевыми (именно так api/52_group.center отдавал
+-- (0,0,0) в игре, пока мы не добавили пересчёт).
+FAKE_GROUP_CENTER = { 0, 0, 0 }
+native.GroupCalcCentralPositionByHandle = function(g)
+    FAKE_GROUP_CENTER_CALCS = (FAKE_GROUP_CENTER_CALCS or 0) + 1
+    FAKE_GROUP_CENTER = { 55, 0, 66 }
+end
+native.GroupGetCentralPositionXByHandle = function() return FAKE_GROUP_CENTER[1] end
+native.GroupGetCentralPositionYByHandle = function() return FAKE_GROUP_CENTER[2] end
+native.GroupGetCentralPositionZByHandle = function() return FAKE_GROUP_CENTER[3] end
+
 -- camera
 native.GetCameraAbsolutePosition = function() return 1, 2, 3 end
 native.GetCameraPosition = function() return 4, 5, 6 end
@@ -215,7 +262,15 @@ events = {
     off = function(id) end,
 }
 function fireEvt(name, ...) for _, fn in ipairs(EVT[name] or {}) do fn(...) end end
-objects = { read = function(h) return { pl = 0, hp = 80 } end, pos = function(h) return 11, 22 end, list = function() return { 1, 2, 3 } end }
+local FAKE_ALIVE = {}
+objects = {
+    read = function(h) return { pl = 0, hp = 80 } end,
+    pos = function(h) return 11, 22 end,
+    list = function() return { 1, 2, 3 } end,
+    alive = function(h) return FAKE_ALIVE[h] ~= false end,
+    _markDead = function(h) FAKE_ALIVE[h] = false end,
+    _markAlive = function(h) FAKE_ALIVE[h] = true end,
+}
 native.GetPlayerHandleByIndex = function(i) return 100 + i end
 native.RayCastHeight = function(x, z) return 7.5 end
 native.CreatePlayerGameObjectHandleByHandle = function(ph, r, b, x, y, z) log("world.spawn", ph, r, b, x, y, z); return 501 end
@@ -298,11 +353,10 @@ native.GroupRemoveGameObjectByHandle = function(g, h) end
 native.GroupClearGameObjectsByHandle = function(g) end
 native.GetGroupCountGameObjectsByHandle = function(g) return 2 end
 native.GetGroupGOHandleByGOIndexByHandle = function(g, i) return 101 + i end
-native.GroupGetCentralPositionXByHandle = function(g) return 1 end
-native.GroupGetCentralPositionYByHandle = function(g) return 2 end
-native.GroupGetCentralPositionZByHandle = function(g) return 3 end
+-- GroupGetCentralPosition*ByHandle и GroupCalcCentralPositionByHandle заданы выше,
+-- вместе с кэшем FAKE_GROUP_CENTER - здесь дубли перекрывали бы их.
 native.SetGroupStretchFactorByHandle = function(g, f) end
-native.GroupGameObjectsGridRebuildByHandle = function(g) end
+native.GroupGameObjectsGridRebuildByHandle = function(g) log("GroupGameObjectsGridRebuildByHandle", g) end
 native.GroupSetDirectPathColPointCancel = function(g, v) end
 native.RemoveGroupByHandle = function(g) end
 native.GroupGetFindPathByHandle = function(g) return true end

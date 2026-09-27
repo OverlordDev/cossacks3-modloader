@@ -36,11 +36,25 @@ local function inGame(where)
     end
 end
 
+local function live(h, where)
+    if objects and objects.alive and not objects.alive(h) then
+        error("pathfind." .. where .. ": object handle is dead", 3)
+    end
+    return h
+end
+
+local function nativeCall(fn, ...)
+    local ok, a, b, c = pcall(fn, ...)
+    if not ok then return nil, tostring(a) end
+    return a, b, c
+end
+
 -- Синхронный поиск пути юнита к (x, z). Параметры: h — хендл юнита; x, z — мировые координаты; useClear (по умолчанию true) — забыть старый путь. Возвращает код движка (0 — путь найден). Сторона: любая (только запрос, мир не меняет). Ошибки: вне партии; h нулевой/не число; x/z не числа.
 -- Синхронный поиск пути юнита к (x, z). useClear=true — забыть старый путь.
 function pathfind.calculate(h, x, z, useClear)
     inGame("calculate")
-    return native.GameObjectCalcPathByHandle(checkHandle(h, "calculate"),
+    h = live(checkHandle(h, "calculate"), "calculate")
+    return nativeCall(native.GameObjectCalcPathByHandle, h,
         num(x, "x"), num(z, "z"), false, useClear ~= false)
 end
 
@@ -49,16 +63,16 @@ end
 -- opts = { fromX=, fromZ=, clear = true, depth = 0 (0 — по умолчанию игры) }.
 function pathfind.calculateAdv(h, x, z, opts)
     inGame("calculateAdv")
-    h = checkHandle(h, "calculateAdv")
+    h = live(checkHandle(h, "calculateAdv"), "calculateAdv")
     opts = opts or {}
     if type(opts) ~= "table" then error("pathfind.calculateAdv: opts must be a table", 2) end
     local depth = math.tointeger(tonumber(opts.depth or 0)) or 0
     if opts.fromX ~= nil or opts.fromZ ~= nil then
-        return native.GameObjectCalcPathExtByHandle(h, num(opts.fromX, "fromX"),
+        return nativeCall(native.GameObjectCalcPathExtByHandle, h, num(opts.fromX, "fromX"),
             num(opts.fromZ, "fromZ"), num(x, "x"), num(z, "z"),
             false, opts.clear ~= false)
     end
-    return native.GameObjectCalcPathAdvByHandle(h, num(x, "x"), num(z, "z"),
+    return nativeCall(native.GameObjectCalcPathAdvByHandle, h, num(x, "x"), num(z, "z"),
         false, opts.clear ~= false, 0, 0, depth, "", false)
 end
 

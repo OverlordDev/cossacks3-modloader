@@ -43,8 +43,8 @@ end
 
 -- Свой игрок за этим компьютером (objects-only, без players). Возвращает индекс или nil.
 local function me()
-    local g = rawget(_G, "game")
-    local nat = rawget(_G, "native")
+    local g = rawget(_ENV, "game")
+    local nat = rawget(_ENV, "native")
     if g == nil or nat == nil then return nil end
     if type(g.isInGame) == "function" and not g.isInGame() then return nil end
     if type(nat.GetPlayerIndexInterfaceIO) ~= "function" then return nil end
@@ -124,7 +124,7 @@ end
 -- query.scan(opts): ядро — все записи под фильтры. Возврат: { { handle, x, z, hp, player, sid }, ... }.
 -- Сторона: везде (чтение). Ошибки: no active game; bad around/rect/limit/predicate; building без game.exec.
 function query.scan(opts)
-    local g = rawget(_G, "game")
+    local g = rawget(_ENV, "game")
     if g == nil or type(g.isInGame) ~= "function" or not g.isInGame() then
         error("query.scan: no active game (check game.isInGame())", 2)
     end

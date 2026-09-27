@@ -13,6 +13,14 @@
 --   orders.queue(h, { { move = {x, z} }, { patrol = {x1,z1,x2,z2} } })
 --   orders.cancel(h)                           -- сбросить очередь; orders.cancel(h, true) — жёстко
 --
+-- ВАЖНО (ScriptRunner): вызов game.exec(code) кэшируется ПО ТЕКСТУ code — новый
+-- текст = новое скомпилированное состояние ModLoader.Call.N, и оно живёт до конца
+-- партии (модлоадер сам ругается на 500: "pass changing values via arg, not in
+-- the code text"). Поэтому здесь ровно ОДИН текст состояния на вид приказа, а все
+-- значения (хендл, координаты, цель, флаги) едут через ML_ARG. Если вшить их в
+-- код, то orders.move на 100 юнитов создаст 100 состояний, а за партию их
+-- наберутся тысячи — и каждое это отдельный скомпилированный кусок в GUI-машине.
+--
 -- Каждый приказ — один вызов Pascal (~1 мс): сотню юнитов за тик не двигайте,
 -- растягивайте построение на несколько тиков.
 
@@ -44,29 +52,57 @@ local function each(units)
     return { units }
 end
 
--- Один приказ одному юниту через игру. kind — gc_obj_order_type_*, args — строка
--- остальных параметров _unit_AddOrder. clear — сбросить очередь, first — в начало.
-local function issue(h, typeName, args, clear, first)
-    h = checkHandle(h)
-    local code = string.format(
-        "_unit_AddOrder(%d, %s, %s, %s, %s);",
-        h, typeName, args,
-        clear == false and "False" or "True",
-        first == true and "True" or "False")
-    game.exec(code)
-end
+-- Разбор аргументов ML_ARG. Один и тот же текст на ВСЕ вызовы данного вида приказа.
+-- Строки — функциями движка (StrPos/SubStr/StrLength, как в скриптах игры): Pos/Copy/Delete
+-- в этом диалекте Pascal нет, с ними состояние не компилировалось (Compile script error: ModLoader.Call.N).
+-- Формат: h|trg|f1..f6|i1..i5|clear|first  (вещественные — тысячные).
+local PARSE = [[
+var s : String = ML_ARG;
+var p, h, trg : Integer;
+var f1, f2, f3, f4, f5, f6 : Integer;
+var i1, i2, i3, i4, i5, cl, fi : Integer;
+p := StrPos('|', s); h := StrToInt(SubStr(s, 1, p-1)); s := SubStr(s, p+1, StrLength(s)-p);
+p := StrPos('|', s); trg := StrToInt(SubStr(s, 1, p-1)); s := SubStr(s, p+1, StrLength(s)-p);
+p := StrPos('|', s); f1 := StrToInt(SubStr(s, 1, p-1)); s := SubStr(s, p+1, StrLength(s)-p);
+p := StrPos('|', s); f2 := StrToInt(SubStr(s, 1, p-1)); s := SubStr(s, p+1, StrLength(s)-p);
+p := StrPos('|', s); f3 := StrToInt(SubStr(s, 1, p-1)); s := SubStr(s, p+1, StrLength(s)-p);
+p := StrPos('|', s); f4 := StrToInt(SubStr(s, 1, p-1)); s := SubStr(s, p+1, StrLength(s)-p);
+p := StrPos('|', s); f5 := StrToInt(SubStr(s, 1, p-1)); s := SubStr(s, p+1, StrLength(s)-p);
+p := StrPos('|', s); f6 := StrToInt(SubStr(s, 1, p-1)); s := SubStr(s, p+1, StrLength(s)-p);
+p := StrPos('|', s); i1 := StrToInt(SubStr(s, 1, p-1)); s := SubStr(s, p+1, StrLength(s)-p);
+p := StrPos('|', s); i2 := StrToInt(SubStr(s, 1, p-1)); s := SubStr(s, p+1, StrLength(s)-p);
+p := StrPos('|', s); i3 := StrToInt(SubStr(s, 1, p-1)); s := SubStr(s, p+1, StrLength(s)-p);
+p := StrPos('|', s); i4 := StrToInt(SubStr(s, 1, p-1)); s := SubStr(s, p+1, StrLength(s)-p);
+p := StrPos('|', s); i5 := StrToInt(SubStr(s, 1, p-1)); s := SubStr(s, p+1, StrLength(s)-p);
+p := StrPos('|', s); cl := StrToInt(SubStr(s, 1, p-1)); s := SubStr(s, p+1, StrLength(s)-p);
+fi := StrToInt(s);]]
 
-local function fmt(n) return string.format("%.3f", n) end
+-- Один приказ одному юниту. f — шесть вещественных (тысячные), ints — пять целых.
+-- clear/first кладутся в ML_ARG и передаются как `cl <> 0` / `fi <> 0`: параметры
+-- _unit_AddOrder объявлены const Boolean, поэтому присваивание в списке
+-- аргументов (cl = 1) не компилируется, а Integer вместо Boolean — тоже.
+local function issue(h, typeName, trg, f, ints, clear, first)
+    h = checkHandle(h)
+    local function scaled(n) return tostring(math.floor(n * 1000 + (n >= 0 and 0.5 or -0.5))) end
+    local code = PARSE .. string.format(
+        "_unit_AddOrder(h, %s, trg, f1/1000, f2/1000, f3/1000, f4/1000, f5/1000, f6/1000, " ..
+        "i1, i2, i3, i4, i5, cl <> 0, fi <> 0);",
+        typeName)
+    game.exec(code, table.concat({ h, trg,
+        scaled(f[1]), scaled(f[2]), scaled(f[3]), scaled(f[4]), scaled(f[5]), scaled(f[6]),
+        ints[1], ints[2], ints[3], ints[4], ints[5],
+        clear == false and 0 or 1, first == true and 1 or 0 }, "|"))
+end
 
 -- Идти в точку. opts = { clear = true, first = false, angle = 0 }.
 function orders.move(units, x, z, opts)
     needServer("move")
     x, z = num(x, "x"), num(z, "z")
     opts = opts or {}
+    local angle = num(opts.angle or 0, "angle")
     for _, h in ipairs(each(units)) do
-        issue(h, "gc_obj_order_type_move",
-            string.format("0, %s, %s, 0, 0, %s, 0, 0, 0, 0, 0, 0",
-                fmt(x), fmt(z), fmt(num(opts.angle or 0, "angle"))),
+        issue(h, "gc_obj_order_type_move", 0,
+            { x, z, 0, 0, angle, 0 }, { 0, 0, 0, 0, 0 },
             opts.clear, opts.first)
     end
 end
@@ -77,8 +113,8 @@ function orders.attackMove(units, x, z, opts)
     x, z = num(x, "x"), num(z, "z")
     opts = opts or {}
     for _, h in ipairs(each(units)) do
-        issue(h, "gc_obj_order_type_attackpoint",
-            string.format("0, 0, 0, %s, %s, 0, 0, 0, 0, 0, 0, 0, 0", fmt(x), fmt(z)),
+        issue(h, "gc_obj_order_type_attackpoint", 0,
+            { 0, 0, x, z, 0, 0 }, { 0, 0, 0, 0, 0 },
             opts.clear, opts.first)
     end
 end
@@ -88,10 +124,10 @@ function orders.attack(units, target, opts)
     needServer("attack")
     target = checkHandle(target)
     opts = opts or {}
+    local lock = opts.lock and 1 or 0
     for _, h in ipairs(each(units)) do
-        issue(h, "gc_obj_order_type_attackobj",
-            string.format("%d, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, %d",
-                target, opts.lock and 1 or 0),
+        issue(h, "gc_obj_order_type_attackobj", target,
+            { 0, 0, 0, 0, 0, 0 }, { 0, 0, 0, 0, lock },
             opts.clear, opts.first)
     end
 end
@@ -103,9 +139,8 @@ function orders.patrol(units, x1, z1, x2, z2, opts)
     opts = opts or {}
     for _, h in ipairs(each(units)) do
         local px, pz = objects.pos(checkHandle(h))
-        issue(h, "gc_obj_order_type_patrol",
-            string.format("0, %s, %s, %s, %s, 0, 0, 0, 0, 0, 0, 0, 0",
-                fmt(px or x1), fmt(pz or z1), fmt(x2), fmt(z2)),
+        issue(h, "gc_obj_order_type_patrol", 0,
+            { px or x1, pz or z1, x2, z2, 0, 0 }, { 0, 0, 0, 0, 0 },
             opts.clear, opts.first)
     end
 end
@@ -116,8 +151,8 @@ function orders.guard(units, target, opts)
     target = checkHandle(target)
     opts = opts or {}
     for _, h in ipairs(each(units)) do
-        issue(h, "gc_obj_order_type_guard",
-            string.format("%d, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0", target),
+        issue(h, "gc_obj_order_type_guard", target,
+            { 0, 0, 0, 0, 0, 0 }, { 0, 0, 0, 0, 0 },
             opts.clear, opts.first)
     end
 end
@@ -149,10 +184,13 @@ function orders.queue(h, list)
 end
 
 -- Сбросить очередь приказов. full=true — _unit_FullClearOrders (и текущее действие).
+-- Два текста кода на весь мод — это не раздувание состояний, в отличие от
+-- варианта с координатами в коде.
 function orders.cancel(units, full)
     needServer("cancel")
+    local code = full and "var s : String = ML_ARG; _unit_FullClearOrders(StrToInt(s));"
+                     or "var s : String = ML_ARG; _unit_ClearOrders(StrToInt(s));"
     for _, h in ipairs(each(units)) do
-        h = checkHandle(h)
-        game.exec(string.format(full and "_unit_FullClearOrders(%d);" or "_unit_ClearOrders(%d);", h))
+        game.exec(code, tostring(checkHandle(h)))
     end
 end

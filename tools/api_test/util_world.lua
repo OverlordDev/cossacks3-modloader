@@ -286,6 +286,45 @@ function run_util_world()
             local cfg2 = config.load("ut_mig2", { _version = 2, a = 1 })
             check("c.migrate reset", cfg2:get("a"), 1)
         end
+        -- migrate БЕЗ _version внутри: api обязан проставить версию сам.
+        -- Иначе тихий цикл: migrate запускается на каждой загрузке и каждый раз
+        -- меняет данные (5 -> 10 -> 20 ...) без единой ошибки. Найдено в игре
+        -- 2026-09-27 на api_stress_test/env.config.
+        do
+            savedata.set("cfg:ut_migloop", { _version = 1, a = 5 })
+            local m1 = config.load("ut_migloop", { _version = 2, a = 1 },
+                { migrate = function(old) old.a = old.a * 2; return old end })
+            check("c.migloop applied", m1:get("a"), 10)
+            check("c.migloop version fixed", m1:get("_version"), 2)
+            check("c.migloop save", m1:save(), true)
+            -- вторая загрузка: migrate повторяться НЕ должен
+            local m2 = config.load("ut_migloop", { _version = 2, a = 1 })
+            check("c.migloop not repeated", m2:get("a"), 10)
+            check("c.migloop clean", m2:isDirty(), false)
+            -- и ещё раз, чтобы цикл точно не появился
+            m2:save()
+            local m3 = config.load("ut_migloop", { _version = 2, a = 1 })
+            check("c.migloop stable", m3:get("a"), 10)
+        end
+        -- migrate: негативные ветки.
+        -- ВАЖНО: сначала кладём в хранилище данные С ДРУГОЙ версией, иначе migrate
+        -- вообще не вызывается (нет stored -> берутся defaults) и ошибки не будет.
+        do
+            savedata.set("cfg:ut_migbad1", { _version = 1, a = 5 })
+            checkErr("c.mig non-table", function()
+                config.load("ut_migbad1", { _version = 2 },
+                    { migrate = function() return "x" end })
+            end)
+            savedata.set("cfg:ut_migbad2", { _version = 1, a = 5 })
+            checkErr("c.mig not function", function()
+                config.load("ut_migbad2", { _version = 2 }, { migrate = 42 })
+            end)
+            savedata.set("cfg:ut_migbad3", { _version = 1, a = 5 })
+            checkErr("c.mig throws", function()
+                config.load("ut_migbad3", { _version = 2 },
+                    { migrate = function() error("boom") end })
+            end)
+        end
         -- corrupt: не таблица → defaults
         do
             savedata.set("cfg:ut_bad", "garbage")

@@ -324,6 +324,7 @@ namespace
     // Вызывается из перехватов: вернуть путь мода или исходный, если подмены нет.
     const char* __cdecl MapPath(const char* path)
     {
+        Hooks::InFlight inFlight; // файловые хуки — naked, считают здесь
         if (!path)
             return path;
         std::string key = Normalize(path, g_gameDirKey);

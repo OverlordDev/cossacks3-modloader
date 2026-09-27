@@ -210,7 +210,7 @@ end
 -- Парам: where — опциональный контекст для текста ошибки. Ничего не возвращает.
 -- Сторона: везде (чтение game). Ошибки: validate.activeGame: no active game ...
 function validate.activeGame(where)
-    local g = rawget(_G, "game")
+    local g = rawget(_ENV, "game")
     local ok = g ~= nil and type(g.isInGame) == "function" and g.isInGame()
     if not ok then
         local ctx = type(where) == "string" and (" (" .. where .. ")") or ""
@@ -222,7 +222,7 @@ end
 -- Парам: where — опциональный контекст. Ничего не возвращает.
 -- Сторона: server/shared. Ошибки: validate.server: only server/shared scripts ... (no game.exec).
 function validate.server(where)
-    local g = rawget(_G, "game")
+    local g = rawget(_ENV, "game")
     if g == nil or g.exec == nil then
         local ctx = type(where) == "string" and (" (" .. where .. ")") or ""
         error("validate.server: only server/shared scripts can do this (no game.exec on client)" .. ctx, 2)
@@ -233,7 +233,7 @@ end
 -- Парам: where — опциональный контекст. Ничего не возвращает.
 -- Сторона: client. Ошибки: validate.client: only client scripts ... (game.side ~= 'client').
 function validate.client(where)
-    local g = rawget(_G, "game")
+    local g = rawget(_ENV, "game")
     if g == nil or g.side ~= "client" then
         local ctx = type(where) == "string" and (" (" .. where .. ")") or ""
         error("validate.client: only client scripts can do this (game.side ~= 'client')" .. ctx, 2)

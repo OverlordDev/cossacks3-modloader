@@ -17,6 +17,36 @@
 
 objects = {}
 
+-- Натив IsGameObjectByHandle в Cossacks может ещё считать handle живым один тик
+-- после фактического уничтожения. Поэтому модлоадер дополнительно инвалидирует
+-- handle сразу после world.destroy/world.destroyNow. Таблица сбрасывается между
+-- партиями: игровые handle могут быть переиспользованы.
+local deadHandles = {}
+local sawGame = false
+
+local function refreshGeneration()
+    local active = game and game.isInGame and game.isInGame()
+    if not active then
+        deadHandles = {}
+        sawGame = false
+    elseif not sawGame then
+        deadHandles = {}
+        sawGame = true
+    end
+end
+
+function objects._markDead(h)
+    refreshGeneration()
+    h = math.tointeger(tonumber(h))
+    if h and h ~= 0 then deadHandles[h] = true end
+end
+
+function objects._markAlive(h)
+    refreshGeneration()
+    h = math.tointeger(tonumber(h))
+    if h and h ~= 0 then deadHandles[h] = nil end
+end
+
 local SCHEMA = GAME_SCHEMA or error("objects: GAME_SCHEMA is missing (api/00_schema.lua)")
 
 local layoutCache = {}   -- [typeName] = {size, fields = {name -> {off, node}}} для текущих параметров
@@ -137,15 +167,35 @@ end
 
 -- ---------- адрес объекта ----------
 
+-- Жив ли ещё объект. ОБЯЗАТЕЛЬНО проверять перед любым доступом по хендлу:
+-- на уничтоженном объекте GetGameObjectStateMachineHandle падает в
+-- TObject.InheritsFrom по освобождённому указателю -> ACCESS_VIOLATION и падение
+-- ВСЕЙ игры (проверено 2026-09-27, отчёт crashes/..._C0000005.txt, кадр
+-- #01 native GetGameObjectStateMachineHandle). Lua-side SEH этого не спасает:
+-- исключение ловится, но игра уже упала.
+function objects.alive(h)
+    refreshGeneration()
+    h = math.tointeger(tonumber(h))
+    if not h or h == 0 then return false end
+    if deadHandles[h] then return false end
+    local nativeAlive = rawget(native, "IsGameObjectByHandle")
+    -- Старые сборки/фейковые стенды без этого безопасного Get-натива не должны
+    -- ломать весь Lua API; опасные доступы всё равно проходят через ptr/pcall.
+    if type(nativeAlive) ~= "function" then return true end
+    local ok, v = pcall(nativeAlive, h)
+    return ok and v == true
+end
+
 -- Адрес TObj объекта (как _unit_GetTObj через gc_argunit_obj=0). Параметры: h — хендл. Возвращает адрес (число) или nil (нет объекта/не юнит). Сторона: любая (только чтение). Ошибки: нет (неверный h даёт nil).
 -- Как _unit_GetTObj: данные состояния объекта, аргумент gc_argunit_obj (= 0).
 function objects.ptr(h)
     h = math.tointeger(tonumber(h))
     if not h or h == 0 then return nil end
-    local sm = native.GetGameObjectStateMachineHandle(h)
-    if not sm or sm == 0 then return nil end
-    local p = native.StateMachineGetArgDataByInd(sm, 0)
-    if not p or p == 0 then return nil end
+    if not objects.alive(h) then return nil end      -- см. objects.alive: без этого крашит игру
+    local ok, sm = pcall(native.GetGameObjectStateMachineHandle, h)
+    if not ok or not sm or sm == 0 then return nil end
+    local ok2, p = pcall(native.StateMachineGetArgDataByInd, sm, 0)
+    if not ok2 or not p or p == 0 then return nil end
     return p & 0xFFFFFFFF
 end
 
@@ -305,6 +355,7 @@ end
 function objects.get(h, path)
     h = math.tointeger(tonumber(h))
     if not h then error("objects.get: handle must be a number", 2) end
+    if not objects.alive(h) then return nil end
     if ensure(h) then
         local addr = objects.ptr(h)
         if not addr or mem.i32(addr, params.base) ~= BASEID_OBJ then return nil end
@@ -319,6 +370,7 @@ end
 function objects.read(h)
     h = math.tointeger(tonumber(h))
     if not h then error("objects.read: handle must be a number", 2) end
+    if not objects.alive(h) then return nil end
     local out = {}
     if ensure(h) then
         local addr = objects.ptr(h)
@@ -339,7 +391,9 @@ function objects.read(h)
 end
 
 -- Мировые координаты объекта. Параметры: h — хендл. Возвращает x, z. Сторона: любая (Get-нативы). Ошибки: нет своих (натив падает вне партии).
+-- Мёртвый объект -> nil, nil (см. objects.alive: без проверки натив падает).
 function objects.pos(h)
+    if not objects.alive(h) then return nil, nil end
     return native.GetGameObjectPositionXByHandle(h), native.GetGameObjectPositionZByHandle(h)
 end
 

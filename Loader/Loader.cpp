@@ -3,6 +3,7 @@
 // его можно пересобирать, а команда .reload в консоли подгружает новую сборку без перезапуска игры.
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <TlHelp32.h>
 
 #include <string>
 
@@ -79,6 +80,31 @@ namespace
         return true;
     }
 
+    // Есть ли копия ядра среди загруженных модулей (по имени файла, без пути:
+    // GetModuleHandleW с полным путём ненадёжен — короткие имена, регистр, ссылки).
+    bool CoreStillLoaded()
+    {
+        const wchar_t* name = wcsrchr(g_copyPath.c_str(), L'\\');
+        name = name ? name + 1 : g_copyPath.c_str();
+        HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32,
+                                               GetCurrentProcessId());
+        if (snap == INVALID_HANDLE_VALUE)
+            return true; // не смогли проверить — считаем, что ещё тут (безопасно)
+        bool found = false;
+        MODULEENTRY32W me;
+        me.dwSize = sizeof(me);
+        for (BOOL ok = Module32FirstW(snap, &me); ok; ok = Module32NextW(snap, &me))
+        {
+            if (_wcsicmp(me.szModule, name) == 0)
+            {
+                found = true;
+                break;
+            }
+        }
+        CloseHandle(snap);
+        return found;
+    }
+
     // Ждём, пока основная DLL полностью выгрузится: её поток завершается в FreeLibraryAndExitThread.
     void WaitCoreGone()
     {
@@ -87,7 +113,7 @@ namespace
             WaitForSingleObject(thread, 10000);
             CloseHandle(thread);
         }
-        for (int i = 0; i < 50 && GetModuleHandleW(g_copyPath.c_str()); ++i)
+        for (int i = 0; i < 50 && CoreStillLoaded(); ++i)
             Sleep(100);
         DeleteFileW(g_copyPath.c_str());
     }

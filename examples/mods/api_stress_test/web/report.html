@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>API Stress Test — отчёт</title>
+<style>
+  :root {
+    --bg: #14110c;
+    --panel: #1e1a13;
+    --line: #3a3225;
+    --text: #e8dcc0;
+    --dim: #9a8c72;
+    --ok: #7fc06a;
+    --fail: #e05a4a;
+    --err: #e0a23a;
+    --skip: #7a8ea0;
+    --head: #c8a55c;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: var(--bg); color: var(--text);
+    font: 13px/1.45 "Consolas", "Cascadia Mono", monospace;
+  }
+  #head {
+    position: sticky; top: 0; z-index: 2;
+    background: var(--panel); border-bottom: 1px solid var(--line);
+    padding: 8px 12px;
+  }
+  #title { color: var(--head); font-weight: bold; letter-spacing: .5px; }
+  #sub { color: var(--dim); font-size: 11px; margin-top: 2px; }
+  #bar { display: flex; gap: 14px; margin-top: 6px; flex-wrap: wrap; font-size: 12px; }
+  #bar span b { font-weight: bold; }
+  .ok { color: var(--ok); } .fail { color: var(--fail); }
+  .err { color: var(--err); } .skip { color: var(--skip); }
+  #filter {
+    margin-top: 6px; width: 100%;
+    background: #100e09; color: var(--text);
+    border: 1px solid var(--line); border-radius: 3px;
+    padding: 4px 6px; font: inherit;
+  }
+  #filter:focus { outline: none; border-color: var(--head); }
+  #body { padding: 10px 12px 40px; }
+  pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
+  /* Подсветка статусов внутри отчёта. */
+  .l-ok   { color: var(--ok); }
+  .l-fail { color: var(--fail); font-weight: bold; }
+  .l-err  { color: var(--err); font-weight: bold; }
+  .l-skip { color: var(--skip); }
+  .l-head { color: var(--head); }
+  .l-dim  { color: var(--dim); }
+  .hide { display: none; }
+  #empty { color: var(--dim); padding: 20px 0; }
+</style>
+</head>
+<body>
+<div id="head">
+  <div id="title">API STRESS TEST 0.2.0 — отчёт</div>
+  <div id="sub">страница только показывает отчёт; кнопки — в панели игры (F5) или на клавишах</div>
+  <div id="bar">
+    <span>всего: <b id="n-total">0</b></span>
+    <span class="ok">ok: <b id="n-ok">0</b></span>
+    <span class="fail">fail: <b id="n-fail">0</b></span>
+    <span class="err">error: <b id="n-err">0</b></span>
+    <span class="skip">skip: <b id="n-skip">0</b></span>
+    <span class="l-dim">обновлено: <b id="n-time">—</b></span>
+  </div>
+  <input id="filter" type="text" placeholder="фильтр: введи подстроку (например orders, fow, terrain) — Enter отменяет">
+</div>
+<div id="body">
+  <div id="empty">Отчёта пока нет. В игре нажми F5 (панель) и F7 (прогнать все безопасные кейсы).</div>
+  <pre id="out"></pre>
+</div>
+
+<script>
+// Страница принимает ТЕКСТ отчёта. Lua шлёт его через web.eval("window.AST_set(...)").
+// Формат: блоки, разделённые строкой из одного "[AST]" в начале; внутри — обычный текст.
+window.AST_set = function (text) {
+  var out = document.getElementById('out');
+  var blocks = String(text).split('\n[AST]\n');
+  // Первый блок может начинаться без разделителя, если строка уже была префиксована.
+  if (blocks.length && blocks[0].charAt(0) === '[AST]') {
+    blocks[0] = blocks[0].slice(5);
+  }
+
+  var html = '';
+  var counts = { total: 0, ok: 0, fail: 0, err: 0, skip: 0 };
+
+  for (var b = 0; b < blocks.length; b++) {
+    var lines = blocks[b].split('\n');
+    for (var i = 0; i < lines.length; i++) {
+      var raw = lines[i];
+      var cls = classify(raw);
+      if (cls.count) counts[cls.count]++;
+      html += '<span class="' + cls.cls + '" data-l="' + esc(raw.toLowerCase()) + '">' +
+              esc(raw) + '</span>\n';
+    }
+  }
+
+  out.innerHTML = html;
+  document.getElementById('empty').classList.add('hide');
+
+  document.getElementById('n-total').textContent = counts.total;
+  document.getElementById('n-ok').textContent = counts.ok;
+  document.getElementById('n-fail').textContent = counts.fail;
+  document.getElementById('n-err').textContent = counts.err;
+  document.getElementById('n-skip').textContent = counts.skip;
+  var d = new Date();
+  document.getElementById('n-time').textContent =
+    String(d.getHours()).padStart(2, '0') + ':' +
+    String(d.getMinutes()).padStart(2, '0') + ':' +
+    String(d.getSeconds()).padStart(2, '0');
+
+  applyFilter();
+};
+
+// Разобрать строку отчёта: "+ id side msg (12 ms)" / "-- Раздел [..]" / "итого: ..."
+function classify(line) {
+  if (/^\s*-- /.test(line) || /^=== /.test(line)) return { cls: 'l-head' };
+  if (/^\s*итого:/.test(line)) return { cls: 'l-dim' };
+  var m = /^\s*([+x!\-])\s/.exec(line);
+  if (m) {
+    if (m[1] === '+') return { cls: 'l-ok', count: 'ok' };
+    if (m[1] === '-') return { cls: 'l-skip', count: 'skip' };
+    if (m[1] === 'x') return { cls: 'l-fail', count: 'fail' };
+    return { cls: 'l-err', count: 'err' };
+  }
+  if (/^\s*строк:/.test(line)) return { cls: 'l-dim' };
+  if (/^\s{2,}/.test(line)) return { cls: '' };
+  return { cls: '' };
+}
+
+function esc(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+var filterBox = document.getElementById('filter');
+function applyFilter() {
+  var q = filterBox.value.trim().toLowerCase();
+  var spans = document.querySelectorAll('#out span[data-l]');
+  for (var i = 0; i < spans.length; i++) {
+    var s = spans[i];
+    var text = s.getAttribute('data-l');
+    var isHeader = s.className === 'l-head' || s.className === 'l-dim';
+    if (q === '' || text.indexOf(q) >= 0) {
+      s.classList.remove('hide');
+    } else if (isHeader) {
+      s.classList.add('hide');
+    } else {
+      s.classList.add('hide');
+    }
+  }
+}
+filterBox.addEventListener('input', applyFilter);
+filterBox.addEventListener('keydown', function (e) {
+  if (e.key === 'Enter' || e.key === 'Escape') { filterBox.value = ''; applyFilter(); filterBox.blur(); }
+});
+</script>
+</body>
+</html>

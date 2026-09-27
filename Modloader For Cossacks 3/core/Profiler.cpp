@@ -184,8 +184,14 @@ namespace
             return 0;
         }
 
-        std::vector<Sample> samples;
-        samples.reserve(static_cast<size_t>(g_seconds) * 1200 + 100); // без реаллокаций во время семплинга
+        // Контексты копим отдельно, стек разбираем ПОСЛЕ resume: поток игры заморожен
+        // только на время двух системных вызовов (микросекунды), а не на весь обход.
+        // Иначе пауза могла застать игру внутри mutex/кучи Delphi, а наш же поток —
+        // упереться в тот же лок (Symbols, аллокатор) до ResumeThread = deadlock.
+        // Обход живого стека может рваться (поток уже бежит) — для профайлера это шум, не ошибка.
+        std::vector<CONTEXT> contexts;
+        contexts.reserve(static_cast<size_t>(g_seconds) * 1200 + 100); // без реаллокаций в цикле
+        int contextFails = 0;
 
         timeBeginPeriod(1);
         LARGE_INTEGER freq, start, now;
@@ -195,23 +201,32 @@ namespace
 
         do
         {
-            if (samples.size() < samples.capacity() && SuspendThread(thread) != static_cast<DWORD>(-1))
+            if (contexts.size() < contexts.capacity() && SuspendThread(thread) != static_cast<DWORD>(-1))
             {
                 CONTEXT ctx{};
                 ctx.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
-                Sample s;
                 bool ok = GetThreadContext(thread, &ctx) != FALSE;
+                ResumeThread(thread); // сразу отпускаем — Walk ниже, по копии
                 if (ok)
-                    Walk(ctx, s);
-                ResumeThread(thread);
-                if (ok)
-                    samples.push_back(s);
+                    contexts.push_back(ctx);
+                else if (++contextFails >= 5)
+                    break; // поток умирает/умер — дальше только мусор
             }
             Sleep(1);
             QueryPerformanceCounter(&now);
         } while (now.QuadPart < end);
         timeEndPeriod(1);
         CloseHandle(thread);
+
+        std::vector<Sample> samples;
+        samples.reserve(contexts.size());
+        for (const CONTEXT& ctx : contexts)
+        {
+            Sample s;
+            Walk(ctx, s);
+            if (s.count)
+                samples.push_back(s);
+        }
 
         Report(samples, static_cast<double>(now.QuadPart - start.QuadPart) / freq.QuadPart);
         g_running = false;

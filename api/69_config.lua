@@ -102,7 +102,7 @@ end
 -- Подписка автосейва один раз (базовые events.on/off, есть везде). Ошибок не кидает.
 local function ensureAutosave()
     if subscribed then return end
-    local ev = rawget(_G, "events")
+    local ev = rawget(_ENV, "events")
     if type(ev) ~= "table" or type(ev.on) ~= "function" then return end
     subscribed = true
     ev.on("game.end", function()
@@ -149,6 +149,12 @@ function config.load(name, defaults, opts)
                 error("config.load: migrate must return a table", 2)
             end
             checkLimits(newData, "load")
+            -- После миграции данные БЕЗУСЛОВНО новой версии, поэтому проставляем
+            -- _version сами. Иначе автор миграции, который забудет его поднять,
+            -- получает тихий цикл: migrate запускается на каждой загрузке и
+            -- каждый раз меняет данные (например удваивает счётчик) — без единой
+            -- ошибки. Проверено 2026-09-27 на api_stress_test/env.config.
+            newData._version = defaults._version
             data, dirty = deepCopy(newData), true
         else
             data, dirty = deepCopy(defaults), true

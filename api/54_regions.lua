@@ -30,10 +30,21 @@ local function zone(name, where)
 end
 
 local function inPoly(poly, x, z)
+    -- Граница должна быть частью зоны. Раньше результат зависел от направления
+    -- ребра и давал разные ответы для regions.contains на одной и той же границе.
+    local eps = 1e-7
+    local function onSegment(a, b)
+        local dx, dz = b.x - a.x, b.z - a.z
+        local cross = (x - a.x) * dz - (z - a.z) * dx
+        if math.abs(cross) > eps * math.max(1, math.abs(dx) + math.abs(dz)) then return false end
+        return x >= math.min(a.x, b.x) - eps and x <= math.max(a.x, b.x) + eps and
+               z >= math.min(a.z, b.z) - eps and z <= math.max(a.z, b.z) + eps
+    end
     local c = false
     local n = #poly
     for i = 1, n do
         local a, b = poly[i], poly[i % n + 1]
+        if onSegment(a, b) then return true end
         if ((a.z > z) ~= (b.z > z)) and
            (x < (b.x - a.x) * (z - a.z) / (b.z - a.z) + a.x) then
             c = not c

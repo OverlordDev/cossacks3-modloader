@@ -104,9 +104,18 @@ end
 
 -- Центр группы. Парам: g — хендл группы. Возвращает x, y, z.
 -- Сторона: везде (только чтение, но нужна активная игра). Ошибки: нулевой хендл; нет игры.
+--
+-- ВАЖНО (проверено 2026-09-27): GroupGetCentralPosition*ByHandle только ЧИТАЕТ кэш,
+-- который заполняется отдельным нативом GroupCalcCentralPositionByHandle. Без
+-- предварительного пересчёта центр пустой группы и только что собранной группы
+-- возвращает (0, 0, 0). Поэтому здесь сначала пересчёт, потом чтение.
+-- group.rebuild() перестраивает сетку строя (GroupGameObjectsGridRebuildByHandle)
+-- и центры НЕ считает - поэтому восемь нативов GroupCalcCentralPosition* и
+-- GroupFastCalcCentralPosition* тоже дергаем в api/52_group.lua, а не в rebuild.
 function group.center(g)
     if not game.isInGame() then error("group.center: no active game", 2) end
     g = checkGr(g, "center")
+    native.GroupCalcCentralPositionByHandle(g)
     return native.GroupGetCentralPositionXByHandle(g),
            native.GroupGetCentralPositionYByHandle(g),
            native.GroupGetCentralPositionZByHandle(g)
@@ -143,9 +152,14 @@ end
 
 -- Пересчитать сетку строя после потерь. Парам: g — хендл группы.
 -- Ничего не возвращает. Сторона: только server/shared. Ошибки: нулевой хендл; вызов с client; нет игры.
+-- Также пересчитывает центральную позицию: после потерь кэш GroupCalcCentralPosition
+-- устаревает, и group.center вернул бы старую точку. Порядок важен — сначала сетка
+-- (она двигает юниты), потом центры уже по новой сетке.
 function group.rebuild(g)
     needServer("rebuild")
-    native.GroupGameObjectsGridRebuildByHandle(checkGr(g, "rebuild"))
+    g = checkGr(g, "rebuild")
+    native.GroupGameObjectsGridRebuildByHandle(g)
+    native.GroupCalcCentralPositionByHandle(g)
 end
 
 -- Прямой путь без обхода коллизий (марш по прямой) / обратно. Парам: g; on — true/false (nil = true).

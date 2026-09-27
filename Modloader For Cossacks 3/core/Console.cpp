@@ -216,7 +216,17 @@ void Console::StopInput()
     WriteConsoleInputW(g_inHandle, rec, 2, &written);
 
     if (WaitForSingleObject(g_inThread, 2000) == WAIT_TIMEOUT)
-        TerminateThread(g_inThread, 0);
+    {
+        // Поток мог не увидеть Enter (фокус не на консоли): будим отменой синхронного
+        // чтения вместо TerminateThread — убитый поток мог держать g_pendingMutex,
+        // и следующая выгрузка/перезагрузка повисла бы на нём навсегда.
+        CancelSynchronousIo(g_inThread);
+        if (WaitForSingleObject(g_inThread, 2000) == WAIT_TIMEOUT)
+        {
+            LOG_ERROR("Console input thread is stuck — terminating it (may destabilize unload)");
+            TerminateThread(g_inThread, 0);
+        }
+    }
     CloseHandle(g_inThread);
     g_inThread = nullptr;
     CloseHandle(g_inHandle);

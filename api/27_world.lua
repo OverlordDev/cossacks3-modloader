@@ -49,6 +49,10 @@ local function checkHandle(h, where)
     return h
 end
 
+local function isLive(h)
+    return not (objects and objects.alive and not objects.alive(h))
+end
+
 -- Хендл игрока по индексу или готовому хендлу. Параметры: player — индекс (<0x10000), хендл или nil (свой игрок). Возвращает хендл игрока. Ошибки: нет игрока с таким индексом; player не число.
 -- Хендл игрока по индексу (для CreatePlayerGameObjectHandleByHandle).
 local function playerHandle(player)
@@ -73,6 +77,7 @@ function world.spawn(t)
     local y = t.y ~= nil and num(t.y, "y") or native.RayCastHeight(x, z)
     local h = native.CreatePlayerGameObjectHandleByHandle(playerHandle(t.player), race, base, x, y, z)
     if not h or h == 0 then return nil end
+    if objects and objects._markAlive then objects._markAlive(h) end
     if t.name ~= nil then
         if type(t.name) ~= "string" then error("world.spawn: name must be a string", 2) end
         if t.name ~= "" then native.SetGameObjectCustomNameByHandle(h, t.name) end
@@ -89,14 +94,20 @@ end
 -- Мягкое удаление (идёт через механику игры: смерть, события unit.death).
 function world.destroy(h)
     needServer("destroy")
-    native.GameObjectRequestToDestroyByHandle(checkHandle(h, "destroy"))
+    h = checkHandle(h, "destroy")
+    if not isLive(h) then return end
+    if objects and objects._markDead then objects._markDead(h) end
+    native.GameObjectRequestToDestroyByHandle(h)
 end
 
 -- Жёсткое удаление без событий смерти. Параметры: h — хендл. Возвращает nil. Сторона: только server/shared. Ошибки: на client; вне партии; h нулевой.
 -- Жёсткое удаление (без событий смерти). Для эффектов исчезновения — сначала effects.*.
 function world.destroyNow(h)
     needServer("destroyNow")
-    native.GameObjectDestroyByHandle(checkHandle(h, "destroyNow"))
+    h = checkHandle(h, "destroyNow")
+    if not isLive(h) then return end
+    if objects and objects._markDead then objects._markDead(h) end
+    native.GameObjectDestroyByHandle(h)
 end
 
 -- Переместить объект. Параметры: h — хендл; world.move(h, x, z) (y по рельефу) или world.move(h, x, y, z) явно. Возвращает nil. Сторона: только server/shared. Ошибки: на client; вне партии; h нулевой; координаты не числа.
@@ -104,6 +115,7 @@ end
 function world.move(h, x, y, z)
     needServer("move")
     h = checkHandle(h, "move")
+    if not isLive(h) then return end
     x = num(x, "x")
     if z == nil then z, y = num(y, "z"), native.RayCastHeight(x, num(y, "z")) end
     native.SetGameObjectPositionByHandle(h, x, num(y, "y"), num(z, "z"))
@@ -114,6 +126,7 @@ end
 function world.pos(h)
     if not game.isInGame() then error("world.pos: no active game", 2) end
     h = checkHandle(h, "pos")
+    if objects and objects.alive and not objects.alive(h) then return nil, nil, nil end
     return native.GetGameObjectPositionXByHandle(h),
            native.GetGameObjectPositionYByHandle(h),
            native.GetGameObjectPositionZByHandle(h)

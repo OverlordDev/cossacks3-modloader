@@ -83,15 +83,19 @@ namespace
     }
 
     constexpr char kRetPrefix[] = "ret:";
-    bool g_blockRequested = false;
-    bool g_capturing = false;
-    bool g_captured = false;
-    std::string g_capture;
+    // Состояние захвата/ответа — на поток: трамплин дёргают и главный поток игры,
+    // и OnLanEvent/сеть. На глобалах параллельный вызов портил чужое событие
+    // (блок/ответ уходил не тому). Подписки и счётчики — общие, они под g_mutex.
+    thread_local bool g_blockRequested = false;
+    thread_local bool g_capturing = false;
+    thread_local bool g_captured = false;
+    thread_local std::string g_capture;
     struct CaptureFrame { bool capturing, captured; std::string value; };
-    std::vector<CaptureFrame> g_captureStack; // game.eval внутри обработчика события внутри game.eval
+    thread_local std::vector<CaptureFrame> g_captureStack; // game.eval внутри обработчика события внутри game.eval
 
     void __stdcall hkTrampoline(const char* msg)
     {
+        Hooks::InFlight inFlight;
         if (msg && strncmp(msg, kPrefix, sizeof(kPrefix) - 1) == 0)
         {
             const char* body = msg + sizeof(kPrefix) - 1;

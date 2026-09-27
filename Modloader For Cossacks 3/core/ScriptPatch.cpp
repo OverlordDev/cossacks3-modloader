@@ -256,10 +256,19 @@ std::string ScriptPatch::Builtin(const std::string& key)
 {
     // unit.order: любой приказ любому юниту — игрока, ИИ, из сети, из скриптов. Через одну функцию
     // игры проходят все приказы. Обработчик может вернуть true — приказ не добавится (Result = nil).
+    //
+    // Сначала явно обнуляем Result, затем используем обычный exit: вариант exit(nil)
+    // этот Pascal-парсер не поддерживает. Из-за этого ЛЮБОЙ вызов _unit_AddOrder
+    // из game.exec падал с "Compile script error: ModLoader.Call.N" — то есть весь api/38_orders
+    // (orders.move/attack/patrol/..., group.move, formation.set, net.order.capture) был мёртв.
+    // Проверено 2026-09-27, см. CPP_FIX_REPORT.md §2 (план A2).
+    // В текущем скрипте игры itype объявлен как Integer с enum-комментарием
+    // ({uid, next,}), поэтому IntToStr(itype) здесь допустим. Если другой билд
+    // реально объявит его enum-типом, это будет отдельная несовместимость сигнатуры.
     if (key == "data\\scripts\\lib\\unit.script")
         return "@begin _unit_AddOrder\r\n"
                "DScriptSetgDbgString0('ML:unit.order|'+IntToStr(goHnd)+'|'+IntToStr(itype)+'|'+IntToStr(itrghnd)+'|'+"
-               "FloatToStr(ix)+'|'+FloatToStr(iy)); if (DScriptGetgDbgString0='ML:block') then exit;\r\n";
+               "FloatToStr(ix)+'|'+FloatToStr(iy)); if (DScriptGetgDbgString0='ML:block') then begin Result := nil; exit; end;\r\n";
     // unit.damage: весь урон — ближний бой, выстрелы, картечь, взрывы, по площади — идёт через _misc_DoDamage.
     if (key == "data\\scripts\\lib\\miscext2.script")
         return "@begin _misc_DoDamage\r\n"

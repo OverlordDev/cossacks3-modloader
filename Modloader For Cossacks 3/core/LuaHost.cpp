@@ -79,6 +79,11 @@ namespace
 
     lua_State* L = nullptr;
     std::vector<Mod> g_mods;
+    // Поколение таблицы модов: растёт в Close() (reload/unload). Любой обход g_mods,
+    // переживающий Call() в Lua (там может случиться reload и g_mods.clear()),
+    // обязан свериться с ним сразу после Call и остановиться при несовпадении —
+    // иначе ссылки Mod&/Bind& висят на освобождённой памяти.
+    uint64_t g_generation = 0;
     std::vector<int> g_baseSubs; // подписки api-модулей (таймеры): снимаются в Close()
     Mod g_console; // псевдо-мод для строк из консоли (права server)
     int g_baseEnvRef[2] = { LUA_NOREF, LUA_NOREF };
@@ -2389,6 +2394,7 @@ end
             Detach(mod);
         Detach(g_console);
         g_mods.clear();
+        ++g_generation; // все обходы g_mods с живыми ссылками через Call() — недействительны
         g_console = {};
         lua_close(L);
         L = nullptr;
@@ -2575,19 +2581,22 @@ void LuaHost::OnNetMessage(char direction, const std::string& modId, const std::
         return;
     int side = direction == 's' ? Server : Client;
 
-    for (auto& mod : g_mods)
+    // Индекс вместо ссылки: Call() может дотянуться до LoadAll (см. PollInput).
+    for (size_t mi = 0; mi < g_mods.size(); ++mi)
     {
-        if (!mod.loaded || mod.id != modId)
+        if (!g_mods[mi].loaded || g_mods[mi].id != modId)
             continue;
         // Серверная логика работает только там, где решается игра; shared-моды считают у всех.
-        if (side == Server && !mod.shared && !Game::IsAuthority())
+        if (side == Server && !g_mods[mi].shared && !Game::IsAuthority())
             return;
-        auto it = mod.netHandlers[side].find(event);
-        if (it == mod.netHandlers[side].end())
+        auto it = g_mods[mi].netHandlers[side].find(event);
+        if (it == g_mods[mi].netHandlers[side].end())
         {
-            LOG_WARN("[%s] net message '%s' has no %s handler", Who(mod, side).c_str(), event.c_str(), SideName(side));
+            LOG_WARN("[%s] net message '%s' has no %s handler", Who(g_mods[mi], side).c_str(), event.c_str(), SideName(side));
             return;
         }
+        uint64_t gen = g_generation;
+        std::string who = Who(g_mods[mi], side);
         std::vector<int> refs = it->second; // обработчик может добавить новые
         for (int ref : refs)
         {
@@ -2600,12 +2609,14 @@ void LuaHost::OnNetMessage(char direction, const std::string& modId, const std::
                 if (!Decode(L, data, pos, 0) || pos != data.size())
                 {
                     lua_pop(L, 1);
-                    LOG_WARN("[%s] net message '%s' from %d is malformed", Who(mod, side).c_str(), event.c_str(), from);
+                    LOG_WARN("[%s] net message '%s' from %d is malformed", who.c_str(), event.c_str(), from);
                     return;
                 }
             }
             lua_pushinteger(L, from);
-            Call(2, 0, Who(mod, side));
+            Call(2, 0, who);
+            if (gen != g_generation || !L)
+                return; // моды перезагружены внутри обработчика
         }
         return;
     }
@@ -2635,25 +2646,44 @@ void LuaHost::PollInput(bool active)
 {
     if (!L)
         return;
-    for (auto& mod : g_mods)
+    // Обход по индексам, ссылки — только до Call(): обработчик может через очередь
+    // сообщений дотянуться до LoadAll (g_mods.clear + переаллокация), и Mod&/Bind&
+    // станут висячими. После каждого Call сверяем поколение и выходим целиком —
+    // продолжать нечего: при reload все привязки уже перерегистрированы заново.
+    for (size_t mi = 0; mi < g_mods.size(); ++mi)
     {
-        if (!mod.loaded)
+        if (!g_mods[mi].loaded)
             continue;
-        for (size_t i = 0; i < mod.binds.size(); ++i)
+        for (size_t i = 0; i < g_mods[mi].binds.size(); ++i)
         {
-            Bind& b = mod.binds[i];
-            bool down = active && (GetAsyncKeyState(b.vk) & 0x8000) != 0 && ModifiersMatch(b);
-            if (down && !b.wasDown)
+            uint64_t gen = g_generation;
+            int vk = g_mods[mi].binds[i].vk;
+            bool ctrl = g_mods[mi].binds[i].ctrl;
+            bool shift = g_mods[mi].binds[i].shift;
+            bool alt = g_mods[mi].binds[i].alt;
+            bool wasDown = g_mods[mi].binds[i].wasDown;
+            Bind tmp{ g_mods[mi].binds[i].key, vk, ctrl, shift, alt,
+                      g_mods[mi].binds[i].ref, wasDown };
+            bool isDown = active && (GetAsyncKeyState(tmp.vk) & 0x8000) != 0 &&
+                          ModifiersMatch(tmp);
+            if (isDown && !tmp.wasDown)
             {
-                b.wasDown = true;
-                lua_rawgeti(L, LUA_REGISTRYINDEX, b.ref);
-                lua_pushstring(L, b.key.c_str());
-                Call(1, 0, Who(mod, Client));
-                if (i >= mod.binds.size())
-                    break; // обработчик мог перезагрузить моды
+                g_mods[mi].binds[i].wasDown = true;
+                int ref = tmp.ref;
+                std::string key = tmp.key;
+                std::string who = Who(g_mods[mi], Client);
+                lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
+                lua_pushstring(L, key.c_str());
+                Call(1, 0, who);
+                if (gen != g_generation || !L)
+                    return; // моды перезагружены (или Lua закрыт) внутри обработчика
             }
-            else if (!down)
-                b.wasDown = false;
+            else if (!isDown)
+            {
+                if (gen != g_generation || !L)
+                    return;
+                g_mods[mi].binds[i].wasDown = false;
+            }
         }
     }
 }

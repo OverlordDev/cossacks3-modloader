@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "CrashHandler.h"
+#include "Hooks.h"
 #include "Overlay.h"
 #include "GraphicsTab.h"
 #include "Console.h"
@@ -96,6 +97,7 @@ namespace
 
     LRESULT CALLBACK WndProc(HWND wnd, UINT msg, WPARAM wp, LPARAM lp)
     {
+        Hooks::InFlight inFlight;
         if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN)
             ++g_keysIn;
         else if (msg == WM_CHAR)
@@ -118,14 +120,29 @@ namespace
         return g_unicode ? CallWindowProcW(g_origProc, wnd, msg, wp, lp) : CallWindowProcA(g_origProc, wnd, msg, wp, lp);
     }
 
+    LONG_PTR CurrentProc(HWND hwnd, bool unicode)
+    {
+        return unicode ? GetWindowLongW(hwnd, GWL_WNDPROC) : GetWindowLongA(hwnd, GWL_WNDPROC);
+    }
+
     void RestoreWndProc()
     {
-        if (!g_hwnd.load() || !g_origProc)
+        HWND hwnd = g_hwnd.load();
+        if (!hwnd || !g_origProc)
             return;
+        // Как ScriptRunner: снимаем, только если поверх нас никто не встал
+        // (игра пересоздаёт окна, CEF/оверлей Steam тоже хукят WndProc).
+        // Чужую процедуру трогать нельзя — оставим как есть, но отчитаемся.
+        if (CurrentProc(hwnd, g_unicode) != reinterpret_cast<LONG_PTR>(WndProc))
+        {
+            LOG_WARN("Overlay: WndProc of %p is no longer ours — not touching it", hwnd);
+            g_origProc = nullptr;
+            return;
+        }
         if (g_unicode)
-            SetWindowLongW(g_hwnd.load(), GWL_WNDPROC, reinterpret_cast<LONG>(g_origProc));
+            SetWindowLongW(hwnd, GWL_WNDPROC, reinterpret_cast<LONG>(g_origProc));
         else
-            SetWindowLongA(g_hwnd.load(), GWL_WNDPROC, reinterpret_cast<LONG>(g_origProc));
+            SetWindowLongA(hwnd, GWL_WNDPROC, reinterpret_cast<LONG>(g_origProc));
         g_origProc = nullptr;
     }
 

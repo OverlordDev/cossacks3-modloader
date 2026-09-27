@@ -253,10 +253,24 @@ do
     world.move(h, 30, 40)
     check("world.pos", select(3, world.pos(h)), 3)
     world.destroy(h)
+    check("world.destroy invalidates handle", objects.alive(h), false)
     world.destroyNow(h)
+    check("pathfind rejects invalidated handle", pcall(pathfind.calculate, h, 5, 6), false)
     check("world validation", pcall(world.spawn, { race = "", base = "x", x = 0, z = 0 }), false)
 
     check("object.state", object.state(100), "idle")
+    -- object.states: имена берём у машины состояний, а не угадываем.
+    local stList = object.states(100)
+    check("object.states count", #stList, 3)
+    check("object.states[1]", stList[1], "idle")
+    check("object.states has burning", (function()
+        for _, s in ipairs(stList) do if s == "burning" then return true end end
+        return false
+    end)(), true)
+    -- Несуществующее состояние обязано отклоняться (иначе объект ломается).
+    check("setState unknown rejected", pcall(object.setState, 100, "no_such_state_zzz"), false)
+    -- ...и хендл без машины состояний не должен ломать перечисление.
+    check("object.states no sm", #object.states(555), 0)
     object.setState(100, "burning")
     object.destroyIn(100, "destroyed")
     check("object.progress", object.progress(100, "s.aix", "burning"), 61)
@@ -329,6 +343,37 @@ do
     orders.cancel(5, true)
     check("orders validation", pcall(orders.move, 0, 1, 2), false)
 
+    -- РЕГРЕССИЯ: game.exec кэшируется по ТЕКСТУ кода (ScriptRunner g_callCache),
+    -- новый текст = новое скомпилированное состояние ModLoader.Call.N на всю партию.
+    -- Значит orders обязан давать ОДИН текст на вид приказа, а хендлы/координаты
+    -- передавать через аргумент. Иначе 100 юнитов = 100 состояний, и модлоадер
+    -- начнёт ругаться "pass changing values via arg, not in the code text".
+    do
+        local seen = {}
+        for i = 1, 20 do
+            EXEC_LOG, EXEC_ARG = {}, {}
+            orders.move(1000 + i, i * 1.5, i * 2.5)          -- другие хендл и координаты
+            orders.attackMove(2000 + i, i * 3, i * 4)
+            for _, code in ipairs(EXEC_LOG) do seen[code] = true end
+        end
+        local n = 0
+        for _ in pairs(seen) do n = n + 1 end
+        check("orders: один текст состояния на вид приказа (move+attackMove = 2)", n, 2)
+
+        -- Координаты и хендл обязаны ехать в АРГУМЕНТЕ, а не в текст кода.
+        EXEC_LOG, EXEC_ARG = {}, {}
+        orders.move(4242, 111.5, 222.5)
+        local code, arg = EXEC_LOG[1], EXEC_ARG[1]
+        check("orders: хендл не вшит в код", code:find("4242") == nil, true)
+        check("orders: координаты не вшиты в код", code:find("111") == nil, true)
+        check("orders: значения в аргументе", arg ~= nil and arg:find("4242") ~= nil, true)
+        -- Последние два поля аргумента — clear|first.
+        check("orders: clear/first в аргументе", arg:sub(-3) == "1|0", true)
+        -- А для move координаты идут в f1/f2 ( тысячные).
+        check("orders: координаты в аргументе тысячными",
+              arg:find("|111500|222500|") ~= nil, true)
+    end
+
     local slots = formation.slots("wedge", 4, 3, 0, 0, 0)
     check("formation.slots", #slots, 4)
     check("formation.square", #formation.slots("square", 12, 3, 0, 0, 0), 12)
@@ -371,6 +416,8 @@ do
     economy.link(savedata)
     economy.set(0, "fuel", 100)
     check("economy.get", economy.get(0, "fuel"), 100)
+    savedata.set("eco:0:legacy", "17")
+    check("economy normalizes saved string", economy.get(0, "legacy"), 17)
     check("economy.consume", economy.consume(0, "fuel", 20), true)
     check("economy.poor", economy.consume(0, "fuel", 1000), false)
     local okp = economy.produce(777, "musketeer18", { player = 0, time = 100, cost = { fuel = 10 } })
@@ -419,11 +466,18 @@ do
     check("group.create", g, 801)
     group.add(g, { 101, 102 })
     check("group.members", #group.members(g), 2)
-    check("group.center", select(1, group.center(g)), 1)
+    -- group.center обязан ПЕРЕСЧИТЫВАТЬ кэш перед чтением: в игре без этого
+    -- он отдавал (0, 0, 0), потому что GroupGetCentralPosition*ByHandle только
+    -- читает, а заполняет его GroupCalcCentralPositionByHandle.
+    FAKE_GROUP_CENTER_CALCS = 0
+    check("group.center", select(1, group.center(g)), 55)
+    check("group.center recalcs", FAKE_GROUP_CENTER_CALCS, 1)
     group.move(g, 5, 6)
     group.formation(g, "line", { x = 0, z = 0 })
     group.stretch(g, 1.5)
+    FAKE_GROUP_CENTER_CALCS = 0
     group.rebuild(g)
+    check("group.rebuild recalcs center", FAKE_GROUP_CENTER_CALCS, 1)
     group.direct(g, true)
     check("group.ready", group.ready(g), true)
     group.destroy(g)
@@ -439,6 +493,7 @@ do
 
     regions.create("base", { { x = 0, z = 0 }, { x = 100, z = 0 }, { x = 100, z = 100 }, { x = 0, z = 100 } })
     check("regions.contains", regions.contains("base", 10, 10), true)
+    check("regions.boundary", regions.contains("base", 50, 0), true)
     check("regions.outside", regions.contains("base", 500, 500), false)
     check("regions.units", #regions.units("base"), 3)
     regions.block("base", true)
@@ -514,6 +569,7 @@ do
     check("steam.playedWith", steam.playedWith("76561198000000001"), true)
     check("steam.myId", steam.myId(), "76561198000000001")
 end
+
 
 -- utility libraries 60-70: отдельные файлы, свой счёт
 local utilPassed, utilFailed = 0, 0

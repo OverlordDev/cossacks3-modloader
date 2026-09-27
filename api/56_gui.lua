@@ -14,6 +14,14 @@
 
 gui = {}
 
+-- Счётчик имён: os.clock() даёт"lbl67.328" — точка в имени ломает ui.text
+-- (проверено 2026-09-27: ui.text 'lbl67.328' failed). Поэтому простой счётчик.
+local autoName = 0
+
+local function nextName()
+    autoName = autoName + 1
+    return tostring(autoName)
+end
 local modUi = nil   -- ui мода (button/onClick живут только там): gui.link(ui)
 
 -- Привязать ui мода (один раз в client.lua): gui.link(ui).
@@ -48,27 +56,27 @@ function gui.create(kind, opts)
     if type(opts) ~= "table" then error("gui.create: opts must be a table", 2) end
     local parent = opts.parent or 0
     if kind == "panel" then
-        return ui.container({ name = opts.name or ("gui" .. tostring(os.clock())),
+        return ui.container({ name = opts.name or ("gui" .. nextName()),
             parent = parent, x = opts.x or 0, y = opts.y or 0,
             w = opts.w or 200, h = opts.h or 100 })
     elseif kind == "button" then
         if not modUi or not ui.button then
             error("gui.create: button needs gui.link(ui) in client.lua", 2)
         end
-        return ui.button({ name = opts.name or ("btn" .. tostring(os.clock())),
+        return ui.button({ name = opts.name or ("btn" .. nextName()),
             parent = parent, text = opts.text or "OK",
             x = opts.x or 0, y = opts.y or 0, w = opts.w or 0, h = opts.h or 0,
             material = opts.material or "btn.large", hint = opts.hint or "",
             tag = opts.tag or 0,
             onClick = opts.onClick })
     elseif kind == "label" then
-        return ui.text({ name = opts.name or ("lbl" .. tostring(os.clock())),
+        return ui.text({ name = opts.name or ("lbl" .. nextName()),
             parent = parent, text = opts.text or "",
             x = opts.x or 0, y = opts.y or 0, w = opts.w or 0, h = opts.h or 0,
             font = opts.font or "gc_font_serif_15" })
     elseif kind == "image" then
         if not opts.material then error("gui.create: image needs material", 2) end
-        return ui.image({ name = opts.name or ("img" .. tostring(os.clock())),
+        return ui.image({ name = opts.name or ("img" .. nextName()),
             parent = parent, material = opts.material,
             x = opts.x or 0, y = opts.y or 0, w = opts.w or 0, h = opts.h or 0 })
     end
