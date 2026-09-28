@@ -251,6 +251,25 @@ namespace
         std::string lone = inj.line + ";";
         bool loneAbove = false; // строка выше — наша отдельная вставка: вызов под ней уже обработан
         int count = Engine::ListCount(list);
+
+        // ПРОГРЕВ: скомпилировать состояние, ничего не меняя.
+        //
+        // Пробная компиляция после StateReset может провалиться сама по себе —
+        // тогда вину заберёт та строка, которую пробовали ПЕРВОЙ, а она ни при
+        // чём. Именно так в 'OnMouseDown' годами не оборачивался первый из двух
+        // вызовов _player_OrderUnitsToAttack: строки и окружение у них совпадают
+        // побуквенно (data/gui/menu.inc/onmousedown.inc:493-498 и 693-698), а
+        // «не компилируется» получал всегда первый. Часть приказов атаки из-за
+        // этого не давала события player.order.
+        //
+        // Прогрев снимает эту разницу: дальше каждый отказ относится к своей
+        // строке. Если не компилируется само нетронутое состояние — это важный
+        // факт сам по себе, и о нём надо сказать, а не молча портить обёртки.
+        Engine::StateReset(state);
+        if (!Engine::StateCompileSafe(sm, state) && !quiet)
+            LOG_WARN("Events: %s: состояние '%s' не компилируется ДО наших правок — "
+                     "отказы обёрток ниже могут быть не про них",
+                     inj.event.c_str(), inj.state.c_str());
         for (int i = 0; i < count; ++i)
         {
             std::string original = Engine::ListGet(list, i);
@@ -280,19 +299,44 @@ namespace
             Engine::ListDelete(list, i);
             Engine::ListInsert(list, i, text);
             Engine::StateReset(state);
-            if (Engine::StateCompileSafe(sm, state))
+            // Вторая попытка с той же строкой: компиляция сразу после сброса
+            // иногда отказывает не из-за содержимого (см. прогрев выше). Объявлять
+            // строку негодной с одного раза — как раз то, из-за чего обёртка
+            // приказа атаки терялась навсегда: отказ запоминается ПО ТЕКСТУ, а у
+            // обоих вызовов он одинаковый, так что второй вызов потом даже не
+            // пробовали.
+            if (Engine::StateCompileSafe(sm, state) ||
+                (Engine::StateReset(state), Engine::StateCompileSafe(sm, state)))
             {
                 ++wrapped;
                 ++fresh;
+                // Удачные тоже в лог: без них не с чем сравнивать отказавшую
+                // строку, а в 'OnMouseDown' два одинаковых вызова ведут себя
+                // по-разному.
+                LOG_DEV("Events: %s: строка %d состояния '%s' обёрнута, длина %zu",
+                        inj.event.c_str(), i + 1, inj.state.c_str(), text.size());
                 continue;
             }
             Engine::ListDelete(list, i);
             Engine::ListInsert(list, i, original);
 
             // Отдельной строкой — только внутри блока (выше begin или законченный оператор), иначе
-            // после then/else/do она заберёт себе условие у вызова. Отмену так не сделать.
+            // после then/else/do она заберёт себе условие у вызова.
+            //
+            // ЭТОТ ПУТЬ ГОДИТСЯ И ДЛЯ БЛОКИРУЕМЫХ СОБЫТИЙ — с честной оговоркой:
+            // событие придёт, а отменить вызов через него нельзя (строка стоит
+            // перед вызовом и ничего не решает). Раньше для блокируемых он был
+            // запрещён совсем, и вызов оставался вообще без события.
+            //
+            // Ради чего: в 'OnMouseDown' один из двух ПОБУКВЕННО ОДИНАКОВЫХ
+            // вызовов _player_OrderUnitsToAttack не оборачивается ничем. Замеры
+            // 2026-09-28 исключили и длину, и содержимое: `begin <вызов> end;`
+            // длиной 150 символов там не компилируется, а полная обёртка в 469
+            // символов на соседнем таком же вызове — компилируется. Причина
+            // синтаксическая и привязана к месту; починить её мы не можем, а
+            // потерять половину приказов атаки — можем. Лучше событие без отмены,
+            // чем молчание.
             bool inserted = false;
-            if (!inj.blockable)
             {
                 std::string prev;
                 for (int k = i - 1; k >= 0 && prev.empty(); --k)
@@ -318,6 +362,13 @@ namespace
                         ++fresh;
                         ++count;
                         ++i; // вызов теперь ниже вставки
+                        // Про потерю отмены говорим вслух: мод, который ждёт, что
+                        // сможет отменить этот вызов, иначе будет думать, что всё
+                        // в порядке.
+                        if (inj.blockable && !quiet)
+                            LOG_WARN("Events: %s: строка %d состояния '%s' не оборачивается — "
+                                     "событие будет приходить, но ОТМЕНИТЬ этот вызов нельзя",
+                                     inj.event.c_str(), i + 1, inj.state.c_str());
                         LOG_DEV("Events: %s: line %d of '%s' — event inserted as a separate line", inj.event.c_str(),
                                 i + 1, inj.state.c_str());
                     }
@@ -327,13 +378,74 @@ namespace
             }
             if (inserted)
                 continue;
-            bad.insert(original);
+            // ПОЧЕМУ не скомпилировалось. Движок сообщает только имя состояния,
+            // без строки и причины, поэтому выясняем перебором: подставляем
+            // упрощённые формы той же обёртки и смотрим, какая пройдёт. Каждая
+            // проба возвращает строку на место, поведение не меняется.
+            //
+            // Это нужно, потому что в 'OnMouseDown' из двух ПОБУКВЕННО
+            // ОДИНАКОВЫХ вызовов _player_OrderUnitsToAttack первый не
+            // оборачивается, а второй оборачивается. Ни текст строки, ни
+            // условие над ней (199 и 202 символа, отличие лишь в отступе) не
+            // объясняют разницу.
+            if (!quiet)
+            {
+                struct Probe { const char* what; std::string text; };
+                std::string head = original.substr(0, start);
+                const Probe probes[] = {
+                    // Без хвостового комментария с исходной строкой — он длинный.
+                    { "без {ML:orig}", head + "begin " + Fill(inj.line, args) + "; " + guard + core +
+                                       " end" + (semicolon ? ";" : "") },
+                    // Без проверки блокировки — короче и без вложенного if.
+                    { "без guard", head + "begin " + Fill(inj.line, args) + "; " + core + " end" +
+                                   (semicolon ? ";" : "") },
+                    // Только строка события вместо вызова: компилируется ли сам текст
+                    // события в этом месте (вызов при этом временно пропадает —
+                    // проба тут же возвращает строку на место).
+                    { "только событие", head + Fill(inj.line, args) + ";" },
+                    // Вложенный begin с КОРОТКИМ содержимым вместо события. Это
+                    // разводит две оставшиеся версии: если проходит — мешает длина
+                    // или содержимое строки события, если нет — сама вложенность
+                    // begin..end в этом месте.
+                    { "короткий begin", head + "begin " + core + " end" + (semicolon ? ";" : "") },
+                };
+                std::string verdict;
+                for (const Probe& p : probes)
+                {
+                    Engine::ListDelete(list, i);
+                    Engine::ListInsert(list, i, p.text);
+                    Engine::StateReset(state);
+                    bool ok = Engine::StateCompileSafe(sm, state);
+                    // Длину пишем рядом: без неё нельзя отличить «мешает длина» от
+                    // «мешает содержимое».
+                    verdict += std::string(verdict.empty() ? "" : ", ") + p.what + "(" +
+                               std::to_string(p.text.size()) + ")" + (ok ? "=ОК" : "=нет");
+                    Engine::ListDelete(list, i);
+                    Engine::ListInsert(list, i, original);
+                    Engine::StateReset(state);
+                }
+                LOG_DEV("Events: %s: строка %d состояния '%s' — длина обёртки %zu; пробы: %s",
+                        inj.event.c_str(), i + 1, inj.state.c_str(), text.size(), verdict.c_str());
+                for (int k = i - 2; k <= i + 2; ++k)
+                    if (k >= 0 && k < count && k != i)
+                        LOG_DEV("Events:   соседняя %d: %s", k + 1, Engine::ListGet(list, k).c_str());
+            }
+
+            // В «негодные» — только ПОСЛЕ прохода (см. ниже). Если пометить сразу,
+            // то вторая такая же строка в этом же состоянии будет пропущена по
+            // совпадению текста, хотя её никто не пробовал: у двух вызовов
+            // _player_OrderUnitsToAttack в 'OnMouseDown' текст побуквенно
+            // одинаковый.
             skippedNow.push_back(original);
             Engine::StateReset(state);
             ++skipped;
             LOG_DEV("Events: %s: line %d of '%s' does not compile wrapped, left as is: %s", inj.event.c_str(), i + 1,
                     inj.state.c_str(), original.c_str());
         }
+        // Теперь, когда все вхождения в этом состоянии опробованы, запоминаем
+        // негодные — чтобы не бить по ним на следующих перехватах.
+        for (const std::string& line : skippedNow)
+            bad.insert(line);
         if (skipped)
             Engine::StateCompileSafe(sm, state); // вернуть состояние в рабочий (скомпилированный) вид
         // Первая компиляция состояния иногда падает не из-за нашей строки (в OnMouseDown отказывала
