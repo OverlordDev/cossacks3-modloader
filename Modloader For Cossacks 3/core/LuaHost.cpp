@@ -628,6 +628,38 @@ namespace
         Call(2, 0, who);
     }
 
+    // Подписка на несуществующее событие — самая дорогая опечатка в моддинге:
+    // events.on принимает любую строку, обработчик просто никогда не вызывается,
+    // и мод "написан, но не работает". Сверяем имя с каталогом (api/59_events.lua)
+    // и, если похоже на опечатку, называем ближайшее имя.
+    //
+    // Это предупреждение, а не ошибка: каталог может отстать от свежего события,
+    // и ломать из-за этого чужой мод нельзя.
+    void WarnUnknownEvent(int side, const std::string& event, const std::string& who)
+    {
+        if (g_baseEnvRef[side] == LUA_NOREF)
+            return;
+        lua_rawgeti(L, LUA_REGISTRYINDEX, g_baseEnvRef[side]);
+        lua_getfield(L, -1, "eventKnown");
+        if (!lua_isfunction(L, -1)) // api/59_events.lua не загружен — молчим
+        {
+            lua_pop(L, 2);
+            return;
+        }
+        lua_pushstring(L, event.c_str());
+        if (lua_pcall(L, 1, 2, 0) != LUA_OK)
+        {
+            lua_pop(L, 2);
+            return;
+        }
+        bool known = lua_toboolean(L, -2) != 0;
+        const char* hint = lua_tostring(L, -1); // готовая фраза из eventKnown, либо nullptr
+        if (!known)
+            LOG_WARN("[lua] %s: unknown event '%s', handler will never run. %s",
+                     who.c_str(), event.c_str(), hint ? hint : "See api/59_events.lua for the list.");
+        lua_pop(L, 3);
+    }
+
     int l_eventsOn(lua_State* L)
     {
         Mod* mod = ModFromUpvalue(L);
@@ -637,6 +669,7 @@ namespace
         lua_pushvalue(L, 2);
         int ref = luaL_ref(L, LUA_REGISTRYINDEX);
         std::string who = Who(*mod, side);
+        WarnUnknownEvent(side, event, who);
 
         bool everywhere = mod->shared;
         int id = Events::Subscribe(event, [ref, side, everywhere, who](const std::string& name, const std::string& payload) {
@@ -667,6 +700,7 @@ namespace
         lua_pushvalue(L, 2);
         int ref = luaL_ref(L, LUA_REGISTRYINDEX);
         std::string who = std::string("api:base:") + SideName(side);
+        WarnUnknownEvent(side, event, who);
         int id = Events::Subscribe(event, [ref, side, who](const std::string& name, const std::string& payload) {
             CallEventHandler(ref, side, true /*everywhere*/, who, name, payload);
         });
