@@ -23,7 +23,7 @@ for _, name in ipairs({ "00_schema", "01_state", "02_screens_data", "10_profile"
                         "54_regions", "55_tracks", "56_gui", "57_native_catalog", "58_steam",
                         "60_mathx", "61_vec", "62_tablex", "63_stringx",
                         "64_geometry", "65_scheduler", "66_rng", "67_query",
-                        "68_validate", "69_config", "70_color", "90_call" }) do
+                        "68_validate", "69_config", "70_color", "71_water", "90_call" }) do
     local path = root .. "/api/" .. name .. ".lua"
     local chunk, err = loadfile(path, "t", _ENV)
     assert(chunk, err)
@@ -70,6 +70,30 @@ check("read nested 2", st.additional.peacetime, 10)
 
 -- state.list
 check("list size", #state.list("gMap.players"), 12)
+
+-- state.globals / state.fields: обход состояния, не зная заранее, что там лежит.
+-- Игру не трогают вовсе — отвечают по схеме, поэтому и проверяются без неё.
+local globals = state.globals()
+check("globals не пуст", #globals > 0, true)
+check("globals по алфавиту", globals[1].name < globals[#globals].name, true)
+local hasPlayers = false
+for _, g in ipairs(globals) do if g.name == "gMap" then hasPlayers = true end end
+check("globals содержит gMap", hasPlayers, true)
+
+local arr = state.fields("gMap.players")
+check("fields массива: это массив", arr.array, true)
+check("fields массива: нижняя граница", arr.from, 0)
+check("fields массива: тип элемента", arr.of, "TMapPlayer")
+
+local rec = state.fields("gMap.players[0]")
+check("fields записи: есть поля", #rec > 0, true)
+local byName = {}
+for _, f in ipairs(rec) do byName[f.name] = f.type end
+check("fields записи: тип name", byName.name, "string")
+check("fields записи: тип team", byName.team, "int")
+
+check("fields простого поля", state.fields("gMap.players[0].name").simple, true)
+check("fields простого поля: тип", state.fields("gMap.players[0].name").type, "string")
 
 -- state.set: все типы и что код постоянный (значение идёт аргументом)
 EXEC_LOG, EXEC_ARG = {}, {}          -- EXEC_LOG[1] ниже — про ЭТУ запись
@@ -691,6 +715,202 @@ do
 end
 
 
+-- ---------- рельеф и вода: правка карты на ходу ----------
+-- Стороны здесь настоящие: правка требует game.exec (server/shared), чтение — нет.
+NATIVE_LOG = {}
+
+-- Тайлы: имя блока и индекс — одно и то же, наружу принимаем оба.
+check("tileIndex по имени", terrain.tileIndex("sand"), 1)
+check("tileIndex по числу", terrain.tileIndex(2), 2)
+check("tileIndex неизвестного", terrain.tileIndex("нетакого"), nil)
+check("tileName", terrain.tileName(2), "rock")
+check("tileName неизвестного", terrain.tileName(99), nil)
+
+terrain.setTile(10, 20, "rock")
+local ti, tn = terrain.tile(10, 20)
+check("setTile+tile: индекс", ti, 2)
+check("setTile+tile: имя", tn, "rock")
+check("setTile по имени -> индекс", NATIVE_LOG[#NATIVE_LOG].args[3], 2)
+check("setTile неизвестного падает",
+      select(1, pcall(terrain.setTile, 1, 1, "нетакого")), false)
+
+terrain.setTile(11, 20, "sand")
+check("replaceTiles считает клетки", terrain.replaceTiles("sand", "grass"), 1)
+
+-- paint: порядок аргументов натива важнее всего — перепутанные кисти молча
+-- нарисуют не то. Проверяем каждую позицию.
+NATIVE_LOG = {}
+terrain.paint(100.5, 80.25, { tile = "sand", cliff = 3, water = 2, ramp = true,
+                              apply = 1, level = 4, size = 5, round = false, reproduce = true })
+local a = NATIVE_LOG[#NATIVE_LOG].args
+check("paint: натив", NATIVE_LOG[#NATIVE_LOG].name, "PaintTerrain")
+check("paint: x", a[1], 100.5)
+check("paint: z отрицается", a[2], -80.25)
+check("paint: tile индексом", a[3], 1)
+check("paint: cliff", a[4], 3)
+check("paint: water", a[5], 2)
+check("paint: ramp", a[6], true)
+check("paint: apply", a[7], 1)
+check("paint: level", a[8], 4)
+check("paint: size", a[9], 5)
+check("paint: round", a[10], false)
+check("paint: reproduce", a[11], true)
+
+-- Умолчания: ничего не сказали — ничего и не трогаем. «Не трогать» у движка
+-- это -1; ноль — настоящий номер тайла, им игра красит карту.
+NATIVE_LOG = {}
+terrain.paint(0, 0, {})
+local d = NATIVE_LOG[#NATIVE_LOG].args
+check("paint по умолчанию: тайл не трогаем", d[3], -1)
+check("paint по умолчанию: скалы не трогаем", d[4], -1)
+check("paint по умолчанию: вода не трогаем", d[5], -1)
+check("paint по умолчанию: круглая", d[10], true)
+
+check("color отдаёт четыре значения", select("#", terrain.color(1, 1)), 4)
+
+-- Водоёмы.
+check("вначале воды нет", water.count(), 0)
+local lake = water.add{ name = "lake", x1 = 40, z1 = -40, x2 = -40, z2 = 40, level = -1 }
+check("add вернул индекс", lake, 0)
+local f = water.get(lake)
+check("углы нормализованы: x1", f.x1, -40)
+check("углы нормализованы: x2", f.x2, 40)
+check("имя", f.name, "lake")
+check("уровень", f.level, -1)
+
+water.move(lake, { x1 = -50, z1 = -50, x2 = 50, z2 = 50 })
+check("move не сбросил уровень", water.get(lake).level, -1)
+water.level(lake, -2.5)
+check("level", water.get(lake).level, -2.5)
+water.rename(lake, "озеро")
+check("find по имени", water.find("озеро"), 0)
+check("find неизвестного", water.find("нетакого"), nil)
+check("list", #water.list(), 1)
+check("get за границей", water.get(5), nil)
+
+water.add{ name = "второе", x1 = 0, z1 = 0, x2 = 10, z2 = 10 }
+check("два водоёма", water.count(), 2)
+water.remove(0)
+check("после remove остался один", water.count(), 1)
+check("остался именно второй", water.get(0).name, "второе")
+water.clear()
+check("clear", water.count(), 0)
+
+-- Чтение: доступно и без game.exec.
+check("at отдаёт два значения", select("#", water.at(-10, 0)), 2)
+check("at: вода слева", (water.at(-10, 0)), true)
+check("cell", water.cell(1, 1), true)
+check("depth отдаёт два значения", select("#", water.depth(100)), 2)
+
+-- Правка мира без game.exec — ошибка, а не тихое ничего.
+local realExec = game.exec
+game.exec = nil
+check("setTile без exec падает", select(1, pcall(terrain.setTile, 1, 1, 0)), false)
+check("paint без exec падает", select(1, pcall(terrain.paint, 0, 0, {})), false)
+check("water.add без exec падает", select(1, pcall(water.add, { x1 = 0, z1 = 0, x2 = 1, z2 = 1 })), false)
+check("water.at без exec работает", select(1, pcall(water.at, 0, 0)), true)
+game.exec = realExec
+
+-- Кисти рельефа: мировые координаты, вторая отрицается, mb — это радиус.
+-- Всё три проверены по коду самой игры:
+--   PaintTerrain(px, -py, 86, -1, -1, False, -1, -1, cRadius, False, True)
+--       data/scripts/lib/misc.script, _misc_CreateBorders
+--   PlateauTerrain(0, 0, False, (GetMapHeight div 2)-1, True)
+--       data/scripts/common.inc/dogenerate.inc, очистка карты
+-- В первой версии всё три были неверны, и мазок уходил в никуда.
+NATIVE_LOG = {}
+terrain.raise(100, 80, { delta = 2, radius = 5 })
+local r = NATIVE_LOG[#NATIVE_LOG]
+check("raise: натив", r.name, "RaiseTerrain")
+check("raise: x как есть", r.args[1], 100)
+check("raise: z отрицается", r.args[2], -80)
+check("raise: radius в mb", r.args[4], 5)
+check("raise: delta", r.args[5], 2)
+
+terrain.lower(-40.7, 25.2, {})
+local lo = NATIVE_LOG[#NATIVE_LOG]
+check("lower: дробное вниз", lo.args[1], -41)
+check("lower: отрицание до округления", lo.args[2], -26)
+check("lower: радиус по умолчанию", lo.args[4], 3)
+
+terrain.plateau(0, 0, { radius = 159, reproduce = true })
+local pl = NATIVE_LOG[#NATIVE_LOG]
+check("plateau: как чистит карту игра", pl.args[4], 159)
+check("plateau: reproduce", pl.args[5], true)
+
+-- mb оставлен как старое имя того же радиуса.
+terrain.smooth(10, 10, { mb = 7 })
+check("smooth: mb — то же, что radius", NATIVE_LOG[#NATIVE_LOG].args[4], 7)
+
+-- paint: пропущенное поле — -1 («не трогать»), а не 0 («кисть номер ноль»).
+NATIVE_LOG = {}
+terrain.paint(50, 60, { water = 1, radius = 4 })
+local w = NATIVE_LOG[#NATIVE_LOG].args
+check("paint: z отрицается", w[2], -60)
+check("paint: тайл не трогаем", w[3], -1)
+check("paint: скалы не трогаем", w[4], -1)
+check("paint: вода задана", w[5], 1)
+check("paint: apply не трогаем", w[7], -1)
+check("paint: level не трогаем", w[8], -1)
+check("paint: радиус", w[9], 4)
+
+terrain.paint(0, 0, { tile = "grass" })
+local tp = NATIVE_LOG[#NATIVE_LOG].args
+check("paint: тайл индексом", tp[3], 0)
+check("paint: при тайле скалы не трогаем", tp[4], -1)
+
+-- Проходимость: именно она решает, где вода для портов и кораблей.
+-- Теги — из data/scripts/dmscript.global игры.
+check("тег воды", COLLISION_TAG.water, 87)
+check("тег ничего", COLLISION_TAG.none, 0)
+check("тег моста", COLLISION_TAG.bridge, 10)
+
+NATIVE_LOG = {}
+terrain.setCollision(10, -20, "water", { radius = 5 })
+local col = NATIVE_LOG[#NATIVE_LOG]
+check("setCollision: натив", col.name, "MapDrawCollision")
+check("setCollision: x", col.args[1], 10)
+check("setCollision: z БЕЗ отрицания", col.args[2], -20)
+check("setCollision: тег по имени", col.args[3], 87)
+check("setCollision: радиус", col.args[4], 5)
+check("collision читает обратно", terrain.collision(10, -20), 87)
+check("collision: где не красили — ноль", terrain.collision(999, 999), 0)
+check("setCollision: неизвестное имя падает",
+      select(1, pcall(terrain.setCollision, 0, 0, "нетакого")), false)
+
+-- terrain.water — все три части сразу: яма, проходимость, зеркало.
+FAKE_WATER, NATIVE_LOG = {}, {}
+local idx = terrain.water(30, -40, { radius = 6, depth = 3, level = -2, name = "река" })
+local names = {}
+for _, e in ipairs(NATIVE_LOG) do names[e.name] = (names[e.name] or 0) + 1 end
+check("water: вырыл яму", names.LowerTerrain, 1)
+check("water: закрасил проходимость", names.MapDrawCollision, 1)
+check("water: одним мазком, а не по точкам", names.MapDrawCollision, 1)
+check("water: пересчитал рельеф", names["terr.update"], 1)
+check("water: завёл водоём", water.count(), 1)
+check("water: вернул индекс", idx, 0)
+local made = water.get(0)
+check("water: имя", made.name, "река")
+check("water: уровень", made.level, -2)
+check("water: прямоугольник по радиусу", made.x1, 24)
+check("water: тег воды на месте", terrain.collision(30, -40), 87)
+
+-- Клетки и мировые координаты: карта 320 идёт от -160 до +160.
+local ci, cj = terrain.cell(-160, 160)
+check("cell: левый край -> 0", ci, 0)
+check("cell: правый край -> 320", cj, 320)
+check("cell: центр", select(1, terrain.cell(0, 0)), 160)
+local wx, wz = terrain.world(160, 160)
+check("world: центр клетки по x", wx, 0.5)
+check("world: центр клетки по z", wz, 0.5)
+
+-- Точка под курсором: три значения, не два (на этом сгорел iron_frontier).
+check("cursor: три значения", select("#", world.cursor()), 3)
+local cx, cy, cz = world.cursor()
+check("cursor: x", cx, 12.5)
+check("cursor: высота вторым", cy, 3.25)
+check("cursor: z третьим", cz, -40.75)
+
 -- utility libraries 60-70: отдельные файлы, свой счёт
 local utilPassed, utilFailed = 0, 0
 for _, f in ipairs({ "util_pure", "util_sim", "util_world" }) do
@@ -701,6 +921,9 @@ for _, fn in ipairs({ run_util_pure, run_util_sim, run_util_world }) do
     utilPassed, utilFailed = utilPassed + p, utilFailed + fl
 end
 passed, failed = passed + utilPassed, failed + utilFailed
+print(("utility modules: 11, tests %d/%d"):format(utilPassed, utilPassed + utilFailed))
+-- Итог печатается ПОСЛЕДНИМ: tools/run_tests.py показывает рядом с названием
+-- набора его последнюю строку, и раньше там оказывалось "failed: 0" из отчёта
+-- утилит — даже когда падали проверки api.
 print(("api: %d module(s), %d passed, %d failed"):format(#loaded, passed, failed))
-print(("utility modules: 11\nutility tests: %d/%d\nfailed: %d"):format(utilPassed, utilPassed + utilFailed, utilFailed))
 os.exit(failed == 0 and 0 or 1)

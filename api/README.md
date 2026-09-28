@@ -27,10 +27,10 @@ Lua-модули, которые модлоадер грузит в окруже
 | `24_animation.lua` | `animation` + `model` — анимации, актёры, материалы, масштаб/поворот (shared/client) |
 | `25_effects.lua` | `effects` — дым/огонь/взрывы/пыль/подсветка, только картинка (shared/client) |
 | `26_decals.lua` | `decals` — воронки/гарь/следы на земле (shared) |
-| `27_world.lua` | `world.spawn/destroy/move/pos` — runtime-создание объектов (server/shared) |
+| `27_world.lua` | `world.spawn/destroy/move/pos` — runtime-создание объектов (server/shared); `world.cursor` — точка под мышью (3 значения!) |
 | `28_object.lua` | `object` — состояния объектов, destroyIn, waitFor, progress (set: server) |
 | `29_pathfind.lua` | `pathfind` — поиск пути, длина по топологии, готовность группы |
-| `30_terrain.lua` | `terrain` — raise/lower/smooth/update (server/shared), height везде |
+| `30_terrain.lua` | `terrain` — редактор рельефа на ходу: raise/lower/smooth/plateau/random, тайлы (tile/setTile/replaceTiles), кисть `paint`, `terrain.water` — река/озеро целиком (яма+зеркало+проходимость), `collision`/`setCollision` + `COLLISION_TAG`, цвет земли, перевод клетка↔мир |
 | `31_fow.lua` | `fow` — туман войны, точечная разведка (запись: server/shared) |
 | `32_markers.lua` | `markers` — маркеры: миникарта + декаль + подсветка, expiry (client) |
 | `33_cutscene.lua` | `cutscene` — катсцены по шагам на камере (client) |
@@ -71,6 +71,7 @@ Lua-модули, которые модлоадер грузит в окруже
 | `68_validate.lua` | `validate` — проверки аргументов (pure) |
 | `69_config.lua` | `config` — конфиг на savedata, нужен link(savedata) |
 | `70_color.lua` | `color` — цвета 0..255, hex (pure) |
+| `71_water.lua` | `water` — водоёмы: add/move/level/remove/list (server/shared), чтение везде |
 | `21_abilities.lua` | `abilities` — server/shared способности с cooldown и area damage через штатный `_misc_DoDamage` |
 | `90_call.lua` | `api_call` — вход для страниц (`game.api` в JS) |
 

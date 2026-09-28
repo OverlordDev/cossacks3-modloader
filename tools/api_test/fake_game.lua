@@ -445,3 +445,86 @@ steam = {
     playedWith = function(id) return true end,
     myId = function() return "76561198000000001" end,
 }
+
+-- ---------- рельеф и вода (api/30_terrain, api/71_water) ----------
+-- Карта-образец: тайлы по именам блоков, водоёмы списком. Стенд ведёт себя как
+-- движок в том, что важно для проверок: неизвестное имя блока даёт -1, а
+-- WaterFieldGetCoord отдаёт пять значений, а не одно.
+FAKE_TILES = { [0] = "grass", [1] = "sand", [2] = "rock" }
+FAKE_CELLS = {}           -- "i,j" -> индекс тайла
+FAKE_WATER = {}           -- список { name, x1, z1, x2, z2, level }
+
+local function tileKey(i, j) return i .. "," .. j end
+
+native.MapGetTileIndexByTileBlock = function(name)
+    for i, n in pairs(FAKE_TILES) do if n == name then return i end end
+    return -1
+end
+native.MapGetTileBlockByTileIndex = function(i) return FAKE_TILES[i] or "" end
+native.GetTileIndex = function(i, j) return FAKE_CELLS[tileKey(i, j)] or 0 end
+native.GetTileName = function(i, j) return FAKE_TILES[FAKE_CELLS[tileKey(i, j)] or 0] end
+native.SetTileIndex = function(i, j, tile)
+    FAKE_CELLS[tileKey(i, j)] = tile
+    log("SetTileIndex", i, j, tile)
+end
+native.MapReplaceTiles = function(a, b, swap)
+    local n = 0
+    for key, v in pairs(FAKE_CELLS) do
+        if v == a then FAKE_CELLS[key], n = b, n + 1
+        elseif swap and v == b then FAKE_CELLS[key], n = a, n + 1 end
+    end
+    return n
+end
+native.MapGeneratorSmoothTiles = function() log("MapGeneratorSmoothTiles") end
+native.GetMapMostFrequentTile = function(i, j, rad) return "grass" end
+
+native.RaiseTerrain = function(x, y, round, mb, d) log("RaiseTerrain", x, y, round, mb, d) end
+native.LowerTerrain = function(x, y, round, mb, d) log("LowerTerrain", x, y, round, mb, d) end
+native.SmoothTerrain = function(x, y, round, mb) log("SmoothTerrain", x, y, round, mb) end
+native.PlateauTerrain = function(x, y, round, mb, repro) log("PlateauTerrain", x, y, round, mb, repro) end
+native.RandomHeightTerrain = function(x, y, round, mb, d) log("RandomHeightTerrain", x, y, round, mb, d) end
+native.MapGeneratorSmoothTerrain = function(x, y, p, r) log("MapGeneratorSmoothTerrain", x, y, p, r) end
+native.PaintTerrain = function(...) NATIVE_LOG[#NATIVE_LOG + 1] = { name = "PaintTerrain", args = { ... } } end
+native.GetTerrainColorData = function(i, j) return 0.1, 0.2, 0.3, 1 end
+native.SetTerrainColorData = function(i, j, r, g, b, a) log("SetTerrainColorData", i, j, r, g, b, a) end
+
+native.WaterFieldGetCount = function() return #FAKE_WATER end
+native.WaterFieldAdd = function(name, x1, z1, x2, z2, level)
+    FAKE_WATER[#FAKE_WATER + 1] = { name = name, x1 = x1, z1 = z1, x2 = x2, z2 = z2, level = level }
+    return #FAKE_WATER - 1                       -- движок нумерует с нуля
+end
+native.WaterFieldGetCoord = function(i)
+    local f = FAKE_WATER[i + 1]
+    if not f then return 0, 0, 0, 0, 0 end
+    return f.x1, f.z1, f.x2, f.z2, f.level
+end
+native.WaterFieldGetNameByIndex = function(i) return (FAKE_WATER[i + 1] or {}).name end
+native.WaterFieldGetIndexByName = function(name)
+    for i, f in ipairs(FAKE_WATER) do if f.name == name then return i - 1 end end
+    return -1
+end
+native.WaterFieldGetOffsetY = function(i) return (FAKE_WATER[i + 1] or {}).level end
+native.WaterFieldSetOffsetY = function(i, y) FAKE_WATER[i + 1].level = y end
+native.WaterFieldSetName = function(i, n) FAKE_WATER[i + 1].name = n end
+native.WaterFieldSetCoord = function(i, x1, z1, x2, z2, level)
+    local f = FAKE_WATER[i + 1]
+    f.x1, f.z1, f.x2, f.z2, f.level = x1, z1, x2, z2, level
+end
+native.WaterFieldDelete = function(i) table.remove(FAKE_WATER, i + 1) end
+native.WaterFieldsClear = function() FAKE_WATER = {} end
+native.GetWaterExt = function(x, z) return x < 0, -1.5 end
+native.GetWater = function(i, j) return i < 5 end
+native.GetGameObjectDepthUnderWaterByHandle = function(h) return 2.5 end
+native.GetGameObjectPositionInWaterByHandle = function(h) return true end
+native.GetCurrentMouseWorldCoord = function() return 12.5, 3.25, -40.75 end
+native.GetMapWidth = function() return 320 end
+native.GetMapHeight = function() return 320 end
+
+-- Карта столкновений: тег в точке. Ключ с шагом 0.5 — сетка тегов вдвое мельче
+-- клетки, как в texturemap.inc игры.
+FAKE_TAGS = {}
+native.MapDrawCollision = function(x, y, tag, radius, round)
+    FAKE_TAGS[x .. "," .. y] = tag
+    log("MapDrawCollision", x, y, tag, radius, round)
+end
+native.GetMapCollisionTag = function(x, y, layers) return FAKE_TAGS[x .. "," .. y] or 0 end

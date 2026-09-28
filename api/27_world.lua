@@ -131,3 +131,18 @@ function world.pos(h)
            native.GetGameObjectPositionYByHandle(h),
            native.GetGameObjectPositionZByHandle(h)
 end
+
+-- world.cursor(): мировая точка под курсором мыши.
+--
+-- Возвращает ТРИ значения: x, y (высота рельефа), z. Не два.
+--
+--   local x, y, z = world.cursor()          -- правильно
+--   local x, z = world.cursor()             -- в z попадёт ВЫСОТА
+--
+-- Ровно на этом сгорел мод iron_frontier: снаряды летели в точку с z ≈ 0,
+-- потому что вторым значением приходит высота, а не вторая координата.
+-- Сторона: везде (только чтение). Ошибки: вне партии.
+function world.cursor()
+    if not game.isInGame() then error("world.cursor: no active game", 2) end
+    return native.GetCurrentMouseWorldCoord()
+end
