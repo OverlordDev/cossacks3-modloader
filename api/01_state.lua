@@ -155,6 +155,43 @@ local function argOf(args, value)
     return table.concat(out, "|")
 end
 
+-- state.globals(): корни состояния игры — с чего вообще начинается путь.
+-- Возврат: список { name, type, array = { lo, hi } } по алфавиту. Ни одного
+-- обращения к игре: это схема (api/00_schema.lua), а не данные.
+-- Сторона: везде. Ошибок не кидает.
+function state.globals()
+    local out = {}
+    for name, node in pairs(SCHEMA.globals) do
+        out[#out + 1] = { name = name, type = node.array and "array" or node.type, array = node.array }
+    end
+    table.sort(out, function(a, b) return a.name < b.name end)
+    return out
+end
+
+-- state.fields(path): из чего состоит значение по пути — не читая саму игру.
+--
+-- Нужно, чтобы состояние можно было ОБХОДИТЬ, не зная заранее, что там лежит:
+-- state.read отдаёт простые поля, но про вложенные записи и массивы молчит, а
+-- state.list требует знать границы. Здесь и то и другое.
+--
+-- Возврат для записи: список { name, type, array = { lo, hi } }.
+-- Для массива:        { array = true, from = lo, to = hi, of = "тип элемента" }.
+-- Для простого поля:  { simple = true, type = "int" } — раскрывать нечего.
+-- Сторона: везде. Ошибки: те же, что у describe (unknown global/no field).
+function state.fields(path)
+    local node = describe(path)
+    if node.array then
+        return { array = true, from = node.array[1], to = node.array[2],
+                 of = node.of.array and "array" or node.of.type }
+    end
+    if SCALAR[node.type] then return { simple = true, type = node.type } end
+    local out = {}
+    for _, f in ipairs(SCHEMA.types[node.type] or {}) do
+        out[#out + 1] = { name = f.name, type = f.array and "array" or f.type, array = f.array }
+    end
+    return out
+end
+
 -- state.type(path): имя типа значения. Парам: path — путь. Возврат: "int"/"float"/"string"/"bool"/"array"/имя записи.
 -- Сторона: shared (везде). Ошибки: unknown global/no field/not an array (из describe).
 function state.type(path)
