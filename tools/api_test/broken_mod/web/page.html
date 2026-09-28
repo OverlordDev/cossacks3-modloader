@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<!-- Страница с нарочно испорченным вызовом api: её проверяет modcheck_test.py. -->
+<html lang="ru">
+<head><meta charset="utf-8"><title>Сломанная страница</title></head>
+<body>
+<script>
+// Имя функции api — обычная строка, и переименование ломает страницу молча.
+async function show() {
+  const recs = await game.api('query.scna', { limit: 5 });   // ошибка: такой функции нет
+  document.body.textContent = JSON.stringify(recs);
+}
+show();
+</script>
+</body>
+</html>
