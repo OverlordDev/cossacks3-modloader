@@ -80,7 +80,13 @@ function screens.open(name)
     local s = info(name)
     if not s.show then error("screens.open: '" .. name .. "' has no Show state", 2) end
     -- Со страницы (game.api) ui нет — там работают с правами сервера и зовут игру напрямую.
-    if ui then ui.exec(s.show) else game.exec("GUIExecuteState('" .. s.show .. "');") end
+    --
+    -- Имя состояния уходит АРГУМЕНТОМ, а не в текст кода: движок кэширует
+    -- скомпилированный Pascal по тексту, и каждый новый текст — это состояние
+    -- ModLoader.Call.N, живущее до конца партии (освободить его нельзя,
+    -- ScriptRunner.cpp). С именем в тексте каждый экран съедал своё состояние;
+    -- теперь на все экраны один текст.
+    if ui then ui.exec(s.show) else game.exec("GUIExecuteState(ML_ARG);", s.show) end
 end
 
 -- screens.press(name, button): нажать кнопку экрана. Парам: name — экран; button — имя или тэг.
@@ -89,7 +95,23 @@ function screens.press(name, button)
     local s = info(name)
     if not s.event then error("screens.press: '" .. name .. "' has no Event state", 2) end
     local tag = tagOf(s, name, button)
-    if ui then ui.sendTag(s.event, tag) else game.exec("_gui_SendTagToState('" .. s.event .. "', " .. tag .. ");") end
+    if ui then
+        ui.sendTag(s.event, tag)
+    else
+        -- И тэг, и имя состояния — аргументом (см. screens.open). Тэгов у экранов
+        -- много, поэтому с тэгом в тексте состояния множились по числу нажатых
+        -- кнопок, а не по числу экранов.
+        --
+        -- Число идёт первым и режется по '|', имя — остатком строки: остаток не
+        -- режем, поэтому его содержимое ничего не ломает. Строки — функциями
+        -- движка: Pos/Copy в этом диалекте Pascal нет (tools/check_pascal.py).
+        game.exec([[
+var s : String = ML_ARG;
+var q, tag : Integer;
+q := StrPos('|', s); tag := StrToInt(SubStr(s, 1, q-1)); s := SubStr(s, q+1, StrLength(s)-q);
+_gui_SendTagToState(s, tag);]],
+                  math.floor(tonumber(tag) or 0) .. "|" .. s.event)
+    end
 end
 
 local function modOnly()

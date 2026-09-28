@@ -44,11 +44,18 @@ s := s + IntToStr(c) + ',' + IntToStr(u) + ',' + gObjProp[c][u].sid + ';';
 ML_RET(s);]])
     else
         -- Клиенту исполнять код нельзя — читаем по одному (медленнее, но только один раз).
+        --
+        -- ЧЕРЕЗ state.get, А НЕ game.eval С ЧИСЛАМИ В ТЕКСТЕ. Движок кэширует код
+        -- по тексту, и каждый новый текст — это состояние ModLoader.Call.N,
+        -- которое живёт до конца партии и не освобождается. Здесь 24 x 80 путей,
+        -- то есть раньше этот цикл в одиночку создавал 1920 состояний движка.
+        -- state.get уводит индексы в аргумент (api/01_state.lua, paramise), и
+        -- текст остаётся один на все 1920 чтений.
         local parts = {}
         for c = 0, 23 do
             for u = 0, 79 do
-                local sid = game.eval("gObjProp[" .. c .. "][" .. u .. "].sid")
-                if sid ~= "" then parts[#parts + 1] = c .. "," .. u .. "," .. sid end
+                local sid = state.get("gObjProp[" .. c .. "][" .. u .. "].sid")
+                if sid ~= nil and sid ~= "" then parts[#parts + 1] = c .. "," .. u .. "," .. sid end
             end
         end
         text = table.concat(parts, ";")
@@ -189,21 +196,64 @@ local function needExec(name)
     if not game.exec then error("balance." .. name .. ": only server/shared scripts can change the game", 3) end
 end
 
--- Код для каждой нации с этим типом и каждого игрока; body видит c, u, p, plHnd.
-local function forEach(sid, player, body)
+-- forEach(sid, player, body, values): код для каждого места типа + цикл по игрокам.
+-- Парам: sid — тип; player — игрок (nil — все); body — тело на Pascal; values —
+-- числа для тела (видны как v1..vN, уже целые).
+-- Возврат: код, аргумент для game.exec.
+--
+-- ЧИСЛА НЕ ПЕКУТСЯ В ТЕКСТ. Движок кэширует скомпилированный код по тексту, и
+-- каждый новый текст — это состояние ModLoader.Call.N, живущее до конца партии;
+-- освободить его нельзя (ScriptRunner.cpp, g_callCache). Раньше и номер страны с
+-- номером типа, и сами значения (maxhp, урон, интервал) шли прямо в текст, то
+-- есть каждый тип и каждое новое значение съедали ещё одно состояние навсегда.
+--
+-- В тексте остаётся форма, а страна/тип/диапазон игроков/значения уезжают в
+-- ML_ARG. Разбор — функциями движка: Pos/Copy в этом диалекте Pascal нет,
+-- есть StrPos/SubStr/StrLength (tools/check_pascal.py).
+local function forEach(sid, player, body, values)
+    values = values or {}
+    local spots = places(sid, 2)
+    local args = { player or 0, player or (PLAYERS - 1) }
+    local names = { "pfirst", "plast" }
+    for i, t in ipairs(spots) do
+        args[#args + 1] = t.country
+        args[#args + 1] = t.id
+        names[#names + 1] = "c" .. i
+        names[#names + 1] = "u" .. i
+    end
+    for i, v in ipairs(values) do
+        args[#args + 1] = math.floor(tonumber(v) or 0)
+        names[#names + 1] = "v" .. i
+    end
+
+    -- Порядок объявлений — как в заведомо рабочем api/38_orders.lua: сначала
+    -- строка с ML_ARG, потом остальное.
+    local head = { "var s : String = ML_ARG;",
+                   "var q : Integer;",
+                   "var c, u, p, i, k, plHnd, h : Integer;",
+                   "var pobj : Pointer;",
+                   "var old, ratio : Float;",
+                   "var " .. table.concat(names, ", ") .. " : Integer;" }
+    for _, name in ipairs(names) do
+        head[#head + 1] = string.format(
+            "q := StrPos('|', s); %s := StrToInt(SubStr(s, 1, q-1)); s := SubStr(s, q+1, StrLength(s)-q);",
+            name)
+    end
+
     local out = {}
-    for _, t in ipairs(places(sid, 2)) do
-        local first, last = player or 0, player or (PLAYERS - 1)
+    for i = 1, #spots do
         out[#out + 1] = string.format([[
-for p := %d to %d do
+for p := pfirst to plast do
 begin
-c := %d; u := %d;
+c := c%d; u := u%d;
 plHnd := GetPlayerHandleByIndex(p);
 %s
-end;]], first, last, t.country, t.id, body)
+end;]], i, i, body)
     end
-    return "var c, u, p, i, k, plHnd, h : Integer;\nvar pobj : Pointer;\nvar old, ratio : Float;\n" ..
-        table.concat(out, "\n")
+    -- Аргумент заканчивается разделителем: разбор режет по '|' ровно столько раз,
+    -- сколько имён, и последнему тоже нужен свой '|'.
+    return table.concat(head, "\n") .. "\n" .. table.concat(out, "\n"),
+           table.concat(args, "|") .. "|"
 end
 
 -- Цикл по живым объектам этого типа у игрока p: тело видит pobj (TObj) и h (хендл).
@@ -224,11 +274,12 @@ end;]]
 function balance.setHP(sid, maxhp, player)
     needExec("setHP")
     maxhp = math.floor(tonumber(maxhp) or 0)
+    -- v1 — новое maxhp; в текст не пишем (см. forEach).
     game.exec(forEach(sid, player, [[
 old := gPlayer[p].objbase[c][u].maxhp;
-gPlayer[p].objbase[c][u].maxhp := ]] .. maxhp .. [[;
+gPlayer[p].objbase[c][u].maxhp := v1;
 if old > 0 then
-]] .. EACH_UNIT:format("TObj(pobj).hp := Round(TObj(pobj).hp / old * " .. maxhp .. ");")))
+]] .. EACH_UNIT:format("TObj(pobj).hp := Round(TObj(pobj).hp / old * v1);"), { maxhp }))
 end
 
 -- balance.setDamage(sid, damage, weapon, player): урон оружия типа + живых. Парам: sid — тип; damage — число; weapon — номер (без него — все); player — игрок (без него — все).
@@ -237,13 +288,14 @@ function balance.setDamage(sid, damage, weapon, player)
     needExec("setDamage")
     damage = math.floor(tonumber(damage) or 0)
     local first, last = weapon or 0, weapon or 3
-    game.exec(forEach(sid, player, string.format([[
-for k := %d to %d do
+    -- v1, v2 — диапазон оружия; v3 — урон.
+    game.exec(forEach(sid, player, [[
+for k := v1 to v2 do
 if gObjProp[c][u].weapon[k].enabled then
 begin
-gPlayer[p].objbase[c][u].weapon[k].damageinit := %d;
+gPlayer[p].objbase[c][u].weapon[k].damageinit := v3;
 gPlayer[p].objbase[c][u].weapon[k].damage := Floor((gPlayer[p].objbase[c][u].weapon[k].damageinit + gPlayer[p].objbase[c][u].weapon[k].damagestatic) * (1 + gPlayer[p].objbase[c][u].weapon[k].damagepercent / 100));
-end;]], first, last, damage)))
+end;]], { first, last, damage }))
 end
 
 -- balance.setSpeed(sid, multiplier, player): скорость типа + живых. Парам: sid — тип; multiplier — во сколько раз (1 — как в игре); player — игрок (без него — все).
@@ -251,12 +303,14 @@ end
 function balance.setSpeed(sid, multiplier, player)
     needExec("setSpeed")
     local interval = 1 / (tonumber(multiplier) or 1)
-    game.exec(forEach(sid, player, string.format([[
+    -- v1 — интервал шага в миллионных (StrToFloat зависит от локали, поэтому целое).
+    game.exec(forEach(sid, player, [[
 old := gPlayer[p].objbase[c][u].speed;
 if old <= 0 then old := 1;
-ratio := StrToInt('%d') / 1000000 / old;
-gPlayer[p].objbase[c][u].speed := StrToInt('%d') / 1000000;
-]], math.floor(interval * 1000000 + 0.5), math.floor(interval * 1000000 + 0.5)) .. EACH_UNIT:format([[
+ratio := v1 / 1000000 / old;
+gPlayer[p].objbase[c][u].speed := v1 / 1000000;
+]] .. EACH_UNIT:format([[
 SetGameObjectTrackPointMoveStepIntervalByHandle(h, Floor(GetGameObjectTrackPointMoveStepIntervalByHandle(h) * ratio));
-SetGameObjectTrackPointTurnStepIntervalByHandle(h, Floor(GetGameObjectTrackPointTurnStepIntervalByHandle(h) * ratio));]])))
+SetGameObjectTrackPointTurnStepIntervalByHandle(h, Floor(GetGameObjectTrackPointTurnStepIntervalByHandle(h) * ratio));]]),
+        { math.floor(interval * 1000000 + 0.5) }))
 end

@@ -72,6 +72,7 @@ check("read nested 2", st.additional.peacetime, 10)
 check("list size", #state.list("gMap.players"), 12)
 
 -- state.set: все типы и что код постоянный (значение идёт аргументом)
+EXEC_LOG, EXEC_ARG = {}, {}          -- EXEC_LOG[1] ниже — про ЭТУ запись
 state.set("gProfile.sndmaster", 0.3)
 check("set float", FAKE.gProfile.sndmaster, 0.3)
 state.set("gProfile.igamespeed", 4)
@@ -81,6 +82,66 @@ check("set bool", FAKE.gProfile.bclipmouse, false)
 state.set("gProfile.lang", "en")
 check("set string", FAKE.gProfile.lang, "en")
 check("set code has no value", EXEC_LOG[1], "gProfile.sndmaster := StrToInt(ML_ARG) / 1000000;")
+
+-- РЕГРЕССИЯ: движок кэширует код по ТЕКСТУ, каждый новый текст — это новое
+-- состояние ModLoader.Call.N, живущее до конца партии и не освобождаемое
+-- (ScriptRunner.cpp, g_callCache). Значит ИНДЕКСЫ ПУТИ обязаны ехать в аргументе:
+-- иначе balance.set по ростеру плодит состояния пачками. В логе 2026-09-28 было
+-- "500 cached script calls" сразу после "баланс применён: 17 типов" — 17 типов x
+-- 4 поля x 8 игроков = 544 текста.
+--
+-- Такая же проверка есть у orders ниже; здесь она про state/balance.
+do
+    -- Проверка ПИШЕТ в подставное состояние, поэтому сначала снимок, в конце —
+    -- возврат: ниже balance-тесты сверяют те же поля, и мусор от нас их ронял.
+    local FIELDS = { "maxhp", "price[0]", "weapon[0].damage" }
+    local saved = {}
+    for player = 0, 7 do
+        saved[player] = {}
+        for _, field in ipairs(FIELDS) do
+            saved[player][field] = state.get("gPlayer[" .. player .. "].objbase[4][12]." .. field)
+        end
+    end
+
+    local seen = {}
+    for player = 0, 7 do
+        for _, field in ipairs(FIELDS) do
+            EXEC_LOG = {}
+            state.set("gPlayer[" .. player .. "].objbase[4][12]." .. field, 100 + player)
+            for _, code in ipairs(EXEC_LOG) do seen[code] = true end
+        end
+    end
+    local n = 0
+    for _ in pairs(seen) do n = n + 1 end
+    check("state.set: один текст на ФОРМУ пути, а не на путь (3 поля x 8 игроков = 3)", n, 3)
+
+    EXEC_LOG, EXEC_ARG = {}, {}
+    state.set("gPlayer[6].objbase[4][12].maxhp", 777)
+    local code, arg = EXEC_LOG[1], EXEC_ARG[1]
+    check("state.set: индексы пути не вшиты в код", code:find("%[6%]") == nil, true)
+    check("state.set: номер типа не вшит в код", code:find("%[12%]") == nil, true)
+    check("state.set: значение не вшито в код", code:find("777") == nil, true)
+    check("state.set: индексы и значение в аргументе", arg, "6|4|12|777")
+    check("state.set: запись всё равно дошла", FAKE.gPlayer[6].objbase[4][12].maxhp, 777)
+
+    -- Чтение — та же история: game.evalInt(path) тоже кэшируется по тексту.
+    seen = {}
+    for player = 0, 7 do
+        EXEC_LOG = {}
+        local hp = state.get("gPlayer[" .. player .. "].objbase[4][12].maxhp")
+        check("state.get: значение читается (игрок " .. player .. ")", type(hp), "number")
+        for _, code in ipairs(EXEC_LOG) do seen[code] = true end
+    end
+    n = 0
+    for _ in pairs(seen) do n = n + 1 end
+    check("state.get: один текст на ФОРМУ пути (8 игроков = 1)", n, 1)
+
+    for player = 0, 7 do
+        for _, field in ipairs(FIELDS) do
+            state.set("gPlayer[" .. player .. "].objbase[4][12]." .. field, saved[player][field])
+        end
+    end
+end
 
 -- G
 check("G read", G.gMap.players[2].team, 0)
@@ -199,6 +260,30 @@ local got
 own.onAnyButton(function(screen, button) got = screen .. "." .. button; return true end)
 check("onAnyButton block", HOOKS.EventMainMenu(1, "c", 101), true)
 check("onAnyButton name", got, "MainMenu.Campaign")
+
+-- Ветка БЕЗ ui (страница game.api и server/shared зовут игру напрямую) раньше не
+-- проверялась вообще: тест шёл через ui мода. А именно там имя состояния и тэг
+-- пеклись в текст кода, то есть каждая нажатая кнопка съедала своё состояние
+-- движка навсегда (см. ScriptRunner g_callCache).
+do
+    local saved = ui
+    ui = nil
+    EXEC_LOG, EXEC_ARG = {}, {}
+    screens.press("MainMenu", "Settings")
+    screens.press("MainMenu", "Exit")
+    screens.open("Settings")
+    local seen = {}
+    for _, code in ipairs(EXEC_LOG) do seen[code] = true end
+    local n = 0
+    for _ in pairs(seen) do n = n + 1 end
+    check("screens без ui: один текст на press и один на open", n, 2)
+    check("screens.press: тэг не вшит в код", EXEC_LOG[1]:find("104") == nil, true)
+    check("screens.press: имя состояния не вшито в код",
+          EXEC_LOG[1]:find("EventMainMenu") == nil, true)
+    check("screens.press: тэг и имя в аргументе", EXEC_ARG[1], "104|EventMainMenu")
+    check("screens.open: имя в аргументе", EXEC_ARG[3], "ShowSettings")
+    ui = saved
+end
 check("onButton hover skipped", HOOKS.EventMainMenu(1, "m", 101), nil)
 check("modOnly", pcall(screens.onButton, "MainMenu", print), false)
 
@@ -218,6 +303,33 @@ check("balance.set one untouched", FAKE.gPlayer[2].objbase[4][12].weapon[0].dama
 balance.set("rus_strelets", "price[3]", 50)
 check("balance.set price", FAKE.gPlayer[5].objbase[4][12].price[3], 50)
 check("balance.unknown", pcall(balance.find, "nope"), false)
+
+-- РЕГРЕССИЯ (то же правило, что у state.set и orders): setHP/setDamage/setSpeed
+-- строят большой кусок Pascal, и раньше в него запекались и номер типа, и сами
+-- значения. Каждое новое значение = новое состояние движка навсегда, поэтому
+-- "разгон здоровья на 100 шагов" незаметно съедал 100 состояний.
+do
+    local seen = {}
+    for hp = 100, 120 do
+        EXEC_LOG = {}
+        balance.setHP("rus_strelets", hp)
+        balance.setDamage("rus_strelets", hp // 2)
+        balance.setSpeed("rus_strelets", 1 + hp / 1000)
+        for _, code in ipairs(EXEC_LOG) do seen[code] = true end
+    end
+    local n = 0
+    for _ in pairs(seen) do n = n + 1 end
+    check("balance: один текст на операцию, а не на значение (3 операции = 3)", n, 3)
+
+    EXEC_LOG, EXEC_ARG = {}, {}
+    balance.setHP("rus_strelets", 777)
+    local code, arg = EXEC_LOG[1], EXEC_ARG[1]
+    check("balance.setHP: значение не вшито в код", code:find("777") == nil, true)
+    check("balance.setHP: номер типа не вшит в код", code:find("c := 12") == nil, true)
+    check("balance.setHP: значение в аргументе", arg:find("777") ~= nil, true)
+    -- Аргумент: pfirst|plast|страна|тип|значение|
+    check("balance.setHP: порядок аргумента", arg, "0|11|4|12|777|")
+end
 
 -- buildings: разбор ответа скрипта (сам скрипт исполняет игра)
 do

@@ -35,7 +35,10 @@ end
 
 local function lookup(path, assign)
     local node, key = FAKE, nil
-    local head, rest = path:match("^%s*([%a_][%w_]*)(.*)$")
+    local head, rest = tostring(path):match("^%s*([%a_][%w_]*)(.*)$")
+    -- Не путь (литерал, выражение): игра вернула бы значение сама, а заглушка
+    -- просто не знает такого состояния. Раньше здесь падал весь прогон.
+    if not head then return nil end
     local parts = { head }
     for token in rest:gmatch("[%.%[][^%.%[]*") do parts[#parts + 1] = token end
     for i, p in ipairs(parts) do
@@ -50,6 +53,9 @@ local function lookup(path, assign)
 end
 
 local function pascal(part)
+    -- Строковый литерал: 'текст' — игра отдаёт его как есть.
+    local lit = part:match("^%s*'(.*)'%s*$")
+    if lit then return lit end
     local fn, arg = part:match("^%s*(%a+)%((.*)%)%s*$")
     if fn == "IntToStr" then return tostring(math.floor(lookup(arg) or 0)) end
     -- В русской локали FloatToStr ставит запятую — проверяем, что api это переваривает.
@@ -71,19 +77,57 @@ function game.isInGame() return true end
 
 EXEC_LOG = {}
 EXEC_ARG = {}
+
+-- Разбор преамбулы, которой api/01_state.lua передаёт ИНДЕКСЫ ПУТИ аргументом.
+--
+-- Так сделано потому, что движок кэширует скомпилированный код по ТЕКСТУ: новый
+-- текст = новое состояние ModLoader.Call.N на всю партию, и освободить его нельзя.
+-- Значит числа обязаны ехать в ML_ARG, а в тексте остаётся форма пути с k1..kN.
+--
+-- Заглушка ОБЯЗАНА это понимать, а не только старую форму "path := StrToInt(ML_ARG);":
+-- иначе тест проверяет код, который в игру больше не уходит.
+-- Возврат: код без преамбулы (с подставленными числами), остаток аргумента.
+local function unwrapArgs(code, arg)
+    if not code:find("var s : String = ML_ARG;", 1, true) then return code, arg end
+    local n = 0
+    for _ in code:gmatch("k(%d+) := StrToInt%(SubStr") do n = n + 1 end
+    local values, rest = {}, arg or ""
+    for _ = 1, n do
+        local head, tail = rest:match("^([^|]*)|(.*)$")
+        if not head then head, tail = rest, "" end
+        values[#values + 1] = head
+        rest = tail
+    end
+    -- Тело — всё после последней строки разбора.
+    local body = code:match(".*StrLength%(s%)%-p%);\n(.*)$") or code
+    -- Подстановка от старших номеров к младшим: иначе k1 съел бы начало k10.
+    for i = n, 1, -1 do
+        body = body:gsub("k" .. i .. "%f[%W]", values[i])
+    end
+    return body, rest
+end
+
 function game.exec(code, arg)
     EXEC_LOG[#EXEC_LOG + 1] = code
     EXEC_ARG[#EXEC_ARG + 1] = arg
     if code:find("gObjProp%[c%]%[u%]%.sid") then -- balance: цикл по всем типам
         return "4,12,rus_strelets;"
     end
-    local path, rhs = code:match("^(.-) := (.-);$")
+    local body, value_arg = unwrapArgs(code, arg)
+
+    -- Чтение: ML_RET(...) — движок отдаёт строку, склеенную через #1.
+    local ret = body:match("^%s*ML_RET%((.*)%);%s*$")
+    if ret then return game.eval(ret) end
+
+    local path, rhs = body:match("^(.-) := (.-);$")
     if not path then return "" end
+    -- Значение приходит либо прямо из ML_ARG (когда индексов нет), либо остатком s.
     local value
-    if rhs == "StrToInt(ML_ARG)" then value = tonumber(arg)
-    elseif rhs == "StrToInt(ML_ARG) / 1000000" then value = tonumber(arg) / 1000000
-    elseif rhs == "(ML_ARG = '1')" then value = arg == "1"
-    elseif rhs == "ML_ARG" then value = arg
+    if rhs == "StrToInt(ML_ARG)" or rhs == "StrToInt(s)" then value = tonumber(value_arg)
+    elseif rhs == "StrToInt(ML_ARG) / 1000000" or rhs == "StrToInt(s) / 1000000" then
+        value = tonumber(value_arg) / 1000000
+    elseif rhs == "(ML_ARG = '1')" or rhs == "(s = '1')" then value = value_arg == "1"
+    elseif rhs == "ML_ARG" or rhs == "s" then value = value_arg
     end
     lookup(path, { value = value })
     return ""
