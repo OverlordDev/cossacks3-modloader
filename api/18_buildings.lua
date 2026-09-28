@@ -119,16 +119,36 @@ if (pobj <> nil) and gObjProp[TObj(pobj).cid][TObj(pobj).id].bbuilding then ML_R
     return math.tointeger(tonumber(text))
 end
 
-local PRICE = "IntToStr(%s[0])+','+IntToStr(%s[1])+','+IntToStr(%s[2])+','+IntToStr(%s[3])+','+IntToStr(%s[4])+','+IntToStr(%s[5])"
+-- Цена: индексы 1..6, а НЕ 0..5.
+--
+-- Массив price в игре — это 0..6, где 0 это gc_resource_type_none (всегда ноль),
+-- а дальше по номерам типов ресурсов: 1 еда, 2 дерево, 3 камень, 4 золото,
+-- 5 железо, 6 уголь (dmscript.global:791-797). Раньше здесь читались 0..5:
+-- в цену попадал пустой нулевой слот, всё съезжало на одну позицию, а УГОЛЬ
+-- терялся совсем — а им, например, платят за часть улучшений академии.
+local PRICE = "IntToStr(%s[1])+','+IntToStr(%s[2])+','+IntToStr(%s[3])+','+" ..
+              "IntToStr(%s[4])+','+IntToStr(%s[5])+','+IntToStr(%s[6])"
 local function price(expr) return PRICE:gsub("%%s", expr) end
 
+-- Цена таблицей С ИМЕНАМИ, а не списком: на позициях легко ошибиться на единицу
+-- (см. выше), а по имени — нельзя.
+local RESOURCES = { "food", "wood", "stone", "gold", "iron", "coal" }
+
 local function priceList(text)
-    local out = {}
-    for v in (text .. ","):gmatch("(.-),") do out[#out + 1] = num(v) end
+    local out, i = {}, 0
+    for v in (text .. ","):gmatch("(.-),") do
+        i = i + 1
+        if RESOURCES[i] then out[RESOURCES[i]] = num(v) end
+    end
     return out
 end
 
--- buildings.info(handle): всё о здании. Парам: handle — хендл. Возврат: { handle, sid, hp, produce, upgrades, queue, ... }.
+-- buildings.info(handle): всё о здании. Парам: handle — хендл.
+-- Возврат: { handle, sid, hp, maxhp, built, buildprogress, produce, upgrades, queue }, где
+--   produce[i]  = { sid, id, available, price, buildtime, x, y }
+--   upgrades[i] = { sid, index, available, enabled, level, kind, value, price, time }
+--   queue[i]    = { kind = "unit"|"upgrade", sid, amount, progress }
+--   price       = { food, wood, stone, gold, iron, coal } — по именам, не по номерам.
 -- Сторона: server/shared/страница. Ошибки: "not found" при неверном хендле.
 function buildings.info(handle)
     local h = checkHandle(handle)

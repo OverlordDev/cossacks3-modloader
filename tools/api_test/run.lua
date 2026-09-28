@@ -350,7 +350,15 @@ do
     check("buildings.info produce", #b.produce, 2)
     check("buildings.info available", b.produce[1].available, true)
     check("buildings.info blocked", b.produce[2].available, false)
-    check("buildings.info price", b.produce[1].price[4], 5)
+    -- Цена по ИМЕНАМ ресурсов. В подставном ответе у musketeer18 цена
+    -- "10,20,0,5,0,0" — это еда, дерево, камень, золото, железо, уголь
+    -- (индексы 1..6 игрового массива price; нулевой слот — gc_resource_type_none).
+    check("buildings.info price food", b.produce[1].price.food, 10)
+    check("buildings.info price wood", b.produce[1].price.wood, 20)
+    check("buildings.info price gold", b.produce[1].price.gold, 5)
+    check("buildings.info price coal", b.produce[1].price.coal, 0)
+    -- Уголь раньше терялся: читались индексы 0..5, шестой не доезжал.
+    check("buildings.info: уголь в цене есть", b.upgrades[1].price.coal ~= nil, true)
     check("buildings.info upgrade", b.upgrades[1].sid, "upg_bayonet")
     check("buildings.info queue", b.queue[1].kind, "unit")
     check("buildings.info progress", b.queue[1].progress, 0.25)

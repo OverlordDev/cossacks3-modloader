@@ -1951,6 +1951,11 @@ end
         }
         lua_pushstring(L, SideName(side));
         lua_setfield(L, -2, "side");
+        // Режим разработчика (есть ли modloader/dev.txt). Нужен модам, которые дают
+        // возможности не для игроков: их следует включать только там, где модлоадер
+        // уже разрешает себе подобное (F9 с ресурсами, End, DevTools страницы).
+        lua_pushboolean(L, Console::Dev());
+        lua_setfield(L, -2, "dev");
         lua_setfield(L, -2, "game");
 
         lua_newtable(L); // native

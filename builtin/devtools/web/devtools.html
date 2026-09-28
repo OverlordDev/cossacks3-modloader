@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Инспектор</title>
+<!--
+  Панель разработчика мода.
+
+  Почему почти весь код здесь, а не в client.lua: странице доступны
+  game.api('модуль.функция', ...) и game.lua(...), то есть весь api модлоадера.
+  Мод нужен только ради горячей клавиши и потока событий (события живут в Lua).
+
+  Панель занимает полосу справа, остальное прозрачно и пропускает мышь в игру
+  (web.passthrough в client.lua) — значит можно выделять юнитов, не закрывая её.
+-->
+<style>
+  :root {
+    --bg: #11151c;  --bg2: #171d26;  --line: #2a3442;
+    --fg: #d7dee8;  --dim: #7d8a9c;  --acc: #6fb3ff;  --warn: #ffb454;  --err: #ff6b6b;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+  body { font: 12px/1.45 Consolas, "Cascadia Mono", monospace; color: var(--fg); }
+
+  /* Полоса справа: слева от неё игра видна и кликабельна. */
+  #panel {
+    position: fixed; top: 0; right: 0; width: 420px; height: 100%;
+    background: rgba(17, 21, 28, .94); border-left: 1px solid var(--line);
+    display: flex; flex-direction: column;
+  }
+  header {
+    padding: 8px 10px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; gap: 8px;
+  }
+  header b { color: var(--acc); font-weight: 600; }
+  header .hint { color: var(--dim); margin-left: auto; }
+
+  nav { display: flex; border-bottom: 1px solid var(--line); }
+  nav button {
+    flex: 1; padding: 7px 4px; background: none; border: 0; border-bottom: 2px solid transparent;
+    color: var(--dim); font: inherit; cursor: pointer;
+  }
+  nav button.on { color: var(--fg); border-bottom-color: var(--acc); background: var(--bg2); }
+
+  main { flex: 1; overflow: auto; padding: 8px 10px; }
+  section { display: none; }
+  section.on { display: block; }
+
+  .empty { color: var(--dim); padding: 14px 2px; }
+  .card { background: var(--bg2); border: 1px solid var(--line); border-radius: 4px;
+          padding: 7px 8px; margin-bottom: 8px; }
+  .card h3 { margin: 0 0 6px; font-size: 12px; color: var(--acc); font-weight: 600; }
+  .card h3 span { color: var(--dim); font-weight: 400; }
+
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 1px 0; vertical-align: top; }
+  td.k { color: var(--dim); width: 45%; padding-right: 6px; word-break: break-all; }
+  td.v { word-break: break-all; }
+  td.v input { width: 100%; background: #0d1117; color: var(--fg); border: 1px solid var(--line);
+                border-radius: 3px; font: inherit; padding: 1px 4px; }
+  td.v input:focus { outline: none; border-color: var(--acc); }
+
+  .row { display: flex; gap: 6px; align-items: center; margin: 3px 0; }
+  .row .name { flex: 1; }
+  button.act { background: #223047; color: var(--fg); border: 1px solid var(--line);
+               border-radius: 3px; padding: 2px 8px; font: inherit; cursor: pointer; }
+  button.act:hover { border-color: var(--acc); }
+
+  #replIn { width: 100%; background: #0d1117; color: var(--fg); border: 1px solid var(--line);
+            border-radius: 3px; font: inherit; padding: 4px 6px; }
+  #replOut div { white-space: pre-wrap; word-break: break-all; padding: 2px 0;
+                 border-bottom: 1px solid #1d242e; }
+  .q { color: var(--acc); }
+  .err { color: var(--err); }
+  .ev { display: flex; gap: 6px; }
+  .ev .t { color: var(--dim); }
+  .ev .n { color: var(--warn); min-width: 120px; }
+</style>
+</head>
+<body>
+<div id="panel">
+  <header><b>Инспектор</b><span id="where"></span><span class="hint">Ctrl+I — закрыть</span></header>
+  <nav>
+    <button data-tab="sel" class="on">Выделение</button>
+    <button data-tab="repl">Lua</button>
+    <button data-tab="ev">События</button>
+  </nav>
+  <main>
+    <section id="sel" class="on"><div class="empty">Выдели что-нибудь в игре.</div></section>
+    <section id="repl">
+      <input id="replIn" placeholder="Lua: выражение или оператор, Enter — выполнить" spellcheck="false">
+      <div id="replOut"></div>
+    </section>
+    <section id="ev"><div class="empty">Событий пока не было.</div></section>
+  </main>
+</div>
+
+<script>
+// ── Мостик к модлоадеру ────────────────────────────────────────────────────
+// window.game появляется не сразу после загрузки страницы — ждём.
+function ready() {
+  return new Promise(res => {
+    (function wait() { window.game ? res() : setTimeout(wait, 30); })();
+  });
+}
+// Любая ошибка Lua прилетает исключением. Показывать её надо, а не глотать:
+// «пусто» и «сломалось» — разные вещи.
+async function api(fn, ...args) {
+  try { return { ok: true, value: await game.api(fn, ...args) }; }
+  catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+}
+
+// ── Вкладки ────────────────────────────────────────────────────────────────
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('section').forEach(s => s.classList.toggle('on', s.id === b.dataset.tab));
+});
+
+// ── Вкладка «Выделение» ────────────────────────────────────────────────────
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+
+// Поле объекта: показываем значение и даём его поправить.
+// Пишем через state.set по пути obj(<хендл>).<поле> — тот же путь, которым
+// пользуются моды, так что увиденное здесь применимо как есть.
+function fieldRow(handle, key, value) {
+  const editable = ['number', 'boolean', 'string'].includes(typeof value);
+  if (!editable) return `<tr><td class="k">${esc(key)}</td><td class="v">${esc(JSON.stringify(value))}</td></tr>`;
+  return `<tr><td class="k">${esc(key)}</td><td class="v">` +
+         `<input data-h="${handle}" data-k="${esc(key)}" value="${esc(value)}"></td></tr>`;
+}
+
+async function applyField(input) {
+  const path = `obj(${input.dataset.h}).${input.dataset.k}`;
+  let v = input.value;
+  if (v === 'true' || v === 'false') v = (v === 'true');
+  else if (v !== '' && !isNaN(Number(v))) v = Number(v);
+  const r = await api('state.set', path, v);
+  input.style.borderColor = r.ok ? '' : 'var(--err)';
+  if (!r.ok) say(`state.set('${path}'): ${r.error}`, true);
+}
+
+// Что рисуем на один выделенный объект.
+async function card(handle) {
+  const info = await api('units.info', handle);
+  const obj  = await api('state.read', `obj(${handle})`, 1);
+  const o = obj.ok && obj.value || {};
+  const i = info.ok && info.value || {};
+  const sid = i.sid || o.sid || '?';
+
+  let html = `<div class="card"><h3>${esc(sid)} <span>хендл ${handle}</span></h3>`;
+
+  // Поля объекта — по алфавиту, чтобы не прыгали между обновлениями.
+  const keys = Object.keys(o).filter(k => typeof o[k] !== 'object').sort();
+  if (keys.length) {
+    html += '<table>' + keys.map(k => fieldRow(handle, k, o[k])).join('') + '</table>';
+  } else if (!obj.ok) {
+    html += `<div class="err">state.read: ${esc(obj.error)}</div>`;
+  }
+
+  // Если это здание — что оно умеет производить и что исследовать.
+  // Ровно тот случай, ради которого инспектор и нужен: заменяя худ на CEF, надо
+  // знать, чем вызывается найм и чем — улучшение.
+  //
+  // Формы данных — из buildings.info:
+  //   produce[i]  = { sid, id, available, price, buildtime, x, y }
+  //   upgrades[i] = { sid, index, available, enabled, level, kind, value, price, time }
+  //   queue[i]    = { kind: "unit"|"upgrade", sid, amount, progress }
+  const b = await api('buildings.info', handle);
+  if (b.ok && b.value) {
+    const v = b.value;
+    html += section('Производит', v.produce, it =>
+      button('produce', handle, it.sid, 'в очередь') , 'buildings.produce(h, sid, 1)');
+    html += section('Улучшения', v.upgrades, it =>
+      button('upgrade', handle, it.sid, 'исследовать'), 'buildings.upgrade(h, sid)');
+
+    if (v.queue && v.queue.length) {
+      html += '<h3 style="margin-top:8px">Очередь</h3>';
+      html += v.queue.map(q => {
+        const pct = Math.round((q.progress || 0) * 100);
+        return `<div class="row"><span class="name">${esc(q.sid)}` +
+               `<span style="color:var(--dim)"> ${esc(q.kind)}${q.amount > 1 ? ' x' + q.amount : ''}` +
+               `${pct ? ', ' + pct + '%' : ''}</span></span>` +
+               button(q.kind === 'upgrade' ? 'cancelUpgrade' : 'cancel', handle, q.sid, 'отменить') +
+               '</div>';
+      }).join('');
+    }
+  }
+  return html + '</div>';
+}
+
+// Цена — таблица с именами ресурсов (buildings.lua отдаёт именно так).
+// Нули не показываем: строка "еда 100, золото 50" читается, "0/0/100/50/0/0" — нет.
+function priceText(p) {
+  if (!p) return '';
+  const parts = [];
+  for (const [k, ru] of [['food','еда'],['wood','дерево'],['stone','камень'],
+                         ['gold','золото'],['iron','железо'],['coal','уголь']]) {
+    if (p[k]) parts.push(ru + ' ' + p[k]);
+  }
+  return parts.join(', ');
+}
+
+function button(fn, handle, sid, label) {
+  return `<button class="act" data-fn="${fn}" data-h="${handle}" data-sid="${esc(sid)}">${label}</button>`;
+}
+
+// Один список (найм или улучшения) с ценой, доступностью и кнопкой.
+function section(title, list, makeButton, call) {
+  if (!list || !list.length) return '';
+  let html = `<h3 style="margin-top:8px">${title}</h3>`;
+  html += list.map(it => {
+    const price = priceText(it.price);
+    const lvl = it.level ? ` ур.${it.level}` : '';
+    const dim = it.available === false ? ' style="opacity:.5"' : '';
+    return `<div class="row"${dim}><span class="name">${esc(it.sid)}${lvl}` +
+           (price ? `<span style="color:var(--dim)"> — ${esc(price)}</span>` : '') +
+           (it.available === false ? '<span style="color:var(--warn)"> недоступно</span>' : '') +
+           `</span>${makeButton(it)}</div>`;
+  }).join('');
+  return html + `<div style="color:var(--dim);margin-top:2px">${esc(call)}</div>`;
+}
+
+let lastKey = '';
+async function refreshSelection() {
+  const sel = await api('units.selected');
+  const box = document.getElementById('sel');
+  if (!sel.ok) { box.innerHTML = `<div class="err">units.selected: ${esc(sel.error)}</div>`; return; }
+  const handles = (sel.value || []).slice(0, 8);   // больше восьми читать незачем
+  const key = handles.join(',');
+  if (key === lastKey) return;                     // выделение не менялось — не дёргаем игру
+  lastKey = key;
+  if (!handles.length) { box.innerHTML = '<div class="empty">Выдели что-нибудь в игре.</div>'; return; }
+  box.innerHTML = (await Promise.all(handles.map(card))).join('');
+  box.querySelectorAll('input').forEach(inp => inp.onchange = () => applyField(inp));
+  box.querySelectorAll('[data-fn]').forEach(btn => btn.onclick = async () => {
+    const h = Number(btn.dataset.h), sid = btn.dataset.sid, fn = btn.dataset.fn;
+    // produce/cancel принимают количество, upgrade/cancelUpgrade — нет.
+    const args = (fn === 'produce' || fn === 'cancel') ? [h, sid, 1] : [h, sid];
+    const r = await api('buildings.' + fn, ...args);
+    // Пишем ВЫЗОВ целиком: панель заодно показывает, как это сделать из мода.
+    const shown = `buildings.${fn}(${args.map(a => typeof a === 'string' ? `"${a}"` : a).join(', ')})`;
+    say(r.ok ? `${shown} → ${JSON.stringify(r.value)}` : `${shown}: ${r.error}`, !r.ok);
+    lastKey = '';   // перерисовать: очередь изменилась
+  });
+}
+
+// ── Вкладка «Lua» ──────────────────────────────────────────────────────────
+const out = document.getElementById('replOut');
+function say(text, bad) {
+  const d = document.createElement('div');
+  if (bad) d.className = 'err';
+  d.textContent = text;
+  out.prepend(d);
+  while (out.children.length > 60) out.lastChild.remove();
+}
+const input = document.getElementById('replIn');
+input.addEventListener('keydown', async e => {
+  if (e.key !== 'Enter' || !input.value.trim()) return;
+  const code = input.value;
+  input.value = '';
+  say('> ' + code);
+  try { say(String(await game.lua(code))); }
+  catch (err) { say(String(err && err.message || err), true); }
+});
+
+// ── Вкладка «События» ──────────────────────────────────────────────────────
+// Сюда их шлёт client.lua (web.eval): события живут в Lua мода, странице их
+// самой не видно.
+window.devtoolsEvents = function (list) {
+  const box = document.getElementById('ev');
+  if (!list.length) { box.innerHTML = '<div class="empty">Событий пока не было.</div>'; return; }
+  box.innerHTML = list.slice().reverse().map(e =>
+    `<div class="ev"><span class="t">${esc(e.t)}</span><span class="n">${esc(e.name)}</span>` +
+    `<span>${esc(e.args)}</span></div>`).join('');
+};
+
+// ── Пуск ───────────────────────────────────────────────────────────────────
+ready().then(async () => {
+  const g = await api('game.isInGame');
+  document.getElementById('where').textContent = (g.ok && g.value) ? '' : '— вне партии';
+  setInterval(refreshSelection, 400);   // выделение меняется мышью, опрашиваем
+  refreshSelection();
+});
+</script>
+</body>
+</html>
