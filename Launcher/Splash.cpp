@@ -8,6 +8,7 @@
 #include "Splash.h"
 
 #include <gdiplus.h>
+#include <iterator>   // std::size для имени класса окна
 #include <string>
 
 #pragma comment(lib, "gdiplus.lib")
@@ -27,7 +28,65 @@ namespace
     DWORD g_started = 0;
     DWORD g_timeoutMs = 90000;
     HANDLE g_process = nullptr;
+    DWORD g_pid = 0;
     int g_frame = 0;
+    bool g_steppedAside = false; // сняли TOPMOST — заставка больше ничего не закрывает
+    bool g_gameAsks = false;     // нашли диалог игры: ей нужен ответ, а не ожидание
+
+    // Через сколько заставка перестаёт быть поверх всех окон, даже если ничего
+    // подозрительного не нашлось. Запас: по логам обычный старт занимает около
+    // 17 секунд (инжект 06:32:53 -> game.menu 06:33:10), так что 25 — это уже
+    // «что-то идёт не так», а не медленный компьютер. Главный случай — диалог —
+    // ловится отдельно и сразу, этот срок только подстраховка.
+    constexpr DWORD kTopmostMs = 25000;
+
+    // Ищем видимое окно игры, которое ждёт ответа.
+    //
+    // ЗАЧЕМ. Заставка создаётся с WS_EX_TOPMOST и висит до главного меню. Если
+    // игра на старте о чём-то спрашивает — а она спрашивает, например когда
+    // прошлый запуск завершился падением и в Documents\cossacks\video.info
+    // осталось Run = 1, — её окно оказывается ПОД заставкой. Человек видит
+    // картинку и «Загрузка...», игра ждёт нажатия, которого никто не сделает.
+    // Снаружи это выглядит как зависший чёрный экран, и именно так оно и
+    // выглядело: запуск за запуском, потому что убитая игра снова оставляет
+    // Run = 1, и круг замыкается.
+    //
+    // #32770 — класс стандартного диалога Windows (MessageBox), TMessageForm —
+    // класс окна сообщения Delphi, на котором написана игра.
+    BOOL CALLBACK FindDialog(HWND window, LPARAM found)
+    {
+        DWORD pid = 0;
+        GetWindowThreadProcessId(window, &pid);
+        if (pid != g_pid || !IsWindowVisible(window))
+            return TRUE;
+        wchar_t cls[64] = {};
+        GetClassNameW(window, cls, static_cast<int>(std::size(cls)));
+        if (wcscmp(cls, L"#32770") == 0 || wcsncmp(cls, L"TMessageForm", 12) == 0)
+        {
+            *reinterpret_cast<bool*>(found) = true;
+            return FALSE;
+        }
+        return TRUE;
+    }
+
+    bool GameAsksSomething()
+    {
+        if (!g_pid)
+            return false;
+        bool found = false;
+        EnumWindows(FindDialog, reinterpret_cast<LPARAM>(&found));
+        return found;
+    }
+
+    // Убрать заставку с верхнего слоя: окна игры становятся видны и кликабельны.
+    // Саму заставку не прячем — по ней видно, что запуск ещё идёт.
+    void StepAside(HWND window)
+    {
+        if (g_steppedAside)
+            return;
+        g_steppedAside = true;
+        SetWindowPos(window, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    }
 
     // Картинку берём из папки модлоадера; нет — обойдёмся тёмным фоном.
     Gdiplus::Image* LoadSplashImage(const std::wstring& gameDir)
@@ -82,8 +141,12 @@ namespace
             Gdiplus::LinearGradientModeVertical);
         g.FillRectangle(&shade, 0, rc.bottom - 110, rc.right, 110);
 
+        // Когда игра спрашивает — пишем об этом прямо: ждать бесполезно, надо
+        // ответить в её окне. Без этой строки человек видит только «Загрузка...»
+        // и ждёт, пока не убьёт процесс.
         std::wstring dots(1 + (g_frame / 4) % 3, L'.');
-        std::wstring text = L"Загрузка" + dots;
+        std::wstring text = g_gameAsks ? L"Игра ждёт ответа — её окно за этой картинкой"
+                                       : L"Загрузка" + dots;
 
         Gdiplus::FontFamily family(L"Georgia");
         Gdiplus::Font font(&family, 20, Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
@@ -126,9 +189,23 @@ namespace
             {
                 ++g_frame;
                 if (ShouldClose())
+                {
                     DestroyWindow(window);
-                else
-                    InvalidateRect(window, nullptr, FALSE);
+                    return 0;
+                }
+                // Игра о чём-то спрашивает — уходим с дороги немедленно.
+                // Иначе она ждёт ответа под заставкой, а человек видит зависание.
+                if (!g_gameAsks && GameAsksSomething())
+                {
+                    g_gameAsks = true;
+                    StepAside(window);
+                }
+                // И в любом случае перестаём быть поверх всех через четверть
+                // минуты: если что-то пошло не так, человек должен это увидеть,
+                // а не смотреть в картинку до самого запасного таймаута.
+                else if (GetTickCount() - g_started > kTopmostMs)
+                    StepAside(window);
+                InvalidateRect(window, nullptr, FALSE);
             }
             return 0;
         case WM_ERASEBKGND:
@@ -156,6 +233,9 @@ void Splash::Run(HINSTANCE instance, const std::wstring& gameDir, HANDLE ready, 
     g_timeoutMs = timeoutMs;
     g_started = GetTickCount();
     g_frame = 0;
+    g_steppedAside = false;
+    g_gameAsks = false;
+    g_pid = process ? GetProcessId(process) : 0; // по нему ищем окна именно игры
 
     Gdiplus::GdiplusStartupInput input;
     if (Gdiplus::GdiplusStartup(&g_gdiplus, &input, nullptr) != Gdiplus::Ok)
