@@ -108,6 +108,8 @@ local function ensureTick()
 end
 
 -- Заказать производство: стоимость списывается сразу, юнит встанет в очередь через time с.
+-- Возврат: ДВА значения — true и id заказа (для economy.cancel), либо false и причина
+-- ("not enough <ресурс>"). Принимать надо оба: `local ok, id = economy.produce(...)`.
 function economy.produce(building, unitSid, opts)
     needServer("produce")
     if type(unitSid) ~= "string" or unitSid == "" then
