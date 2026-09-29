@@ -112,6 +112,12 @@
     'buildings.upgrade': () => true,
     'buildings.cancelUpgrade': () => true,
 
+    'mods.cost': () => [
+      { who: 'iron_frontier/server', calls: 1840, ms: 612.5, states: 418 },
+      { who: 'devtools/client', calls: 96, ms: 21.3, states: 7 },
+      { who: '(модлоадер)', calls: 12, ms: 3.1, states: 3 },
+    ],
+    'mods.costReset': () => true,
     'profiler.start': () => true,
     'profiler.stop': () => true,
     'profiler.reset': () => true,
@@ -128,6 +134,8 @@
     },
     // game.lua страница зовёт не только ради консоли: через него берут значения,
     // которых у game.api не получить (он отдаёт лишь первое из нескольких).
+    // Захват клавиатуры: на стенде только записываем, кто и когда просил.
+    async keyboard(on) { calls.push(['keyboard', !!on]); return true; },
     async lua(code) {
       calls.push(['lua', code]);
       if (code === '{ world.cursor() }') return JSON.stringify(CURSOR);

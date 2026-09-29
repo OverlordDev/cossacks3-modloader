@@ -79,6 +79,12 @@
   .ev .t { color: var(--dim); }
   .ev .n { color: var(--warn); min-width: 120px; }
 
+  /* Пока печатают, клавиши не доходят до игры — это надо видеть, иначе
+     непонятно, почему перестали работать горячие клавиши. */
+  header .kb { display: none; color: var(--warn); }
+  body.typing header .kb { display: inline; }
+  body.typing #panel { border-left-color: var(--warn); }
+
   /* Строка с полями ввода над списком (поиск, фильтр, кнопки профайлера). */
   .bar { display: flex; gap: 6px; margin-bottom: 8px; }
   .bar input { flex: 1; min-width: 0; background: #0d1117; color: var(--fg);
@@ -111,7 +117,7 @@
 </head>
 <body>
 <div id="panel">
-  <header><b>Инспектор</b><span id="where"></span><span class="hint">Ctrl+I — закрыть</span></header>
+  <header><b>Инспектор</b><span id="where"></span><span class="kb">клавиши у панели · Esc — игре</span><span class="hint">Ctrl+I — закрыть</span></header>
   <nav>
     <button data-tab="sel" class="on">Выделение</button>
     <button data-tab="find">Поиск</button>
@@ -192,6 +198,10 @@
       <div id="profNote" class="note">Меряет обращения к игре: game.exec, state.get/read/list.
         Мод, сохранивший функцию к себе (local exec = game.exec), в замер не попадёт.</div>
       <pre id="profOut" class="empty">Профайлер выключен.</pre>
+      <div class="note" style="margin-top:10px">Обращения к игре по модам — считаются
+        всегда, включать ничего не нужно. «состояний» — сколько НОВЫХ текстов скрипта
+        мод отправил движку: они живут до конца партии, снять их нечем.</div>
+      <div id="costOut" class="empty">Пока никто к игре не обращался.</div>
     </section>
   </main>
 </div>
@@ -210,6 +220,38 @@ async function api(fn, ...args) {
   try { return { ok: true, value: await game.api(fn, ...args) }; }
   catch (e) { return { ok: false, error: String(e && e.message || e) }; }
 }
+
+// ── Клавиатура ─────────────────────────────────────────────────────────────
+// Панель прозрачна и пропускает ввод в игру (web.passthrough), иначе с ней
+// нельзя было бы играть. Но тогда и буквы уходят в игру — в поле «тайл» или в
+// консоль Lua не напечатать ни слова.
+//
+// Кто должен решать, чьи сейчас клавиши: страница, а не движок. Ей точно
+// известно, стоит ли курсор в её поле, — это focusin и focusout. Раньше это
+// пытался угадать CEF (OnVirtualKeyboardRequested, задумано для сенсорных
+// экранов) и при офскрин-отрисовке угадывал не всегда.
+const TYPING = 'input, textarea, select';
+let grabbed = false;
+
+function grabKeyboard(on) {
+  if (on === grabbed) return;
+  grabbed = on;
+  document.body.classList.toggle('typing', on);
+  game.keyboard(on);
+}
+document.addEventListener('focusin', e => grabKeyboard(!!e.target.closest(TYPING)));
+document.addEventListener('focusout', () => setTimeout(() => {
+  // focusout приходит раньше, чем focusin следующего поля: если отпустить
+  // клавиатуру сразу, переход между полями будет ронять ввод.
+  grabKeyboard(!!(document.activeElement && document.activeElement.closest(TYPING)));
+}, 0));
+// Escape — выйти из поля и вернуть клавиши игре, не трогая мышь.
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && grabbed) { e.preventDefault(); document.activeElement.blur(); }
+});
+// Страницу закрывают и по Ctrl+I, и мимо нас — клавиатуру надо вернуть в любом случае.
+window.addEventListener('blur', () => grabKeyboard(false));
+window.addEventListener('pagehide', () => grabKeyboard(false));
 
 // ── Вкладки ────────────────────────────────────────────────────────────────
 // Некоторым вкладкам нужно что-то подгрузить, и делать это до первого открытия
@@ -707,17 +749,34 @@ profToggle.onclick = async () => {
   profToggle.textContent = profiling ? 'Выключить' : 'Включить';
   clearInterval(profTimer);
   if (profiling) {
-    profReport();
-    profTimer = setInterval(profReport, 1000);
+    profReport(); refreshCost();
+    profTimer = setInterval(() => { profReport(); refreshCost(); }, 1000);
   } else {
     profOut.textContent = 'Профайлер выключен. Собранное осталось — «Сбросить» очистит.';
   }
 };
 
+// Расход по модам: считается в модлоадере всегда, включать не нужно.
+async function refreshCost() {
+  const r = await api('mods.cost');
+  const box = document.getElementById('costOut');
+  if (!r.ok) { box.innerHTML = `<div class="err">${esc(r.error)}</div>`; return; }
+  const rows = r.value || [];
+  if (!rows.length) { box.className = 'empty'; box.textContent = 'Пока никто к игре не обращался.'; return; }
+  box.className = '';
+  box.innerHTML = '<table><tr><td class="k">кто</td><td class="v">вызовов · мс · состояний</td></tr>' +
+    rows.map(c => `<tr><td class="k">${esc(c.who)}</td><td class="v">` +
+      `${c.calls} · ${c.ms.toFixed(1)} · ${c.states}</td></tr>`).join('') + '</table>';
+}
+onOpen.prof = refreshCost;
+
 document.getElementById('profReset').onclick = async () => {
   const r = await api('profiler.reset');
-  say(r.ok ? 'profiler.reset()' : `profiler.reset(): ${r.error}`, !r.ok);
+  const c = await api('mods.costReset');
+  say(r.ok ? 'profiler.reset() + mods.costReset()' : `profiler.reset(): ${r.error}`, !r.ok);
+  if (!c.ok) say('mods.costReset: ' + c.error, true);
   if (profiling) profReport();
+  refreshCost();
 };
 
 // ── Пуск ───────────────────────────────────────────────────────────────────

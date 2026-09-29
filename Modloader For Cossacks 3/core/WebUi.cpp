@@ -69,6 +69,7 @@ namespace
     std::vector<uint8_t> g_pixels;
     std::atomic<bool> g_passthrough = false; // режим HUD: прозрачные места пропускают ввод в игру
     std::atomic<bool> g_textFocus = false;   // на странице активно поле ввода (клавиатура — ей)
+    std::atomic<bool> g_keyboard = false;    // страница сама попросила клавиатуру (game.keyboard)
     int g_frameWidth = 0, g_frameHeight = 0;
     bool g_frameDirty = false;
 
@@ -143,6 +144,12 @@ window.game = {
   },
   // Имена файлов в папке рядом со страницей: game.files('../LoadScreen')
   async files(folder) { return JSON.parse(await this.send('files ' + folder)); },
+  // Забрать клавиатуру себе или вернуть её игре: game.keyboard(true).
+  // В режиме HUD клавиши по умолчанию идут в игру, иначе с открытой панелью
+  // нельзя было бы играть. Страница включает захват, когда её поле в фокусе:
+  //   addEventListener('focusin',  e => { if (e.target.matches('input,textarea,select')) game.keyboard(true); });
+  //   addEventListener('focusout', () => game.keyboard(false));
+  keyboard(on) { return this.send('keyboard ' + (on ? '1' : '0')); },
   // Убрать страницу с экрана и вернуть управление игре.
   close() { return this.send('close'); },
 };
@@ -258,6 +265,22 @@ window.game = {
             else if (cmd == "close")
             {
                 WebUi::RequestClose(); // страница сама убирает себя с экрана
+            }
+            else if (cmd == "keyboard")
+            {
+                // Страница берёт клавиатуру себе (или отдаёт обратно игре).
+                //
+                // В режиме HUD (web.passthrough) клавиши по умолчанию уходят в
+                // игру: иначе нельзя было бы играть с открытой панелью. Раньше
+                // исключением было только автоопределение поля ввода через
+                // OnVirtualKeyboardRequested — оно задумано для сенсорных
+                // экранов и при офскрин-отрисовке срабатывает не всегда. Из-за
+                // этого в поле на странице попросту не удавалось напечатать.
+                //
+                // Сама страница знает это наверняка: у неё есть focusin и
+                // focusout своих полей. Поэтому решение за ней, а не за
+                // догадками движка.
+                WebUi::SetKeyboard(arg != "0" && arg != "false");
             }
             else if (cmd == "log")
             {
@@ -397,6 +420,15 @@ window.game = {
         void OnAfterCreated(CefRefPtr<CefBrowser> browser) override
         {
             g_browser = browser;
+            // ВНУТРЕННИЙ фокус браузера — не оконный. Без него страница,
+            // отрисованная офскрин, считает, что её никто не смотрит: клик по
+            // полю ввода не делает его активным, а клавиши, посланные через
+            // SendKeyEvent, уходят в никуда. Именно поэтому в поле на панели
+            // не удавалось напечатать ни буквы.
+            //
+            // Оконный фокус при этом остаётся у игры: невидимое родительское
+            // окно браузера возвращает его игре сразу (см. ParentProc).
+            browser->GetHost()->SetFocus(true);
             LOG_INFO("[web] browser ready");
         }
 
@@ -773,6 +805,16 @@ void WebUi::RequestEval(const std::string& javascript)
     g_pendingEval.push_back(javascript);
 }
 
+void WebUi::SetKeyboard(bool on)
+{
+    g_keyboard = on;
+}
+
+bool WebUi::Keyboard()
+{
+    return g_keyboard.load();
+}
+
 void WebUi::SetPassthrough(bool on)
 {
     g_passthrough = on;
@@ -807,6 +849,7 @@ namespace
 void WebUi::RequestClose()
 {
     g_passthrough = false;
+    g_keyboard = false;   // закрыли страницу — клавиатура снова у игры
     std::lock_guard lock(g_cmdMutex);
     g_pendingClose = true;
 }
@@ -1017,7 +1060,9 @@ bool WebUi::OnWndProc(HWND window, UINT msg, WPARAM wp, LPARAM lp)
         bool mouseMsg = (msg >= WM_MOUSEFIRST && msg <= WM_MOUSELAST) || msg == WM_SETCURSOR;
         bool keyMsg = msg == WM_KEYDOWN || msg == WM_KEYUP || msg == WM_CHAR || msg == WM_SYSKEYDOWN ||
                       msg == WM_SYSKEYUP || msg == WM_SYSCHAR;
-        if (keyMsg && !g_textFocus)
+        // Клавиши отдаём странице, если она их попросила (game.keyboard) либо
+        // CEF сам сообщил про поле ввода. Иначе они принадлежат игре.
+        if (keyMsg && !g_textFocus && !g_keyboard)
             return false;
         if (mouseMsg)
         {
