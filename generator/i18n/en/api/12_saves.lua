@@ -1,0 +1,7 @@
+-- saves — saves and replays, the same natives as the "Load game" screen.
+--
+--   saves.list()            --> { { name = "autosave", date = "20.09.26 12:40" }, ... }
+--   saves.load("autosave")  -- start loading (then the game loads the map itself)
+--   saves.delete("old")
+--   saves.replays.list()
+--   saves.replays.load(name)

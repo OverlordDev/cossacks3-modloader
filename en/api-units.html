@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>units — Cossacks 3 Modloader</title>
+<meta name="description" content="units: selection, state, order queue.">
+<link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/style.css">
+<script>try{var t=localStorage.getItem('cs3-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light')}catch(e){}window.CS3_I18N={"none": "Nothing found"};</script>
+</head>
+<body>
+<div class="page">
+  <header class="site-header">
+    <div class="hl">
+      <a class="logo" href="index.html">COSSACKS 3 MODLOADER</a>
+      <nav class="nav"><a href="guide.html">GUIDE</a><a href="core-rules.html">REFERENCE</a><a href="core-log.html">LUA API</a><a href="api-schema.html" class="active">MODULES</a><a href="ref-state.html">DATA</a></nav>
+    </div>
+    <div class="ha">
+      <button class="iconbtn menu-btn" id="menu" type="button" aria-label="Menu">☰</button>
+      <div class="search-wrap"><input class="search" id="q" placeholder="Search the API…" autocomplete="off" aria-label="Search"><span class="kbd">/</span><div class="results" id="results"></div></div>
+      <a class="btn sm" href="../api-units.html" title="Русская версия" hreflang="ru">RU</a>
+      <a class="btn black sm" href="https://github.com/OverlordDev/cossacks3-modloader" target="_blank" rel="noopener">GITHUB →</a>
+      <button class="iconbtn" id="theme" type="button" aria-label="Theme">☀</button>
+    </div>
+  </header>
+  <div class="layout"><aside class="side"><div class="group"><span class="group-title">START</span>
+<a href="index.html">Home</a>
+<a href="guide.html">Quick start</a>
+<a href="api-overview.html">api/ overview</a>
+</div>
+<div class="group"><span class="group-title">REFERENCE</span>
+<a href="core-rules.html">Main rules (read first)</a>
+<a href="core-structure.html">Mod structure</a>
+<a href="core-manifest.html">manifest.lua</a>
+<a href="core-sides.html">What is available on which side</a>
+<a href="core-assets.html">Replacing files</a>
+<a href="core-patches.html">Game script patches</a>
+<a href="core-content.html">New nations and units</a>
+<a href="core-templates.html">Templates</a>
+<a href="core-errors.html">Common errors</a>
+</div>
+<div class="group"><span class="group-title">ENGINE LUA API</span>
+<a href="core-log.html">log, mod, require, show</a>
+<a href="core-events.html">events</a>
+<a href="core-game.html">game</a>
+<a href="core-player.html">player, world</a>
+<a href="core-state.html">state and G</a>
+<a href="core-objects.html">objects and mem</a>
+<a href="core-units.html">units</a>
+<a href="core-buildings.html">buildings</a>
+<a href="core-balance.html">balance</a>
+<a href="core-misc.html">Other data</a>
+<a href="core-net.html">net</a>
+<a href="core-input.html">input</a>
+<a href="core-web.html">web</a>
+<a href="core-ui.html">ui</a>
+<a href="core-screens.html">screens</a>
+<a href="core-gfx.html">gfx</a>
+<a href="core-savedata.html">savedata</a>
+<a href="core-native.html">native</a>
+</div>
+<div class="group"><span class="group-title">API MODULES</span>
+<a href="api-schema.html">schema</a>
+<a href="api-state.html">state</a>
+<a href="api-screens_data.html">screens_data</a>
+<a href="api-show.html">show</a>
+<a href="api-profile.html">profile</a>
+<a href="api-options.html">options</a>
+<a href="api-saves.html">saves</a>
+<a href="api-players.html">players</a>
+<a href="api-map.html">map</a>
+<a href="api-screens.html">screens</a>
+<a href="api-balance.html">balance</a>
+<a href="api-buildings.html">buildings</a>
+<a href="api-units.html" class="active">units</a>
+<a href="api-objects.html">objects</a>
+<a href="api-call.html">call</a>
+</div>
+<div class="group"><span class="group-title">GAME DATA</span>
+<a href="ref-state.html">Variables and types</a>
+<a href="ref-screens.html">Screens and buttons</a>
+<a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/GAME_API.md" target="_blank" rel="noopener">Natives (GAME_API) ↗</a>
+</div></aside><main><article><h1>units</h1>
+<p class="lead">units: selection, state, order queue.</p>
+<div class="meta"><span class="badge fill">api/19_units.lua</span><span class="badge">3 functions</span><a class="badge" href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/api/19_units.lua">GITHUB ↗</a></div>
+<h2 id="opisanie" data-t="Description">Description</h2>
+<pre><code data-lang="lua">units.selected()          --&gt; { handle, ... } — what the player selected (units and buildings)
+units.info(handle)        --&gt; {handle, sid, player, hp, maxhp, x, z, dead} or nil
+units.orders(handle)      --&gt; { {type, target, x, z}, ... } — the order queue, [1] — the current one</code></pre>
+<p>type — the name from the game (_misc_GetUnitOrderTypeByIndex): move, attackobj, attackpoint, gainres, patrol, guard, build, repair, gotomine, produce, performupgrade ...</p>
+<h3>Order events <small style="text-transform:none;letter-spacing:0;opacity:.7">(game.on / events.on)</small></h3>
+<pre><code data-lang="lua">events.on("player.order", function(event, order)
+    -- order = {kind, target, x, z, group}
+    --   kind: "move" | "attack" | "attackpoint" | "guard" | "build" | "enter" | "gather" | "patrol"
+    --   target — the handle of the target (attack, guard, build, enter, gather), x/z — a point (move, attackpoint,
+    --   patrol), group — the group handle (move: an event per selected group)
+    return true -- the order is not given
+end)
+
+events.on("unit.order", function(event, handle, type, target, x, z)
+    -- ANY order to any unit: a player's, the AI's, from the network, from scripts (built into _unit_AddOrder)
+    -- type — as in units.orders: "move", "attackobj", "gainres", "build" ...
+    return true -- the order is not added. Cancel only in a shared mod identically on all machines,
+end)           -- otherwise the match diverges.</code></pre>
+<p>player.order arrives on the machine of the player who clicked, before the order goes to the game and the network: who executes it — units.selected().</p>
+<h2 id="funkcii" data-t="Functions">Functions</h2>
+<div class="tblwrap"><table class="fn"><thead><tr><th>FUNCTION</th><th>DESCRIPTION</th></tr></thead><tbody>
+<tr id="f-units-selected"><td><code>units.selected()</code></td><td>Returns: { handle, ... } — what the player selected (units and buildings)<span class="ex"><code>units.selected()          --&gt; { handle, ... } — what the player selected (units and buildings)</code></span></td></tr>
+<tr id="f-units-info"><td><code>units.info(handle)</code></td><td>Returns: {handle, sid, player, hp, maxhp, x, z, dead} or nil<span class="ex"><code>units.info(handle)        --&gt; {handle, sid, player, hp, maxhp, x, z, dead} or nil</code></span></td></tr>
+<tr id="f-units-orders"><td><code>units.orders(handle)</code></td><td>Returns: { {type, target, x, z}, ... } — the order queue, [1] — the current one<span class="ex"><code>units.orders(handle)      --&gt; { {type, target, x, z}, ... } — the order queue, [1] — the current one</code></span></td></tr>
+</tbody></table></div>
+<h2 id="istochnik" data-t="Source">Source</h2>
+<div class="acc"><div class="acc-head"><span>api/19_units.lua — 106 lines (comments in Russian)</span><span>+</span></div><div class="acc-body"><pre><code data-lang="lua">-- units — юниты: выделение, состояние, очередь приказов.
+--
+--   units.selected()          --&gt; { handle, ... } — что выделил игрок (юниты и здания)
+--   units.info(handle)        --&gt; {handle, sid, player, hp, maxhp, x, z, dead} или nil
+--   units.orders(handle)      --&gt; { {type, target, x, z}, ... } — очередь приказов, [1] — текущий
+--
+-- type — имя из игры (_misc_GetUnitOrderTypeByIndex): move, attackobj, attackpoint, gainres, patrol,
+-- guard, build, repair, gotomine, produce, performupgrade ...
+--
+-- СОБЫТИЯ ПРИКАЗОВ (game.on / events.on)
+--   events.on("player.order", function(event, order)
+--       -- order = {kind, target, x, z, group}
+--       --   kind: "move" | "attack" | "attackpoint" | "guard" | "build" | "enter" | "gather" | "patrol"
+--       --   target — хендл цели (attack, guard, build, enter, gather), x/z — точка (move, attackpoint,
+--       --   patrol), group — хендл группы (move: событие на каждую выделенную группу)
+--       return true -- приказ не отдаётся
+--   end)
+--
+--   events.on("unit.order", function(event, handle, type, target, x, z)
+--       -- ЛЮБОЙ приказ любому юниту: игрока, ИИ, из сети, из скриптов (встроено в _unit_AddOrder)
+--       -- type — как в units.orders: "move", "attackobj", "gainres", "build" ...
+--       return true -- приказ не добавится. Отменять — только в shared-моде одинаково на всех машинах,
+--   end)           -- иначе партия разойдётся.
+--
+-- player.order приходит на машине игрока, который кликнул, до того как приказ ушёл в игру и в сеть:
+-- кто выполняет — units.selected().
+
+units = {}
+
+local F, R = "\1", "\2"
+
+local function run(code)
+    if not game.exec then error("units: only server/shared scripts and pages can do this", 3) end
+    return game.exec(code) or ""
+end
+
+local function split(text, sep)
+    local out = {}
+    if text == "" then return out end
+    for piece in (text .. sep):gmatch("(.-)" .. sep) do out[#out + 1] = piece end
+    return out
+end
+
+local function num(v) return tonumber((tostring(v or ""):gsub(",", "."))) or 0 end
+
+local function checkHandle(h)
+    h = math.tointeger(tonumber(h))
+    if not h then error("units: handle must be a number", 3) end
+    return h
+end
+
+function units.selected()
+    local out = {}
+    for _, v in ipairs(split(run([[
+var s : String;
+var i : Integer;
+for i := 0 to gSelectedObjects.GetCount-1 do s := s + IntToStr(gSelectedObjects.Get(i)) + #1;
+ML_RET(s);]]), F)) do
+        if v ~= "" then out[#out + 1] = math.tointeger(tonumber(v)) end
+    end
+    return out
+end
+
+function units.info(handle)
+    local h = checkHandle(handle)
+    local f = split(run(string.format([[
+var h : Integer = %d;
+var pobj : Pointer = _unit_GetTObj(h);
+if pobj = nil then begin ML_RET(''); exit; end;
+var cid : Integer = TObj(pobj).cid;
+var id : Integer = TObj(pobj).id;
+var pl : Integer = TObj(pobj).pl;
+ML_RET(gObjProp[cid][id].sid + #1 + IntToStr(pl) + #1 + IntToStr(TObj(pobj).hp) + #1 +
+       IntToStr(gPlayer[pl].objbase[cid][id].maxhp) + #1 + FloatToStr(GetGameObjectPositionXByHandle(h)) + #1 +
+       FloatToStr(GetGameObjectPositionZByHandle(h)) + #1 + BoolToStr(TObj(pobj).bdead));]], h)), F)
+    if #f &lt; 7 then return nil end
+    return { handle = h, sid = f[1], player = num(f[2]), hp = num(f[3]), maxhp = num(f[4]),
+             x = num(f[5]), z = num(f[6]), dead = f[7] == "True" }
+end
+
+function units.orders(handle)
+    local h = checkHandle(handle)
+    local out = {}
+    for _, rec in ipairs(split(run(string.format([[
+var h : Integer = %d;
+var pobj : Pointer = _unit_GetTObj(h);
+if pobj = nil then begin ML_RET(''); exit; end;
+var s, t : String;
+var i : Integer;
+for i := 0 to 11 do
+if TObj(pobj).orders[i].itype &lt;&gt; gc_obj_order_type_none then
+begin
+   t := '';
+   _misc_GetUnitOrderTypeByIndex(TObj(pobj).orders[i].itype, t);
+   s := s + t + #1 + IntToStr(TObj(pobj).orders[i].info.trg) + #1 + FloatToStr(TObj(pobj).orders[i].info.x) + #1 +
+        FloatToStr(TObj(pobj).orders[i].info.y) + #2;
+end;
+ML_RET(s);]], h)), R)) do
+        local f = split(rec, F)
+        if #f &gt;= 4 then
+            out[#out + 1] = { type = f[1], target = math.tointeger(num(f[2])), x = num(f[3]), z = num(f[4]) }
+        end
+    end
+    return out
+end
+</code></pre></div></div></article><div class="meta" style="margin-top:36px"><a class="badge" href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/api/19_units.lua">EDIT ON GITHUB ↗</a></div><div class="pn"><a href="api-buildings.html"><small>← BACK</small>buildings</a><a class="next" href="api-objects.html"><small>NEXT →</small>objects</a></div></main><aside class="toc" id="toc"><b>ON THIS PAGE</b></aside></div>
+  <footer class="footer">
+    <div><a class="logo" href="index.html" style="display:inline-block">COSSACKS 3 MODLOADER</a><br><br>API documentation<br>Built from the repository's <code>api/</code> folder</div>
+    <div>DOCUMENTS<br><a href="guide.html">Quick start</a><a href="core-rules.html">Reference</a><a href="api-overview.html">api/ overview</a></div>
+    <div>DATA<br><a href="ref-state.html">Game variables</a><a href="ref-screens.html">Screens</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/GAME_API.md">Natives ↗</a></div>
+    <div>PROJECT<br><a href="https://github.com/OverlordDev/cossacks3-modloader">GitHub ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/issues">Issues ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/DOCUMENTATION.md">Internals ↗</a></div>
+  </footer>
+</div>
+<script src="../assets/search-index-en.js"></script>
+<script src="../assets/app.js"></script>
+</body>
+</html>

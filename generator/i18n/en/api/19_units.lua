@@ -1,0 +1,26 @@
+-- units — units: selection, state, order queue.
+--
+--   units.selected()          --> { handle, ... } — what the player selected (units and buildings)
+--   units.info(handle)        --> {handle, sid, player, hp, maxhp, x, z, dead} or nil
+--   units.orders(handle)      --> { {type, target, x, z}, ... } — the order queue, [1] — the current one
+--
+-- type — the name from the game (_misc_GetUnitOrderTypeByIndex): move, attackobj, attackpoint, gainres, patrol,
+-- guard, build, repair, gotomine, produce, performupgrade ...
+--
+-- ORDER EVENTS (game.on / events.on)
+--   events.on("player.order", function(event, order)
+--       -- order = {kind, target, x, z, group}
+--       --   kind: "move" | "attack" | "attackpoint" | "guard" | "build" | "enter" | "gather" | "patrol"
+--       --   target — the handle of the target (attack, guard, build, enter, gather), x/z — a point (move, attackpoint,
+--       --   patrol), group — the group handle (move: an event per selected group)
+--       return true -- the order is not given
+--   end)
+--
+--   events.on("unit.order", function(event, handle, type, target, x, z)
+--       -- ANY order to any unit: a player's, the AI's, from the network, from scripts (built into _unit_AddOrder)
+--       -- type — as in units.orders: "move", "attackobj", "gainres", "build" ...
+--       return true -- the order is not added. Cancel only in a shared mod identically on all machines,
+--   end)           -- otherwise the match diverges.
+--
+-- player.order arrives on the machine of the player who clicked, before the order goes to the game and the network:
+-- who executes it — units.selected().

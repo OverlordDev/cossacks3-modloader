@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>api overview — Cossacks 3 Modloader</title>
+<meta name="description" content="What is in the api folder, how to call it from Lua and from pages, how to add a module.">
+<link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/style.css">
+<script>try{var t=localStorage.getItem('cs3-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light')}catch(e){}window.CS3_I18N={"none": "Nothing found"};</script>
+</head>
+<body>
+<div class="page">
+  <header class="site-header">
+    <div class="hl">
+      <a class="logo" href="index.html">COSSACKS 3 MODLOADER</a>
+      <nav class="nav"><a href="guide.html" class="active">GUIDE</a><a href="core-rules.html">REFERENCE</a><a href="core-log.html">LUA API</a><a href="api-schema.html">MODULES</a><a href="ref-state.html">DATA</a></nav>
+    </div>
+    <div class="ha">
+      <button class="iconbtn menu-btn" id="menu" type="button" aria-label="Menu">☰</button>
+      <div class="search-wrap"><input class="search" id="q" placeholder="Search the API…" autocomplete="off" aria-label="Search"><span class="kbd">/</span><div class="results" id="results"></div></div>
+      <a class="btn sm" href="../api-overview.html" title="Русская версия" hreflang="ru">RU</a>
+      <a class="btn black sm" href="https://github.com/OverlordDev/cossacks3-modloader" target="_blank" rel="noopener">GITHUB →</a>
+      <button class="iconbtn" id="theme" type="button" aria-label="Theme">☀</button>
+    </div>
+  </header>
+  <div class="layout"><aside class="side"><div class="group"><span class="group-title">START</span>
+<a href="index.html">Home</a>
+<a href="guide.html">Quick start</a>
+<a href="api-overview.html" class="active">api/ overview</a>
+</div>
+<div class="group"><span class="group-title">REFERENCE</span>
+<a href="core-rules.html">Main rules (read first)</a>
+<a href="core-structure.html">Mod structure</a>
+<a href="core-manifest.html">manifest.lua</a>
+<a href="core-sides.html">What is available on which side</a>
+<a href="core-assets.html">Replacing files</a>
+<a href="core-patches.html">Game script patches</a>
+<a href="core-content.html">New nations and units</a>
+<a href="core-templates.html">Templates</a>
+<a href="core-errors.html">Common errors</a>
+</div>
+<div class="group"><span class="group-title">ENGINE LUA API</span>
+<a href="core-log.html">log, mod, require, show</a>
+<a href="core-events.html">events</a>
+<a href="core-game.html">game</a>
+<a href="core-player.html">player, world</a>
+<a href="core-state.html">state and G</a>
+<a href="core-objects.html">objects and mem</a>
+<a href="core-units.html">units</a>
+<a href="core-buildings.html">buildings</a>
+<a href="core-balance.html">balance</a>
+<a href="core-misc.html">Other data</a>
+<a href="core-net.html">net</a>
+<a href="core-input.html">input</a>
+<a href="core-web.html">web</a>
+<a href="core-ui.html">ui</a>
+<a href="core-screens.html">screens</a>
+<a href="core-gfx.html">gfx</a>
+<a href="core-savedata.html">savedata</a>
+<a href="core-native.html">native</a>
+</div>
+<div class="group"><span class="group-title">API MODULES</span>
+<a href="api-schema.html">schema</a>
+<a href="api-state.html">state</a>
+<a href="api-screens_data.html">screens_data</a>
+<a href="api-show.html">show</a>
+<a href="api-profile.html">profile</a>
+<a href="api-options.html">options</a>
+<a href="api-saves.html">saves</a>
+<a href="api-players.html">players</a>
+<a href="api-map.html">map</a>
+<a href="api-screens.html">screens</a>
+<a href="api-balance.html">balance</a>
+<a href="api-buildings.html">buildings</a>
+<a href="api-units.html">units</a>
+<a href="api-objects.html">objects</a>
+<a href="api-call.html">call</a>
+</div>
+<div class="group"><span class="group-title">GAME DATA</span>
+<a href="ref-state.html">Variables and types</a>
+<a href="ref-screens.html">Screens and buttons</a>
+<a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/GAME_API.md" target="_blank" rel="noopener">Natives (GAME_API) ↗</a>
+</div></aside><main><article><h1>api — the modloader's library on top of the game</h1>
+<blockquote>A guide for modders (manifest, events, assets, patches): <code>../MODDING.md</code>.</blockquote>
+<p>Lua modules that the modloader loads into every mod's environment and into the console. They live as separate files so they can be extended without rebuilding: edit a file — <code>.lua reload</code> in the console.</p>
+<p>In the game the folder is <code>&lt;game&gt;/modloader/api/</code>, in the repository — here. Files are loaded in name order.</p>
+<div class="tblwrap"><table><thead><tr><th>file</th><th>what it gives</th></tr></thead><tbody><tr><td><code>00_schema.lua</code></td><td><strong>generated</strong>, do not edit. All types and global variables of the game scripts</td></tr><tr><td><code>02_screens_data.lua</code></td><td><strong>generated</strong> (<code>tools/gen_screens.py</code>). Game screens and button tag names</td></tr><tr><td><code>01_state.lua</code></td><td><code>state</code>, <code>G</code> — reading/writing any game variable by path</td></tr><tr><td><code>10_profile.lua</code></td><td><code>profile</code> — the player profile (sound, controls, language)</td></tr><tr><td><code>11_options.lua</code></td><td><code>options</code> — engine options (graphics)</td></tr><tr><td><code>12_saves.lua</code></td><td><code>saves</code> — saves and replays</td></tr><tr><td><code>13_players.lua</code></td><td><code>players</code> — match participants</td></tr><tr><td><code>14_map.lua</code></td><td><code>map</code> — the map and match settings</td></tr><tr><td><code>15_screens.lua</code></td><td><code>screens</code> — screens by name: open, press a button, intercept a button, replace a screen</td></tr><tr><td><code>17_balance.lua</code></td><td><code>balance</code> — unit/building type parameters: read and change in the middle of a match</td></tr><tr><td><code>18_buildings.lua</code></td><td><code>buildings</code> — buildings: what they build, upgrades, the queue, player commands, logic editing</td></tr><tr><td><code>19_units.lua</code></td><td><code>units</code> — selection, state and orders of units; the <code>unit.order</code> / <code>player.order</code> events</td></tr><tr><td><code>20_objects.lua</code></td><td><code>objects</code> — fast reading of units and buildings from memory (no Pascal), walking all objects</td></tr><tr><td><code>90_call.lua</code></td><td><code>api_call</code> — the entry point for pages (<code>game.api</code> in JS)</td></tr></tbody></table></div>
+<p>A reference for all game variables and fields — <code>GAME_STATE.md</code>, for screens and buttons — <code>GAME_SCREENS.md</code>.</p>
+<h2 id="how-to-use" data-t="How to use">How to use<a class="h-anchor" href="#how-to-use">#</a></h2>
+<p>From a mod's Lua:</p>
+<pre><code data-lang="lua">local volume = profile.get("sndmaster")
+for _, p in ipairs(players.list()) do log.info(p.name, p.team) end
+local gen = map.settings().gen</code></pre>
+<p>From a page (HTML in the mod folder):</p>
+<pre><code data-lang="js">const list = await game.api('saves.list');          // [{ name, date }, ...]
+await game.api('profile.set', 'sndmaster', 0.5);    // any arguments, the answer is an object
+const slot = await game.api('state.read', 'gMap.players[0]');</code></pre>
+<p><code>game.api('a.b', x, y)</code> calls the function <code>a.b(x, y)</code> in the game and returns the result through JSON.</p>
+<h2 id="reading-and-writing-game-variables" data-t="Reading and writing game variables">Reading and writing game variables<a class="h-anchor" href="#reading-and-writing-game-variables">#</a></h2>
+<p><code>state</code> knows the type of every field from the schema and picks how to read it itself:</p>
+<pre><code data-lang="lua">state.get("gProfile.sndmaster")        -- 0.75 (fractional)
+state.get("gMap.players[2].name")      -- "Cossack" (string)
+state.read("gMap.players[2]")          -- the whole record as a table, in ONE script call
+state.read("gMap.settings", 2)         -- with nested records to 2 levels
+state.list("gMap.players")             -- all elements of the array
+state.set("gProfile.sndmaster", 0.5)   -- write
+
+G.gMap.players[2].team                 -- the same with dots
+G.gProfile.sndmaster = 0.5</code></pre>
+<p>Rules that are important to know:</p>
+<ul><li><strong>You can read from anywhere, but only the server can write.</strong> On the client <code>state.set</code> throws a clear error. Pages work with console rights, so they may write.</li><li><strong>For records use <code>state.read</code>, not many <code>state.get</code>.</strong> Every <code>get</code> is a separate game script call; <code>read</code> gathers the whole record into one string in one call.</li><li><strong>Errors name what is wrong.</strong> A typo in a field gives <code>state: 'gProfile.x': no field 'x'</code>, not a crash.</li></ul>
+<h2 id="how-to-add-a-module" data-t="How to add a module">How to add a module<a class="h-anchor" href="#how-to-add-a-module">#</a></h2>
+<ol><li>Find how the game itself does it: screens — <code>data/gui/menu.inc/*.inc</code>, libraries — <code>data/scripts/lib/*.script</code>, natives — <code>GAME_API.md</code>.</li><li>If the data is in a global variable — take it through <code>state</code> (types are already known). If through a native — through <code>native.&lt;Name&gt;</code>. Check that the native exists: <code>grep "function &lt;Name&gt;(" "Modloader For Cossacks 3/core/NativesTable.inc"</code>.</li><li>Create <code>api/NN_name.lua</code> with a global table and a comment header with examples.</li><li>Add checks to <code>tools/api_test/run.lua</code> and, if needed, fake data to <code>tools/api_test/fake_game.lua</code>.</li><li>Run the tests, copy the folder into the game, <code>.lua reload</code>.</li></ol>
+<p>The model module is <code>12_saves.lua</code>: it is short and shows both techniques.</p>
+<h2 id="testing-without-the-game" data-t="Testing without the game">Testing without the game<a class="h-anchor" href="#testing-without-the-game">#</a></h2>
+<pre><code data-lang="bash">lua tools/api_test/run.lua</code></pre>
+<p>The fake game (<code>fake_game.lua</code>) understands the same calls as the modloader (<code>game.eval*</code>, <code>game.exec</code>, the needed natives) and keeps state in an ordinary table. The Lua interpreter is built by the script <code>tools/api_test/build_lua.ps1</code> from the sources in <code>external/lua</code>.</p>
+<h2 id="when-the-game-was-updated" data-t="When the game was updated">When the game was updated<a class="h-anchor" href="#when-the-game-was-updated">#</a></h2>
+<pre><code data-lang="bash">python tools/gen_game_api.py "C:/Program Files (x86)/Steam/steamapps/common/Cossacks 3"</code></pre>
+<p>Regenerates <code>00_schema.lua</code> and <code>GAME_STATE.md</code> from the game scripts.</p>
+<h2 id="what-is-not-there-yet" data-t="What is not there yet">What is not there yet<a class="h-anchor" href="#what-is-not-there-yet">#</a></h2>
+<ul><li><strong>Campaigns</strong> — the list and descriptions live in separate campaign files, not in global variables; parsing <code>data/gui/menu.inc/showcampaign.inc</code> is needed.</li><li><strong>Lobbies and rooms</strong> — network data, updated by events; parsing <code>showinternetshell.inc</code> and the <code>OnLanEvent</code> events is needed.</li><li><strong>Units</strong> — type stats exist (<code>balance</code>), life events — <code>unit.spawn/death/destroy</code>, <code>building.*</code>. Missing: damage, orders, data of a specific unit (TObj).</li></ul></article><div class="meta" style="margin-top:36px"><a class="badge" href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/api/README.md">EDIT ON GITHUB ↗</a></div><div class="pn"><a href="guide.html"><small>← BACK</small>Quick start</a><a class="next" href="core-rules.html"><small>NEXT →</small>Main rules (read first)</a></div></main><aside class="toc" id="toc"><b>ON THIS PAGE</b></aside></div>
+  <footer class="footer">
+    <div><a class="logo" href="index.html" style="display:inline-block">COSSACKS 3 MODLOADER</a><br><br>API documentation<br>Built from the repository's <code>api/</code> folder</div>
+    <div>DOCUMENTS<br><a href="guide.html">Quick start</a><a href="core-rules.html">Reference</a><a href="api-overview.html">api/ overview</a></div>
+    <div>DATA<br><a href="ref-state.html">Game variables</a><a href="ref-screens.html">Screens</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/GAME_API.md">Natives ↗</a></div>
+    <div>PROJECT<br><a href="https://github.com/OverlordDev/cossacks3-modloader">GitHub ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/issues">Issues ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/DOCUMENTATION.md">Internals ↗</a></div>
+  </footer>
+</div>
+<script src="../assets/search-index-en.js"></script>
+<script src="../assets/app.js"></script>
+</body>
+</html>

@@ -8,6 +8,9 @@
   AI_MODDING_REFERENCE.md      справочник ядра (Lua API движка), режется по разделам
   GAME_STATE.md, GAME_SCREENS.md  справочники данных игры
 
+Сайт собирается на двух языках: русский — в корне, английский — в подпапке en/.
+Переводы документов для en лежат в i18n/en/.
+
 Запуск:
   python gen_docs.py --repo <путь к клону cossacks3-modloader> --out <куда писать сайт>
 Без аргументов: репозиторий — родитель папки со скриптом, результат — <репозиторий>/docs.
@@ -27,7 +30,15 @@ OUT = ROOT / "docs"  # куда писать сайт (--out)
 SITE = HERE / "docs_site"  # стили и скрипт сайта лежат рядом с генератором
 REPO = "https://github.com/OverlordDev/cossacks3-modloader"
 BLOB = REPO + "/blob/master/"
-SITE_NAME = "COSSACKS 3 MODLOADER"
+LANG = "ru"  # язык, который собирается сейчас (ru | en)
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from strings import STR, HOME_CODE  # noqa: E402
+
+
+def S(key):
+    return STR[LANG][key]
+
 
 # --------------------------------------------------------------------------------------------------
 # Markdown -> HTML (минимальный, под наши документы)
@@ -307,7 +318,7 @@ def collect_reference_examples(text):
 
 def comment_to_text(comment):
     if comment.startswith("-->"):
-        return "Возвращает: " + comment[3:].strip()
+        return S("returns") + comment[3:].strip()
     return comment.lstrip("-").strip()
 
 
@@ -358,8 +369,17 @@ def parse_functions(src, header_lines):
 # Сборка страниц
 # --------------------------------------------------------------------------------------------------
 
+
 PAGES = []  # порядок = порядок навигации: dict(id, file, title, label, group, body, src, toc, heads)
 SEARCH = []
+
+# Явные адреса страниц разделов справочника (не зависят от языка заголовков)
+CORE_SLUGS = {"0": "rules", "1": "structure", "2": "manifest", "3": "sides", "5": "assets", "6": "patches",
+              "6а": "content", "6a": "content", "7": "templates", "8": "errors"}
+ENGINE_SLUGS = {"4.1": "log", "4.2": "events", "4.3": "game", "4.4": "player", "4.5": "state", "4.6": "objects",
+                "4.7": "units", "4.8": "buildings", "4.9": "balance", "4.10": "misc", "4.11": "net", "4.12": "input",
+                "4.13": "web", "4.14": "ui", "4.15": "screens", "4.16": "gfx", "4.16а": "savedata",
+                "4.16a": "savedata", "4.17": "native"}
 
 
 def add_page(pid, title, label, group, body, src=None, headings=None, summary="", toc=True):
@@ -385,14 +405,50 @@ def link_map_factory(known):
         norm = "/".join(parts)
         if norm in known:
             return known[norm]
-        m = re.match(r"^api/(\d+_)?(\w+)\.lua$", norm)
-        if m and ("api/" + (m.group(1) or "") + m.group(2) + ".lua") in known:
-            return known["api/" + (m.group(1) or "") + m.group(2) + ".lua"]
         return BLOB + norm
     return link_map
 
 
+# ---- источники с учётом языка -------------------------------------------------------------------
+
+def i18n_path(*parts):
+    return HERE / "i18n" / LANG / Path(*parts)
+
+
+def source_text(relpath):
+    """Текст документа репозитория; для en — перевод из i18n/en, либо оригинал с подстановками."""
+    if LANG == "ru":
+        return read(ROOT / relpath)
+    override = {"MODDING.md": "MODDING.md", "AI_MODDING_REFERENCE.md": "AI_MODDING_REFERENCE.md",
+                "api/README.md": "api_README.md"}.get(relpath)
+    if override and i18n_path(override).exists():
+        return read(i18n_path(override))
+    text = read(ROOT / relpath)
+    table = i18n_path("replace.json")
+    if table.exists():
+        for old, new in json.loads(read(table)).items():
+            text = text.replace(old, new)
+    return text
+
+
+def module_header(f, src):
+    """Строки шапки модуля: для en — из i18n/en/api/<файл>."""
+    if LANG == "en":
+        tr = i18n_path("api", f.name)
+        if tr.exists():
+            return header_comment(read(tr))
+    return header_comment(src)
+
+
+def description_overrides():
+    table = i18n_path("descriptions.json")
+    return json.loads(read(table)) if LANG == "en" and table.exists() else {}
+
+
 def build():
+    PAGES.clear()
+    SEARCH.clear()
+    REF_EXAMPLES.clear()
     known = {
         "MODDING.md": "guide.html",
         "AI_MODDING_REFERENCE.md": "core-rules.html",
@@ -410,74 +466,64 @@ def build():
     link_map = link_map_factory(known)
 
     # ---- НАЧАЛО
-    home_placeholder = {"id": "index"}  # главная строится отдельно, после подсчёта статистики
-
     md = Md(link_map, "")
-    guide_src = read(ROOT / "MODDING.md")
-    body = md.render(guide_src)
-    add_page("guide", "Быстрый старт", "Быстрый старт", "НАЧАЛО", body, "MODDING.md", md.headings,
-             "Как сделать первый мод: структура, manifest.lua, события, главные функции.")
+    body = md.render(source_text("MODDING.md"))
+    add_page("guide", S("guide.title"), S("guide.label"), "start", body, "MODDING.md", md.headings, S("guide.summary"))
 
     md = Md(link_map, "api")
-    body = md.render(read(ROOT / "api" / "README.md"))
-    add_page("api-overview", "Обзор api", "Обзор api/", "НАЧАЛО", body, "api/README.md", md.headings,
-             "Что лежит в папке api, как вызывать из Lua и из страниц, как добавить модуль.")
+    body = md.render(source_text("api/README.md"))
+    add_page("api-overview", S("overview.title"), S("overview.label"), "start", body, "api/README.md", md.headings,
+             S("overview.summary"))
 
     # ---- СПРАВОЧНИК ЯДРА (AI_MODDING_REFERENCE.md)
-    ref = read(ROOT / "AI_MODDING_REFERENCE.md")
+    ref = source_text("AI_MODDING_REFERENCE.md")
     collect_reference_examples(ref)
-    sections = split_reference(ref)
-    core_slugs = {"0": "rules", "1": "structure", "2": "manifest", "3": "sides", "5": "assets", "6": "patches",
-                  "6а": "content", "7": "templates", "8": "errors"}
-    lua_api_slugs = {}
-    used = set()
-    for sec in sections:
+    for sec in split_reference(ref):
         num = sec["num"]
         if sec["kind"] == "h2":
-            slug = core_slugs.get(num)
+            slug = CORE_SLUGS.get(num)
             if not slug:
                 continue
             md = Md(link_map, "", shift=-1)
             body = md.render(sec["text"])
             title = sec["title"]
-            add_page("core-" + slug, title, title.split(" — ")[0], "СПРАВОЧНИК", body, "AI_MODDING_REFERENCE.md",
+            add_page("core-" + slug, title, title.split(" — ")[0], "ref", body, "AI_MODDING_REFERENCE.md",
                      md.headings, first_sentence(sec["text"]))
         else:
-            ascii_word = re.search(r"[A-Za-z_]+", sec["title"])
-            slug = (ascii_word.group(0).lower() if ascii_word else "misc")
-            base, k = slug, 2
-            while slug in used:
-                slug = "%s%d" % (base, k)
-                k += 1
-            used.add(slug)
-            lua_api_slugs[num] = slug
+            slug = ENGINE_SLUGS.get(num)
+            if not slug:
+                continue
             md = Md(link_map, "", shift=-2)
             body = md.render(sec["text"])
-            add_page("core-" + slug, sec["title"], sec["title"].split(" — ")[0].split(" (")[0], "LUA API ДВИЖКА", body,
+            add_page("core-" + slug, sec["title"], sec["title"].split(" — ")[0].split(" (")[0], "engine", body,
                      "AI_MODDING_REFERENCE.md", md.headings, first_sentence(sec["text"]))
 
     # ---- МОДУЛИ API
+    overrides = description_overrides()
     total_funcs = 0
     module_cards = []
     fn_names = []
     for f, name in modules:
         src = read(f)
-        header = header_comment(src)
+        header = module_header(f, src)
         title_line = header[0] if header else name
         m = re.match(r"^\s*([\w.]+)\s+[—-]\s+(.*)$", title_line)
         summary = (m.group(2) if m else title_line).strip()
         md = Md(link_map, "api")
         page_id = "api-" + name
         if f.stem in GENERATED:
-            body = generated_page(f, name, src, md)
-            add_page(page_id, name, name, "МОДУЛИ API", body, "api/" + f.name, [], summary)
+            body = generated_page(f, name, header, md)
+            add_page(page_id, name, name, "modules", body, "api/" + f.name, [], summary)
             module_cards.append((name, page_id, summary, 0, True))
             continue
         funcs = parse_functions(src, header)
+        for fn in funcs:
+            if fn["name"] in overrides:
+                fn["desc"] = overrides[fn["name"]]
         total_funcs += len(funcs)
-        add_page(page_id, name, name, "МОДУЛИ API", module_body(f, name, src, header, funcs, md, summary),
-                 "api/" + f.name, [(2, "opisanie", "Описание")] + ([(2, "funkcii", "Функции")] if funcs else [])
-                 + [(2, "istochnik", "Исходник")], summary)
+        add_page(page_id, name, name, "modules", module_body(f, name, src, header, funcs, md, summary),
+                 "api/" + f.name, [(2, "opisanie", S("sec.desc"))] + ([(2, "funkcii", S("sec.funcs"))] if funcs else [])
+                 + [(2, "istochnik", S("sec.source"))], summary)
         module_cards.append((name, page_id, summary, len(funcs), False))
         for fn in funcs:
             fn_names.append(fn["name"])
@@ -486,41 +532,35 @@ def build():
                            "x": (fn["desc"] + " " + fn["args"]).lower()})
 
     # ---- ДАННЫЕ ИГРЫ
+    state_src = source_text("GAME_STATE.md")
     md = Md(link_map, "", shift=0)
-    state_src = read(ROOT / "GAME_STATE.md")
-    body = md.render(state_src)
-    add_page("ref-state", "Состояние игры", "Переменные и типы", "ДАННЫЕ ИГРЫ", body, "GAME_STATE.md", md.headings,
-             "Все глобальные переменные и типы скриптов игры: поля, размеры, вложенность.", toc=False)
+    add_page("ref-state", S("state.title"), S("state.label"), "data", md.render(state_src), "GAME_STATE.md",
+             md.headings, S("state.summary"), toc=False)
+    screens_src = source_text("GAME_SCREENS.md")
     md = Md(link_map, "", shift=0)
-    screens_src = read(ROOT / "GAME_SCREENS.md")
-    body = md.render(screens_src)
-    add_page("ref-screens", "Экраны игры", "Экраны и кнопки", "ДАННЫЕ ИГРЫ", body, "GAME_SCREENS.md", md.headings,
-             "Экраны интерфейса игры, их состояния и тэги кнопок.", toc=False)
+    add_page("ref-screens", S("screens.title"), S("screens.label"), "data", md.render(screens_src), "GAME_SCREENS.md",
+             md.headings, S("screens.summary"), toc=False)
 
     # ---- статистика для главной
     natives = re.search(r"Всего нативов:\s*\*\*(\d+)\*\*", read(ROOT / "GAME_API.md"))
     stats = {
         "modules": sum(1 for c in module_cards if not c[4]),
         "functions": total_funcs,
-        "screens": len(re.findall(r"^## ", screens_src, re.M)),
+        "screens": len(re.findall(r"^## ", read(ROOT / "GAME_SCREENS.md"), re.M)),
         "natives": int(natives.group(1)) if natives else 0,
-        "types": len(re.findall(r"^### ", state_src, re.M)),
+        "types": len(re.findall(r"^### ", read(ROOT / "GAME_STATE.md"), re.M)),
     }
-    guide_code = {
-        "client": 'input.bind("F7", function()\n    if not game.isInGame() then return end\n    local me = native.GetPlayerIndexInterfaceIO()\n    local total, count = 0, 0\n    for _, h in ipairs(objects.list(me)) do\n        local o = objects.read(h)\n        if o and not o.bdead then total, count = total + o.hp, count + 1 end\n    end\n    log.info(string.format("объектов: %d, HP всего: %d", count, total))\nend)',
-        "shared": 'events.on("game.start", function()\n    balance.setHP("musketeer18", 200)\n    balance.setDamage("musketeer18", 40, 1)   -- оружие 1 — выстрел\n    balance.set("musketeer18", "price[3]", 30) -- цена в золоте\nend)',
-        "server": 'net.on("give_gold", function(data, from)\n    local who = game.playerIndexOf(from)\n    local amount = math.min(tonumber(data and data.amount) or 0, 1000)\n    player(who):add("gold", amount)\n    net.broadcast("gold_given", { player = who, amount = amount })\nend)',
-    }
-    home = home_page(stats, module_cards, guide_code, fn_names)
-    PAGES.insert(0, {"id": "index", "file": "index.html", "title": "Документация API", "label": "Главная",
-                     "group": "НАЧАЛО", "body": home, "src": None, "headings": [], "summary": "", "toc": False, "home": True})
+    home = home_page(stats, module_cards, HOME_CODE[LANG], fn_names)
+    PAGES.insert(0, {"id": "index", "file": "index.html", "title": S("home.title"), "label": S("home.label"),
+                     "group": "start", "body": home, "src": None, "headings": [], "summary": "", "toc": False,
+                     "home": True})
 
     # ---- поиск по заголовкам
     for p in PAGES:
         if p.get("home"):
             continue
-        SEARCH.append({"t": p["title"], "s": p["group"].title(), "d": p["summary"][:110], "u": p["file"], "k": "page",
-                       "x": (p["summary"] + " " + p["label"]).lower()})
+        SEARCH.append({"t": p["title"], "s": S("g." + p["group"]).title(), "d": p["summary"][:110], "u": p["file"],
+                       "k": "page", "x": (p["summary"] + " " + p["label"]).lower()})
         for level, hid, text in p["headings"]:
             if p["id"].startswith("api-") and hid in ("opisanie", "funkcii", "istochnik"):
                 continue
@@ -557,8 +597,8 @@ def split_reference(text):
     for line in lines:
         if line.startswith("```"):
             in_code = not in_code
-        m2 = None if in_code else re.match(r"^## (\d+[а-я]?)\.\s+(.*)$", line)
-        m3 = None if in_code else re.match(r"^### (4\.\d+[а-я]?)\.\s+(.*)$", line)
+        m2 = None if in_code else re.match(r"^## (\d+[а-яa-z]?)\.\s+(.*)$", line)
+        m3 = None if in_code else re.match(r"^### (4\.\d+[а-яa-z]?)\.\s+(.*)$", line)
         if m2:
             close()
             if m2.group(1) == "4":
@@ -578,34 +618,33 @@ def split_reference(text):
     return sections
 
 
-def generated_page(f, name, src, md):
-    first = src.split("\n")[0].lstrip("- ").strip()
+def generated_page(f, name, header, md):
+    first = header[0].strip() if header else ""
     if f.stem == "00_schema":
-        types = len(re.findall(r"^    (\w+) = \{", src, re.M))
-        extra = "<p>В схеме описано типов (записей) скриптов игры: <strong>%d</strong>.</p>" % types
-        link = '<a class="btn black" href="ref-state.html">ПЕРЕМЕННЫЕ И ТИПЫ →</a>'
+        types = len(re.findall(r"^    (\w+) = \{", read(f), re.M))
+        extra = "<p>%s</p>" % (S("gen.types") % types)
+        link = '<a class="btn black" href="ref-state.html">%s</a>' % S("gen.btn_types")
     else:
-        screens = len(re.findall(r"^  (\w+) = \{ show", src, re.M))
-        extra = "<p>Описано экранов: <strong>%d</strong>.</p>" % screens
-        link = '<a class="btn black" href="ref-screens.html">ЭКРАНЫ И КНОПКИ →</a>'
+        screens = len(re.findall(r"^  (\w+) = \{ show", read(f), re.M))
+        extra = "<p>%s</p>" % (S("gen.screens") % screens)
+        link = '<a class="btn black" href="ref-screens.html">%s</a>' % S("gen.btn_screens")
     return (
-        "<h1>%s</h1><p class=\"lead\">Файл генерируется, руками не правится.</p>"
-        "<div class=\"meta\"><span class=\"badge fill\">GENERATED</span><a class=\"badge\" href=\"%sapi/%s\">api/%s</a></div>"
-        "<p>%s</p>%s"
-        "<p>Человекочитаемая версия этих данных — в справочнике. Обновить после патча игры: "
-        "<code>python tools/gen_game_api.py &lt;папка игры&gt;</code>.</p><p>%s</p>"
-    ) % (html.escape(name), BLOB, f.name, f.name, html.escape(first), extra, link)
+        '<h1>%s</h1><p class="lead">%s</p>'
+        '<div class="meta"><span class="badge fill">GENERATED</span><a class="badge" href="%sapi/%s">api/%s</a></div>'
+        "<p>%s</p>%s<p>%s</p><p>%s</p>"
+    ) % (html.escape(name), S("gen.lead"), BLOB, f.name, f.name, html.escape(first), extra, S("gen.note"), link)
 
 
 def module_body(f, name, src, header, funcs, md, summary):
     parts = ["<h1>%s</h1>" % html.escape(name), '<p class="lead">%s</p>' % md.inline(summary)]
-    parts.append('<div class="meta"><span class="badge fill">api/%s</span><span class="badge">%d функций</span>'
-                 '<a class="badge" href="%sapi/%s">GITHUB ↗</a></div>' % (f.name, len(funcs), BLOB, f.name))
-    parts.append('<h2 id="opisanie" data-t="Описание">Описание</h2>')
-    parts.append(header_to_html(header, md) or "<p>Описание в шапке файла не оформлено — смотрите исходник ниже.</p>")
+    parts.append('<div class="meta"><span class="badge fill">api/%s</span><span class="badge">%s</span>'
+                 '<a class="badge" href="%sapi/%s">GITHUB ↗</a></div>' % (f.name, S("n_funcs") % len(funcs), BLOB, f.name))
+    parts.append('<h2 id="opisanie" data-t="%s">%s</h2>' % (S("sec.desc"), S("sec.desc")))
+    parts.append(header_to_html(header, md) or "<p>%s</p>" % S("no_header"))
     if funcs:
-        parts.append('<h2 id="funkcii" data-t="Функции">Функции</h2>')
-        parts.append('<div class="tblwrap"><table class="fn"><thead><tr><th>ФУНКЦИЯ</th><th>ОПИСАНИЕ</th></tr></thead><tbody>')
+        parts.append('<h2 id="funkcii" data-t="%s">%s</h2>' % (S("sec.funcs"), S("sec.funcs")))
+        parts.append('<div class="tblwrap"><table class="fn"><thead><tr><th>%s</th><th>%s</th></tr></thead><tbody>'
+                     % (S("th.func"), S("th.desc")))
         for fn in funcs:
             sig = "%s(%s)" % (fn["name"], html.escape(fn["args"]).replace(", ", ",<wbr> "))
             ex = ""
@@ -614,10 +653,10 @@ def module_body(f, name, src, header, funcs, md, summary):
             desc = md.inline(fn["desc"]) if fn["desc"] else '<span style="opacity:.55">—</span>'
             parts.append('<tr id="f-%s"><td><code>%s</code></td><td>%s%s</td></tr>' % (fn_anchor(fn["name"]), sig, desc, ex))
         parts.append("</tbody></table></div>")
-    parts.append('<h2 id="istochnik" data-t="Исходник">Исходник</h2>')
-    parts.append('<div class="acc"><div class="acc-head"><span>api/%s — %d строк</span><span>+</span></div>'
+    parts.append('<h2 id="istochnik" data-t="%s">%s</h2>' % (S("sec.source"), S("sec.source")))
+    parts.append('<div class="acc"><div class="acc-head"><span>%s</span><span>+</span></div>'
                  '<div class="acc-body"><pre><code data-lang="lua">%s</code></pre></div></div>'
-                 % (f.name, src.count("\n") + 1, html.escape(src, quote=False)))
+                 % (S("source_head") % (f.name, src.count("\n") + 1), html.escape(src, quote=False)))
     return "\n".join(parts)
 
 
@@ -626,66 +665,52 @@ def home_page(stats, cards, code, fn_names):
     card_html = "".join(
         '<a class="card rv" href="%s.html"><b>%s</b><span>%s</span><em>%s →</em></a>'
         % (pid, html.escape(name), html.escape(summary[:120]),
-           ("%d ФУНКЦИЙ" % cnt) if cnt else "ДАННЫЕ")
+           (S("card.funcs") % cnt) if cnt else S("card.data"))
         for name, pid, summary, cnt, gen in cards)
     tabs = "".join('<button class="%s">%s</button>' % ("active" if i == 0 else "", t.upper())
                    for i, t in enumerate(("client", "shared", "server")))
     panes = "".join('<div class="tabpane%s"><pre><code data-lang="lua">%s</code></pre></div>'
                     % (" active" if i == 0 else "", html.escape(code[k], quote=False))
                     for i, k in enumerate(("client", "shared", "server")))
-    faq = [
-        ("Как установить модлоадер?",
-         "<ol><li>Собрать решение <code>Modloader For Cossacks 3.slnx</code> (Release, x86).</li>"
-         "<li>Скопировать в папку игры <code>Cossacks3Launcher.exe</code>, <code>Cossacks3Loader.dll</code>, основную DLL и <code>Cossacks3Cef.exe</code>.</li>"
-         "<li>Поставить CEF: <code>python tools/install_cef.py</code>.</li>"
-         "<li>Скопировать <code>api/</code> в <code>&lt;игра&gt;/modloader/api/</code>, моды — в <code>modloader/mods/</code>.</li>"
-         "<li>Запускать через <code>Cossacks3Launcher.exe</code>.</li></ol>"),
-        ("Где лежат моды?",
-         "<p><code>&lt;игра&gt;/modloader/mods/&lt;папка мода&gt;/</code> — внутри обязательно <code>manifest.lua</code>. "
-         "Мод может быть только из данных: одни <code>assets/</code>, <code>patches/</code> или <code>content.lua</code>.</p>"),
-        ("Как поправить api без пересборки?",
-         "<p>Файлы <code>api/*.lua</code> лежат отдельно от DLL: поправил файл — команда <code>.lua reload</code> в консоли модлоадера.</p>"),
-        ("Что менять на клиенте, а что на сервере?",
-         "<p>Интерфейс и клавиши — <code>client</code>. Решения хоста — <code>server</code>. Всё, что меняет мир одинаково на всех машинах "
-         "(баланс, статы, логика), — <code>shared</code>: иначе в сети партия разойдётся. Подробнее — "
-         "<a href=\"core-sides.html\">какая сторона что умеет</a>.</p>"),
-    ]
     faq_html = "".join('<div class="acc"><div class="acc-head"><span>%s</span><span>+</span></div><div class="acc-body">%s</div></div>'
-                       % (html.escape(q), a) for q, a in faq)
+                       % (html.escape(S("faq.%s.q" % k)), S("faq.%s.a" % k)) for k in ("install", "where", "reload", "side"))
     return """
 <section class="hero rv"><div class="bg"></div>
-  <h1>МОДЫ ДЛЯ COSSACKS 3<br>БЕЗ ПЕРЕСБОРКИ<span class="caret"></span></h1>
-  <p>Modloader встраивается в игру при запуске: Lua, события, HTML-интерфейсы, замена файлов и правка скриптов игры.
-  Файлы игры не меняются — всё в памяти процесса. Здесь — полная документация по API.</p>
-  <div class="cta"><a class="btn black" href="guide.html">НАЧАТЬ →</a><a class="btn" href="api-overview.html">ОБЗОР API →</a>
-  <a class="btn" href="core-events.html">СОБЫТИЯ →</a></div>
+  <h1>%(h1)s<span class="caret"></span></h1>
+  <p>%(p)s</p>
+  <div class="cta"><a class="btn black" href="guide.html">%(start)s</a><a class="btn" href="api-overview.html">%(overview)s</a>
+  <a class="btn" href="core-events.html">%(events)s</a></div>
 </section>
 <div class="stats">
-  <div class="stat rv"><div class="cnt" data-count="%(modules)d">0</div><small>МОДУЛЕЙ API</small></div>
-  <div class="stat rv"><div class="cnt" data-count="%(functions)d">0</div><small>ФУНКЦИЙ</small></div>
-  <div class="stat rv"><div class="cnt" data-count="%(natives)d">0</div><small>НАТИВОВ ДВИЖКА</small></div>
-  <div class="stat rv"><div class="cnt" data-count="%(screens)d">0</div><small>ЭКРАНОВ ИГРЫ</small></div>
+  <div class="stat rv"><div class="cnt" data-count="%(modules)d">0</div><small>%(s_modules)s</small></div>
+  <div class="stat rv"><div class="cnt" data-count="%(functions)d">0</div><small>%(s_funcs)s</small></div>
+  <div class="stat rv"><div class="cnt" data-count="%(natives)d">0</div><small>%(s_natives)s</small></div>
+  <div class="stat rv"><div class="cnt" data-count="%(screens)d">0</div><small>%(s_screens)s</small></div>
 </div>
 <div class="marq rv"><div>%(marquee)s%(marquee)s</div></div>
-<h2 class="sec-title">Пример за минуту</h2>
+<h2 class="sec-title">%(t_example)s</h2>
 <div class="rv"><div class="tabs">%(tabs)s</div>%(panes)s</div>
-<h2 class="sec-title">Модули api/</h2>
+<h2 class="sec-title">%(t_modules)s</h2>
 <div class="cards">%(cards)s</div>
-<h2 class="sec-title">Частые вопросы</h2>
+<h2 class="sec-title">%(t_faq)s</h2>
 <div class="rv">%(faq)s</div>
-""" % {"modules": stats["modules"], "functions": stats["functions"], "natives": stats["natives"], "screens": stats["screens"],
-       "marquee": marquee, "tabs": tabs, "panes": panes, "cards": card_html, "faq": faq_html}
+""" % {"h1": S("hero.h1"), "p": S("hero.p"), "start": S("hero.start"), "overview": S("hero.overview"),
+       "events": S("hero.events"), "modules": stats["modules"], "functions": stats["functions"],
+       "natives": stats["natives"], "screens": stats["screens"], "s_modules": S("stat.modules"),
+       "s_funcs": S("stat.funcs"), "s_natives": S("stat.natives"), "s_screens": S("stat.screens"),
+       "marquee": marquee, "tabs": tabs, "panes": panes, "cards": card_html, "t_example": S("home.example"),
+       "t_modules": S("home.modules"), "t_faq": S("home.faq"), "faq": faq_html}
 
 
 # --------------------------------------------------------------------------------------------------
 # Шаблон страницы и вывод
 # --------------------------------------------------------------------------------------------------
 
-TOP_NAV = [("ГАЙД", "guide.html", ("НАЧАЛО",)), ("СПРАВОЧНИК", "core-rules.html", ("СПРАВОЧНИК",)),
-           ("LUA API", "core-log.html", ("LUA API ДВИЖКА",)), ("МОДУЛИ", None, ("МОДУЛИ API",)),
-           ("ДАННЫЕ", "ref-state.html", ("ДАННЫЕ ИГРЫ",))]
+TOP_NAV = [("nav.guide", "guide.html", ("start",)), ("nav.ref", "core-rules.html", ("ref",)),
+           ("nav.engine", "core-log.html", ("engine",)), ("nav.modules", None, ("modules",)),
+           ("nav.data", "ref-state.html", ("data",))]
 
-GROUP_ORDER = ["НАЧАЛО", "СПРАВОЧНИК", "LUA API ДВИЖКА", "МОДУЛИ API", "ДАННЫЕ ИГРЫ"]
+GROUP_ORDER = ["start", "ref", "engine", "modules", "data"]
 
 
 def sidebar(current):
@@ -694,12 +719,12 @@ def sidebar(current):
         items = [p for p in PAGES if p["group"] == g]
         if not items:
             continue
-        out.append('<div class="group"><span class="group-title">%s</span>' % html.escape(g))
+        out.append('<div class="group"><span class="group-title">%s</span>' % html.escape(S("g." + g)))
         for p in items:
             cls = ' class="active"' if p["id"] == current["id"] else ""
             out.append('<a href="%s"%s>%s</a>' % (p["file"], cls, html.escape(p["label"])))
-        if g == "ДАННЫЕ ИГРЫ":
-            out.append('<a href="%sGAME_API.md" target="_blank" rel="noopener">Нативы (GAME_API) ↗</a>' % BLOB)
+        if g == "data":
+            out.append('<a href="%sGAME_API.md" target="_blank" rel="noopener">%s</a>' % (BLOB, S("natives_link")))
         out.append("</div>")
     return "\n".join(out)
 
@@ -709,51 +734,55 @@ def topnav(current):
     for p in PAGES:
         firsts.setdefault(p["group"], p["file"])
     out = []
-    for label, target, groups in TOP_NAV:
+    for key, target, groups in TOP_NAV:
         href = target or firsts.get(groups[0], "index.html")
         active = ' class="active"' if current["group"] in groups and not current.get("home") else ""
-        out.append('<a href="%s"%s>%s</a>' % (href, active, label))
+        out.append('<a href="%s"%s>%s</a>' % (href, active, S(key)))
     return "".join(out)
 
 
 def prev_next(idx):
-    nav = [p for p in PAGES]
     parts = ['<div class="pn">']
     if idx > 0:
-        p = nav[idx - 1]
-        parts.append('<a href="%s"><small>← НАЗАД</small>%s</a>' % (p["file"], html.escape(p["title"])))
+        p = PAGES[idx - 1]
+        parts.append('<a href="%s"><small>%s</small>%s</a>' % (p["file"], S("prev"), html.escape(p["title"])))
     else:
         parts.append("<span></span>")
-    if idx < len(nav) - 1:
-        p = nav[idx + 1]
-        parts.append('<a class="next" href="%s"><small>ДАЛЬШЕ →</small>%s</a>' % (p["file"], html.escape(p["title"])))
+    if idx < len(PAGES) - 1:
+        p = PAGES[idx + 1]
+        parts.append('<a class="next" href="%s"><small>%s</small>%s</a>' % (p["file"], S("next"), html.escape(p["title"])))
     parts.append("</div>")
     return "".join(parts)
 
 
 def render_page(idx, p):
-    title = "%s — %s" % (p["title"], "Cossacks 3 Modloader") if not p.get("home") else "Cossacks 3 Modloader — документация API"
-    desc = p["summary"] or "Документация API Cossacks 3 Modloader: Lua, события, интерфейсы, замена файлов и правка скриптов игры."
+    en = LANG == "en"
+    up = "../" if en else ""  # общие assets лежат в корне сайта
+    other = ("../" if en else "en/") + p["file"]
+    title = ("%s — Cossacks 3 Modloader" % p["title"]) if not p.get("home") else S("home.page_title")
+    desc = p["summary"] or S("default_desc")
     edit = ""
     if p["src"]:
-        edit = '<div class="meta" style="margin-top:36px"><a class="badge" href="%s%s">РЕДАКТИРОВАТЬ НА GITHUB ↗</a></div>' % (BLOB, p["src"])
+        edit = '<div class="meta" style="margin-top:36px"><a class="badge" href="%s%s">%s</a></div>' % (BLOB, p["src"], S("edit"))
     body = p["body"]
     if not p.get("home"):
         body = '<article>%s</article>%s%s' % (body, edit, prev_next(idx))
-    toc = '<aside class="toc" id="toc"><b>НА СТРАНИЦЕ</b></aside>' if p["toc"] else "<aside></aside>"
+    toc = '<aside class="toc" id="toc"><b>%s</b></aside>' % S("toc") if p["toc"] else "<aside></aside>"
     layout = '<div class="layout"><aside class="side">%s</aside><main>%s</main>%s</div>' % (sidebar(p), body, toc)
     if p.get("home"):
         layout = '<div class="layout home-layout" style="grid-template-columns:minmax(0,1fr)"><main>%s</main></div>' % body
+    index_js = "search-index-en.js" if en else "search-index.js"
+    i18n = json.dumps({"none": S("search_none")}, ensure_ascii=False)
     return """<!DOCTYPE html>
-<html lang="ru">
+<html lang="%(lang)s">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>%(title)s</title>
 <meta name="description" content="%(desc)s">
-<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="assets/style.css">
-<script>try{var t=localStorage.getItem('cs3-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light')}catch(e){}</script>
+<link rel="icon" href="%(up)sassets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="%(up)sassets/style.css">
+<script>try{var t=localStorage.getItem('cs3-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light')}catch(e){}window.CS3_I18N=%(i18n)s;</script>
 </head>
 <body>
 <div class="page">
@@ -763,59 +792,66 @@ def render_page(idx, p):
       <nav class="nav">%(nav)s</nav>
     </div>
     <div class="ha">
-      <button class="iconbtn menu-btn" id="menu" type="button" aria-label="Меню">☰</button>
-      <div class="search-wrap"><input class="search" id="q" placeholder="Поиск по API…" autocomplete="off" aria-label="Поиск"><span class="kbd">/</span><div class="results" id="results"></div></div>
+      <button class="iconbtn menu-btn" id="menu" type="button" aria-label="%(a_menu)s">☰</button>
+      <div class="search-wrap"><input class="search" id="q" placeholder="%(ph)s" autocomplete="off" aria-label="%(a_search)s"><span class="kbd">/</span><div class="results" id="results"></div></div>
+      <a class="btn sm" href="%(other)s" title="%(other_title)s" hreflang="%(other_code)s">%(other_lang)s</a>
       <a class="btn black sm" href="%(repo)s" target="_blank" rel="noopener">GITHUB →</a>
-      <button class="iconbtn" id="theme" type="button" aria-label="Тема">☀</button>
+      <button class="iconbtn" id="theme" type="button" aria-label="%(a_theme)s">☀</button>
     </div>
   </header>
   %(layout)s
   <footer class="footer">
-    <div><a class="logo" href="index.html" style="display:inline-block">%(site)s</a><br><br>Документация API<br>Собрана из папки <code>api/</code> репозитория</div>
-    <div>ДОКУМЕНТЫ<br><a href="guide.html">Быстрый старт</a><a href="core-rules.html">Справочник</a><a href="api-overview.html">Обзор api/</a></div>
-    <div>ДАННЫЕ<br><a href="ref-state.html">Переменные игры</a><a href="ref-screens.html">Экраны</a><a href="%(blob)sGAME_API.md">Нативы ↗</a></div>
-    <div>ПРОЕКТ<br><a href="%(repo)s">GitHub ↗</a><a href="%(repo)s/issues">Issues ↗</a><a href="%(blob)sDOCUMENTATION.md">Устройство ↗</a></div>
+    <div><a class="logo" href="index.html" style="display:inline-block">%(site)s</a><br><br>%(f_about)s</div>
+    <div>%(f_docs)s<br><a href="guide.html">%(f_guide)s</a><a href="core-rules.html">%(f_ref)s</a><a href="api-overview.html">%(f_overview)s</a></div>
+    <div>%(f_data)s<br><a href="ref-state.html">%(f_state)s</a><a href="ref-screens.html">%(f_screens)s</a><a href="%(blob)sGAME_API.md">%(f_natives)s</a></div>
+    <div>%(f_project)s<br><a href="%(repo)s">GitHub ↗</a><a href="%(repo)s/issues">Issues ↗</a><a href="%(blob)sDOCUMENTATION.md">%(f_internals)s</a></div>
   </footer>
 </div>
-<script src="assets/search-index.js"></script>
-<script src="assets/app.js"></script>
+<script src="%(up)sassets/%(index_js)s"></script>
+<script src="%(up)sassets/app.js"></script>
 </body>
 </html>
-""" % {"title": html.escape(title), "desc": html.escape(desc, quote=True), "site": SITE_NAME, "nav": topnav(p),
-       "layout": layout, "repo": REPO, "blob": BLOB}
+""" % {"lang": S("lang"), "title": html.escape(title), "desc": html.escape(desc, quote=True), "up": up, "i18n": i18n,
+       "site": S("site"), "nav": topnav(p), "a_menu": S("aria_menu"), "ph": S("search_ph"), "a_search": S("aria_search"),
+       "other": other, "other_title": S("other_lang_title"), "other_code": "ru" if en else "en",
+       "other_lang": S("other_lang"), "repo": REPO, "a_theme": S("aria_theme"), "layout": layout,
+       "f_about": S("footer.about"), "f_docs": S("footer.docs"), "f_guide": S("footer.guide"), "f_ref": S("footer.ref"),
+       "f_overview": S("footer.overview"), "f_data": S("footer.data"), "f_state": S("footer.state"),
+       "f_screens": S("footer.screens"), "blob": BLOB, "f_natives": S("footer.natives"),
+       "f_project": S("footer.project"), "f_internals": S("footer.internals"), "index_js": index_js}
 
 
 FAVICON = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" fill="#111"/><path d="M8 9h16v3H8zM8 15h16v3H8zM8 21h10v3H8z" fill="#fff"/></svg>
 """
 
 
-def write_site():
-    if OUT.exists():
-        for old in OUT.glob("*.html"):
-            old.unlink()
-    (OUT / "assets").mkdir(parents=True, exist_ok=True)
+def write_lang(out_dir, index_name):
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for old in out_dir.glob("*.html"):
+        old.unlink()
     for i, p in enumerate(PAGES):
-        (OUT / p["file"]).write_text(render_page(i, p), encoding="utf-8")
-    shutil.copy(SITE / "style.css", OUT / "assets" / "style.css")
-    shutil.copy(SITE / "app.js", OUT / "assets" / "app.js")
-    (OUT / "assets" / "favicon.svg").write_text(FAVICON, encoding="utf-8")
-    (OUT / "assets" / "search-index.js").write_text(
+        (out_dir / p["file"]).write_text(render_page(i, p), encoding="utf-8")
+    (OUT / "assets" / index_name).write_text(
         "window.CS3_SEARCH=" + json.dumps(SEARCH, ensure_ascii=False, separators=(",", ":")) + ";\n", encoding="utf-8")
-    (OUT / ".nojekyll").write_text("", encoding="utf-8")
-    (OUT / "404.html").write_text(render_404(), encoding="utf-8")
 
 
 def render_404():
-    page = {"id": "404", "file": "404.html", "title": "Страница не найдена", "label": "404", "group": "НАЧАЛО",
-            "body": '<h1>404</h1><p class="lead">Такой страницы нет.</p><p><a class="btn black" href="index.html">НА ГЛАВНУЮ →</a></p>',
+    page = {"id": "404", "file": "404.html", "title": S("e404.title"), "label": "404", "group": "start",
+            "body": '<h1>404</h1><p class="lead">%s</p><p><a class="btn black" href="index.html">%s</a></p>'
+                    % (S("e404.text"), S("e404.btn")),
             "src": None, "headings": [], "summary": "", "toc": False}
     return render_page(0, page)
+
+
+def set_lang(lang):
+    global LANG
+    LANG = lang
 
 
 def main():
     global ROOT, OUT
     import argparse
-    ap = argparse.ArgumentParser(description="Сборка сайта-документации из api/ и справочников репозитория")
+    ap = argparse.ArgumentParser(description="Сборка сайта-документации (ru + en) из api/ и справочников репозитория")
     ap.add_argument("--repo", help="корень клона репозитория (где лежат api/, MODDING.md, ...)")
     ap.add_argument("--out", help="папка для сайта")
     args = ap.parse_args()
@@ -824,9 +860,21 @@ def main():
     OUT = Path(args.out).resolve() if args.out else ROOT / "docs"
     if not (ROOT / "api").is_dir():
         sys.exit("не найдена папка api/ в %s — укажите --repo" % ROOT)
-    stats = build()
-    write_site()
-    print("pages: %d, search entries: %d, %s" % (len(PAGES), len(SEARCH), stats))
+
+    (OUT / "assets").mkdir(parents=True, exist_ok=True)
+    shutil.copy(SITE / "style.css", OUT / "assets" / "style.css")
+    shutil.copy(SITE / "app.js", OUT / "assets" / "app.js")
+    (OUT / "assets" / "favicon.svg").write_text(FAVICON, encoding="utf-8")
+    (OUT / ".nojekyll").write_text("", encoding="utf-8")
+
+    for lang, out_dir, index_name in (("ru", OUT, "search-index.js"), ("en", OUT / "en", "search-index-en.js")):
+        set_lang(lang)
+        stats = build()
+        write_lang(out_dir, index_name)
+        print("%s: pages %d, search entries %d" % (lang, len(PAGES), len(SEARCH)))
+    set_lang("ru")
+    (OUT / "404.html").write_text(render_404(), encoding="utf-8")
+    print(stats)
 
 
 if __name__ == "__main__":

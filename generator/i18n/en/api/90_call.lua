@@ -1,0 +1,7 @@
+-- api_call — the entry point for pages: game.api('saves.list') in JS turns into api_call('saves.list').
+--
+--   api_call("profile.get", "sndmaster")
+--   api_call("state.read", "gMap.players[0]")
+--
+-- The name — a dotted path to a function from the api global tables (state, profile, options, saves,
+-- players, map, world...). The modloader returns the answer to the page as JSON.

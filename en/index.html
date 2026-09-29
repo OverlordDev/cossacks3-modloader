@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cossacks 3 Modloader — API documentation</title>
+<meta name="description" content="Cossacks 3 Modloader API documentation: Lua, events, interfaces, file replacement and game script patching.">
+<link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/style.css">
+<script>try{var t=localStorage.getItem('cs3-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light')}catch(e){}window.CS3_I18N={"none": "Nothing found"};</script>
+</head>
+<body>
+<div class="page">
+  <header class="site-header">
+    <div class="hl">
+      <a class="logo" href="index.html">COSSACKS 3 MODLOADER</a>
+      <nav class="nav"><a href="guide.html">GUIDE</a><a href="core-rules.html">REFERENCE</a><a href="core-log.html">LUA API</a><a href="api-schema.html">MODULES</a><a href="ref-state.html">DATA</a></nav>
+    </div>
+    <div class="ha">
+      <button class="iconbtn menu-btn" id="menu" type="button" aria-label="Menu">☰</button>
+      <div class="search-wrap"><input class="search" id="q" placeholder="Search the API…" autocomplete="off" aria-label="Search"><span class="kbd">/</span><div class="results" id="results"></div></div>
+      <a class="btn sm" href="../index.html" title="Русская версия" hreflang="ru">RU</a>
+      <a class="btn black sm" href="https://github.com/OverlordDev/cossacks3-modloader" target="_blank" rel="noopener">GITHUB →</a>
+      <button class="iconbtn" id="theme" type="button" aria-label="Theme">☀</button>
+    </div>
+  </header>
+  <div class="layout home-layout" style="grid-template-columns:minmax(0,1fr)"><main>
+<section class="hero rv"><div class="bg"></div>
+  <h1>MODS FOR COSSACKS 3<br>WITHOUT REBUILDING<span class="caret"></span></h1>
+  <p>The modloader hooks into the game at launch: Lua, events, HTML interfaces, file replacement and game script patching. Game files are not modified — everything happens in process memory. This is the full API documentation.</p>
+  <div class="cta"><a class="btn black" href="guide.html">GET STARTED →</a><a class="btn" href="api-overview.html">API OVERVIEW →</a>
+  <a class="btn" href="core-events.html">EVENTS →</a></div>
+</section>
+<div class="stats">
+  <div class="stat rv"><div class="cnt" data-count="13">0</div><small>API MODULES</small></div>
+  <div class="stat rv"><div class="cnt" data-count="69">0</div><small>FUNCTIONS</small></div>
+  <div class="stat rv"><div class="cnt" data-count="4856">0</div><small>ENGINE NATIVES</small></div>
+  <div class="stat rv"><div class="cnt" data-count="46">0</div><small>GAME SCREENS</small></div>
+</div>
+<div class="marq rv"><div><span>state.type()</span><span>state.get()</span><span>collectValue()</span><span>state.read()</span><span>state.list()</span><span>state.set()</span><span>show()</span><span>profile.get()</span><span>profile.set()</span><span>profile.all()</span><span>profile.save()</span><span>options.get()</span><span>options.set()</span><span>saves.list()</span><span>saves.load()</span><span>saves.delete()</span><span>saves.replays.list()</span><span>saves.replays.load()</span><span>players.list()</span><span>players.me()</span><span>players.resources()</span><span>map.info()</span><span>map.settings()</span><span>screens.list()</span><span>screens.info()</span><span>screens.tags()</span><span>screens.button()</span><span>screens.of()</span><span>screens.open()</span><span>screens.press()</span><span>screens.bind()</span><span>balance.types()</span><span>balance.refresh()</span><span>balance.find()</span><span>balance.places()</span><span>balance.get()</span><span>balance.set()</span><span>balance.setProp()</span><span>balance.dump()</span><span>balance.setHP()</span><span>balance.setDamage()</span><span>balance.setSpeed()</span><span>buildings.list()</span><span>buildings.selected()</span><span>buildings.info()</span><span>buildings.produce()</span><span>buildings.cancel()</span><span>buildings.upgrade()</span><span>buildings.cancelUpgrade()</span><span>buildings.produceList()</span><span>buildings.setProduceList()</span><span>buildings.addProduce()</span><span>buildings.removeProduce()</span><span>buildings.setUpgrade()</span><span>buildings.canPlace()</span><span>buildings.build()</span><span>buildings.finish()</span><span>units.selected()</span><span>units.info()</span><span>units.orders()</span><span>state.type()</span><span>state.get()</span><span>collectValue()</span><span>state.read()</span><span>state.list()</span><span>state.set()</span><span>show()</span><span>profile.get()</span><span>profile.set()</span><span>profile.all()</span><span>profile.save()</span><span>options.get()</span><span>options.set()</span><span>saves.list()</span><span>saves.load()</span><span>saves.delete()</span><span>saves.replays.list()</span><span>saves.replays.load()</span><span>players.list()</span><span>players.me()</span><span>players.resources()</span><span>map.info()</span><span>map.settings()</span><span>screens.list()</span><span>screens.info()</span><span>screens.tags()</span><span>screens.button()</span><span>screens.of()</span><span>screens.open()</span><span>screens.press()</span><span>screens.bind()</span><span>balance.types()</span><span>balance.refresh()</span><span>balance.find()</span><span>balance.places()</span><span>balance.get()</span><span>balance.set()</span><span>balance.setProp()</span><span>balance.dump()</span><span>balance.setHP()</span><span>balance.setDamage()</span><span>balance.setSpeed()</span><span>buildings.list()</span><span>buildings.selected()</span><span>buildings.info()</span><span>buildings.produce()</span><span>buildings.cancel()</span><span>buildings.upgrade()</span><span>buildings.cancelUpgrade()</span><span>buildings.produceList()</span><span>buildings.setProduceList()</span><span>buildings.addProduce()</span><span>buildings.removeProduce()</span><span>buildings.setUpgrade()</span><span>buildings.canPlace()</span><span>buildings.build()</span><span>buildings.finish()</span><span>units.selected()</span><span>units.info()</span><span>units.orders()</span></div></div>
+<h2 class="sec-title">An example in a minute</h2>
+<div class="rv"><div class="tabs"><button class="active">CLIENT</button><button class="">SHARED</button><button class="">SERVER</button></div><div class="tabpane active"><pre><code data-lang="lua">input.bind("F7", function()
+    if not game.isInGame() then return end
+    local me = native.GetPlayerIndexInterfaceIO()
+    local total, count = 0, 0
+    for _, h in ipairs(objects.list(me)) do
+        local o = objects.read(h)
+        if o and not o.bdead then total, count = total + o.hp, count + 1 end
+    end
+    log.info(string.format("objects: %d, total HP: %d", count, total))
+end)</code></pre></div><div class="tabpane"><pre><code data-lang="lua">events.on("game.start", function()
+    balance.setHP("musketeer18", 200)
+    balance.setDamage("musketeer18", 40, 1)   -- weapon 1 — the shot
+    balance.set("musketeer18", "price[3]", 30) -- gold price
+end)</code></pre></div><div class="tabpane"><pre><code data-lang="lua">net.on("give_gold", function(data, from)
+    local who = game.playerIndexOf(from)
+    local amount = math.min(tonumber(data and data.amount) or 0, 1000)
+    player(who):add("gold", amount)
+    net.broadcast("gold_given", { player = who, amount = amount })
+end)</code></pre></div></div>
+<h2 class="sec-title">api/ modules</h2>
+<div class="cards"><a class="card rv" href="api-schema.html"><b>schema</b><span>generated by tools/gen_game_api.py from data/scripts/lib/classes.script. Do not edit by hand.</span><em>DATA →</em></a><a class="card rv" href="api-state.html"><b>state</b><span>reading and writing any game script variable by path.</span><em>6 FUNCTIONS →</em></a><a class="card rv" href="api-screens_data.html"><b>screens_data</b><span>generated by tools/gen_screens.py from data/gui/menu.inc. Do not edit by hand.</span><em>DATA →</em></a><a class="card rv" href="api-show.html"><b>show</b><span>a table as readable text (the console prints tables as &quot;table: 22FC0CF8&quot;).</span><em>1 FUNCTIONS →</em></a><a class="card rv" href="api-profile.html"><b>profile</b><span>the player profile: sound, controls, language, behaviour settings.</span><em>4 FUNCTIONS →</em></a><a class="card rv" href="api-options.html"><b>options</b><span>project options: engine graphics and sound (what is written to the video settings).</span><em>2 FUNCTIONS →</em></a><a class="card rv" href="api-saves.html"><b>saves</b><span>saves and replays, the same natives as the &quot;Load game&quot; screen.</span><em>5 FUNCTIONS →</em></a><a class="card rv" href="api-players.html"><b>players</b><span>match participants (and lobby slots before it starts).</span><em>3 FUNCTIONS →</em></a><a class="card rv" href="api-map.html"><b>map</b><span>the current map and match settings.</span><em>2 FUNCTIONS →</em></a><a class="card rv" href="api-screens.html"><b>screens</b><span>game screens and their buttons by name.</span><em>8 FUNCTIONS →</em></a><a class="card rv" href="api-balance.html"><b>balance</b><span>unit and building type parameters: read and change in the middle of a match.</span><em>11 FUNCTIONS →</em></a><a class="card rv" href="api-buildings.html"><b>buildings</b><span>buildings: what they build, upgrades, the queue; player commands; logic editing.</span><em>15 FUNCTIONS →</em></a><a class="card rv" href="api-units.html"><b>units</b><span>units: selection, state, order queue.</span><em>3 FUNCTIONS →</em></a><a class="card rv" href="api-objects.html"><b>objects</b><span>fast reading of units and buildings straight from game memory, without compiling Pascal.</span><em>8 FUNCTIONS →</em></a><a class="card rv" href="api-call.html"><b>call</b><span>the entry point for pages: game.api(&#x27;saves.list&#x27;) in JS turns into api_call(&#x27;saves.list&#x27;).</span><em>1 FUNCTIONS →</em></a></div>
+<h2 class="sec-title">FAQ</h2>
+<div class="rv"><div class="acc"><div class="acc-head"><span>How do I install the modloader?</span><span>+</span></div><div class="acc-body"><ol><li>Build the solution <code>Modloader For Cossacks 3.slnx</code> (Release, x86).</li><li>Copy <code>Cossacks3Launcher.exe</code>, <code>Cossacks3Loader.dll</code>, the main DLL and <code>Cossacks3Cef.exe</code> into the game folder.</li><li>Install CEF: <code>python tools/install_cef.py</code>.</li><li>Copy <code>api/</code> to <code>&lt;game&gt;/modloader/api/</code>, mods to <code>modloader/mods/</code>.</li><li>Launch through <code>Cossacks3Launcher.exe</code>.</li></ol></div></div><div class="acc"><div class="acc-head"><span>Where do mods go?</span><span>+</span></div><div class="acc-body"><p><code>&lt;game&gt;/modloader/mods/&lt;mod folder&gt;/</code> — it must contain <code>manifest.lua</code>. A mod can be data-only: just <code>assets/</code>, <code>patches/</code> or <code>content.lua</code>.</p></div></div><div class="acc"><div class="acc-head"><span>How do I edit the api without rebuilding?</span><span>+</span></div><div class="acc-body"><p>The <code>api/*.lua</code> files live separately from the DLL: edit a file, then run <code>.lua reload</code> in the modloader console.</p></div></div><div class="acc"><div class="acc-head"><span>What goes on the client and what on the server?</span><span>+</span></div><div class="acc-body"><p>Interface and keys — <code>client</code>. Host decisions — <code>server</code>. Anything that changes the world identically on all machines (balance, stats, logic) — <code>shared</code>: otherwise the match desyncs online. More — <a href="core-sides.html">which side can do what</a>.</p></div></div></div>
+</main></div>
+  <footer class="footer">
+    <div><a class="logo" href="index.html" style="display:inline-block">COSSACKS 3 MODLOADER</a><br><br>API documentation<br>Built from the repository's <code>api/</code> folder</div>
+    <div>DOCUMENTS<br><a href="guide.html">Quick start</a><a href="core-rules.html">Reference</a><a href="api-overview.html">api/ overview</a></div>
+    <div>DATA<br><a href="ref-state.html">Game variables</a><a href="ref-screens.html">Screens</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/GAME_API.md">Natives ↗</a></div>
+    <div>PROJECT<br><a href="https://github.com/OverlordDev/cossacks3-modloader">GitHub ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/issues">Issues ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/DOCUMENTATION.md">Internals ↗</a></div>
+  </footer>
+</div>
+<script src="../assets/search-index-en.js"></script>
+<script src="../assets/app.js"></script>
+</body>
+</html>

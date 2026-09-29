@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quick start — Cossacks 3 Modloader</title>
+<meta name="description" content="How to make your first mod: structure, manifest.lua, events, the main functions.">
+<link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/style.css">
+<script>try{var t=localStorage.getItem('cs3-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light')}catch(e){}window.CS3_I18N={"none": "Nothing found"};</script>
+</head>
+<body>
+<div class="page">
+  <header class="site-header">
+    <div class="hl">
+      <a class="logo" href="index.html">COSSACKS 3 MODLOADER</a>
+      <nav class="nav"><a href="guide.html" class="active">GUIDE</a><a href="core-rules.html">REFERENCE</a><a href="core-log.html">LUA API</a><a href="api-schema.html">MODULES</a><a href="ref-state.html">DATA</a></nav>
+    </div>
+    <div class="ha">
+      <button class="iconbtn menu-btn" id="menu" type="button" aria-label="Menu">☰</button>
+      <div class="search-wrap"><input class="search" id="q" placeholder="Search the API…" autocomplete="off" aria-label="Search"><span class="kbd">/</span><div class="results" id="results"></div></div>
+      <a class="btn sm" href="../guide.html" title="Русская версия" hreflang="ru">RU</a>
+      <a class="btn black sm" href="https://github.com/OverlordDev/cossacks3-modloader" target="_blank" rel="noopener">GITHUB →</a>
+      <button class="iconbtn" id="theme" type="button" aria-label="Theme">☀</button>
+    </div>
+  </header>
+  <div class="layout"><aside class="side"><div class="group"><span class="group-title">START</span>
+<a href="index.html">Home</a>
+<a href="guide.html" class="active">Quick start</a>
+<a href="api-overview.html">api/ overview</a>
+</div>
+<div class="group"><span class="group-title">REFERENCE</span>
+<a href="core-rules.html">Main rules (read first)</a>
+<a href="core-structure.html">Mod structure</a>
+<a href="core-manifest.html">manifest.lua</a>
+<a href="core-sides.html">What is available on which side</a>
+<a href="core-assets.html">Replacing files</a>
+<a href="core-patches.html">Game script patches</a>
+<a href="core-content.html">New nations and units</a>
+<a href="core-templates.html">Templates</a>
+<a href="core-errors.html">Common errors</a>
+</div>
+<div class="group"><span class="group-title">ENGINE LUA API</span>
+<a href="core-log.html">log, mod, require, show</a>
+<a href="core-events.html">events</a>
+<a href="core-game.html">game</a>
+<a href="core-player.html">player, world</a>
+<a href="core-state.html">state and G</a>
+<a href="core-objects.html">objects and mem</a>
+<a href="core-units.html">units</a>
+<a href="core-buildings.html">buildings</a>
+<a href="core-balance.html">balance</a>
+<a href="core-misc.html">Other data</a>
+<a href="core-net.html">net</a>
+<a href="core-input.html">input</a>
+<a href="core-web.html">web</a>
+<a href="core-ui.html">ui</a>
+<a href="core-screens.html">screens</a>
+<a href="core-gfx.html">gfx</a>
+<a href="core-savedata.html">savedata</a>
+<a href="core-native.html">native</a>
+</div>
+<div class="group"><span class="group-title">API MODULES</span>
+<a href="api-schema.html">schema</a>
+<a href="api-state.html">state</a>
+<a href="api-screens_data.html">screens_data</a>
+<a href="api-show.html">show</a>
+<a href="api-profile.html">profile</a>
+<a href="api-options.html">options</a>
+<a href="api-saves.html">saves</a>
+<a href="api-players.html">players</a>
+<a href="api-map.html">map</a>
+<a href="api-screens.html">screens</a>
+<a href="api-balance.html">balance</a>
+<a href="api-buildings.html">buildings</a>
+<a href="api-units.html">units</a>
+<a href="api-objects.html">objects</a>
+<a href="api-call.html">call</a>
+</div>
+<div class="group"><span class="group-title">GAME DATA</span>
+<a href="ref-state.html">Variables and types</a>
+<a href="ref-screens.html">Screens and buttons</a>
+<a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/GAME_API.md" target="_blank" rel="noopener">Natives (GAME_API) ↗</a>
+</div></aside><main><article><h1>How to make mods for Cossacks 3 Modloader</h1>
+<p>A short guide for the team. Full documentation — <code>DOCUMENTATION.md</code>, API reference for an AI — <code>AI_MODDING_REFERENCE.md</code>. Function details — <code>api/README.md</code> and the comments at the top of each <code>api/*.lua</code>; game variables and types — <code>GAME_STATE.md</code>; screens and buttons — <code>GAME_SCREENS.md</code>; native engine functions — <code>GAME_API.md</code>.</p>
+<h2 id="1-where-a-mod-lives" data-t="1. Where a mod lives">1. Where a mod lives<a class="h-anchor" href="#1-where-a-mod-lives">#</a></h2>
+<pre><code data-lang="lua">&lt;game&gt;/modloader/mods/&lt;mod folder&gt;/
+    manifest.lua      required — the mod's passport
+    client.lua        interface script (optional)
+    server.lua        rules script (optional) — or shared.lua
+    web/              HTML pages (CEF): menus, HUD
+    assets/           replacement of game files (textures, shaders, configs, whole scripts)
+    patches/          piecewise edits of game scripts (*.patch)</code></pre>
+<p>A mod can be data-only — no Lua, just <code>assets/</code> or <code>patches/</code>.</p>
+<h2 id="2-manifestlua" data-t="2. manifest.lua">2. manifest.lua<a class="h-anchor" href="#2-manifestlua">#</a></h2>
+<pre><code data-lang="lua">return {
+    id = "my_mod",               -- latin letters, digits, _
+    name = "My Mod",
+    version = "1.0.0",
+    author = "...",
+    description = "...",
+    enabled = true,              -- false — present but not loaded (also toggled in the Insert menu)
+
+    client = "client.lua",       -- on every player's machine: interface, keys, reading state
+    server = "server.lua",       -- only where the game is decided (single player, host)
+    -- shared = "shared.lua",    -- instead of server: runs on ALL machines identically (for world edits)
+
+    files = { "utils.lua" },     -- modules for require("utils")
+
+    multiplayer = "required",    -- "required" — everyone online must have it, "optional" — interface only
+    priority = 0,                -- order: higher loads later and overrides others (files, patches)
+    requires = { "base_mod" },   -- won't load without these mods (and loads after them)
+}</code></pre>
+<p><strong>Which side to pick.</strong> Interface and keys — <code>client</code>. Decisions made by the host (give resources, punish) — <code>server</code>. Anything that changes the world identically on every machine (balance, stats, building logic) — <code>shared</code>: otherwise the match desyncs online.</p>
+<h2 id="3-events" data-t="3. Events">3. Events<a class="h-anchor" href="#3-events">#</a></h2>
+<pre><code data-lang="lua">events.on("unit.death", function(event, handle, basename) ... end)</code></pre>
+<div class="tblwrap"><table><thead><tr><th>event</th><th>arguments after the name</th><th>when</th></tr></thead><tbody><tr><td><code>game.menu</code></td><td>—</td><td>main menu</td></tr><tr><td><code>game.prepare</code></td><td>—</td><td>start of match creation (map settings can still be changed)</td></tr><tr><td><code>game.start</code></td><td>—</td><td>match loaded</td></tr><tr><td><code>game.tick</code></td><td>—</td><td>every match tick</td></tr><tr><td><code>game.end</code></td><td>—</td><td>leaving the match</td></tr><tr><td><code>unit.spawn</code> / <code>unit.death</code> / <code>unit.destroy</code></td><td>handle, basename</td><td>unit appeared / died / removed</td></tr><tr><td><code>building.spawn</code> / <code>.death</code> / <code>.destroy</code></td><td>handle, basename</td><td>same for buildings</td></tr><tr><td><code>unit.damage</code></td><td>attacker, target, damage</td><td>any damage (melee, shot, explosion, area)</td></tr><tr><td><code>unit.order</code></td><td>handle, type, target, x, z</td><td>any order to any unit (player, AI, network). <code>return true</code> — cancel</td></tr><tr><td><code>player.order</code></td><td>order = {kind, target, x, z, group}</td><td>the player clicked an order. <code>return true</code> — cancel</td></tr><tr><td><code>net.connect</code> / <code>net.disconnect</code></td><td>payload</td><td>a player in the room</td></tr><tr><td><code>*</code></td><td>event name, ...</td><td>all events in a row (debugging)</td></tr></tbody></table></div>
+<p>Cancelling <code>unit.order</code> online — only in a <code>shared</code> mod, identically on all machines. To check that events work, use the <code>event_test</code> mod (F8 — report).</p>
+<h2 id="4-main-functions" data-t="4. Main functions">4. Main functions<a class="h-anchor" href="#4-main-functions">#</a></h2>
+<div class="tblwrap"><table><thead><tr><th>what</th><th>how</th></tr></thead><tbody><tr><td>log</td><td><code>log.info(...)</code>, <code>log.warn</code>, <code>log.error</code></td></tr><tr><td>keys</td><td><code>input.bind("F6", fn)</code>, <code>"Ctrl+LMB"</code></td></tr><tr><td>game code</td><td><code>game.exec("pascal code")</code> (server/shared), <code>game.eval("expression")</code></td></tr><tr><td>game variables</td><td><code>state.read("gMap.players[0]")</code>, <code>state.set(path, value)</code></td></tr><tr><td>units</td><td><code>units.selected()</code>, <code>units.info(h)</code>, <code>units.orders(h)</code></td></tr><tr><td>fast, thousands of objects</td><td><code>objects.list()</code>, <code>objects.read(h)</code>, <code>objects.get(h, "orders[0].info.x")</code> — straight from memory</td></tr><tr><td>buildings</td><td><code>buildings.info(h)</code>, <code>buildings.produce(h, sid, n)</code>, <code>buildings.build(sid, x, z)</code></td></tr><tr><td>balance</td><td><code>balance.setHP("musketeer18", 200)</code>, <code>balance.setDamage(sid, damage)</code>, <code>balance.set(sid, field, value)</code></td></tr><tr><td>screens</td><td><code>screens.open(name)</code>, <code>screens.press(name, button)</code>, <code>ui.screen("MainMenu", fn)</code></td></tr><tr><td>pages</td><td><code>web.open("web/menu.html")</code>, <code>web.passthrough(true)</code> (HUD), in JS — <code>game.api("buildings.info", h)</code></td></tr><tr><td>network</td><td><code>net.send("name", data)</code>, <code>net.on("name", fn)</code>, <code>net.broadcast(...)</code></td></tr><tr><td>engine native</td><td><code>native.GetCurrentMouseWorldCoord()</code> (list — <code>GAME_API.md</code>)</td></tr><tr><td>readable output</td><td><code>show(table)</code> in the console</td></tr><tr><td>data in a save</td><td><code>savedata.set(key, table)</code>, <code>savedata.get(key)</code>, event <code>save.loaded</code></td></tr></tbody></table></div>
+<h2 id="5-replacing-files-assets" data-t="5. Replacing files — assets/">5. Replacing files — assets/<a class="h-anchor" href="#5-replacing-files-assets">#</a></h2>
+<p>A file is placed at the same path as in the game:</p>
+<pre><code data-lang="lua">mods/my_mod/assets/data/shaders/tone/tone.frag   -&gt;  instead of  &lt;game&gt;/data/shaders/tone/tone.frag</code></pre>
+<p>Works for everything the engine reads from disk: scripts, textures, models, shaders, configs. Files are read when the game starts — after editing, restart the game (through the Launcher). If two mods replace the same file, the mod with the higher <code>priority</code> wins (on a tie — the later folder name). You may add new files that the game doesn't have, but if the game itself enumerates a folder (map lists and so on), it won't see them yet.</p>
+<h2 id="6-script-patches-patches" data-t="6. Script patches — patches/">6. Script patches — patches/<a class="h-anchor" href="#6-script-patches-patches">#</a></h2>
+<p>Replacing a whole file breaks when the game updates and conflicts with other mods. A patch edits only the place you need:</p>
+<pre><code data-lang="lua">mods/my_mod/patches/data/scripts/lib/unit.script.patch</code></pre>
+<pre><code data-lang="lua">@@ lines with @@ are comments
+
+@replace _unit_OrderMove          replace the whole function (declaration ... end;)
+function _unit_OrderMove(...) : Pointer;
+begin
+   ...
+end;
+
+@begin _unit_AddOrder             insert at the start of the function (right after begin)
+@end _unit_AddOrder               insert at the end (before end;)
+@before _unit_AddOrder            insert before the function — this is how new functions are added
+@after _unit_AddOrder             insert after the function
+@append                           at the end of the file
+
+@find                             find text (exactly, with indentation)...
+            var damage : Integer = indamage;
+@with                             ...and replace it (all occurrences)
+            var damage : Integer = indamage * 2;</code></pre>
+<ul><li>Many patches to one file are fine (from different mods) — they are applied in mod order.</li><li>If a block did not find its place — the log gets <code>[patch] ... block skipped</code>, the other blocks still work.</li><li>The resulting file is in <code>modloader/cache/&lt;path&gt;</code> — look at it if something does not compile.</li><li>Patch encoding is UTF-8 or ANSI; comments in any language are fine.</li><li>Example — <code>examples/mods/patch_example</code> (damage ×2).</li><li>A patch changes the rules — set <code>multiplayer = "required"</code>.</li></ul>
+<h2 id="6a-new-nations-and-unit-types-contentlua" data-t="6a. New nations and unit types — content.lua">6a. New nations and unit types — content.lua<a class="h-anchor" href="#6a-new-nations-and-unit-types-contentlua">#</a></h2>
+<p>Instead of hand-written patches — a description in <code>mods/&lt;mod&gt;/content.lua</code>; the modloader itself edits the scripts, object lists, <code>.prop</code> files, icons and names. Example — <code>examples/mods/content_example</code>.</p>
+<pre><code data-lang="lua">nation {
+    sid = "zap",            -- 3 latin letters, new
+    from = "ukr",           -- template: units, buildings, upgrades, AI — same as its
+    name = { ru = "Запорожская Сечь", en = "Zaporozhian Sich" },
+    remove = { "jannisary" },      -- template units the nation doesn't have (not hireable, AI won't order them)
+    resources = { gold = 500 },    -- bonus to starting resources (food wood stone gold iron coal)
+}
+
+unit {
+    sid = "serdiukvet",     -- new sid
+    from = "serdiuk",       -- parent: model, animations, icon, stats, where it is hired
+    nations = { "ukr", "zap" },
+    cell = { 1, 1 },        -- cell in the hire panel (otherwise — same as the parent)
+    base = { maxhp = 150, ["weapon[1].damage"] = 20 },   -- TObjBase fields
+    prop = { vision = 900 },                             -- TObjProp fields
+    name = { ru = "Сердюк-ветеран", en = "Veteran Serdiuk" },
+    -- actor = "my_actor", material = "my_material", animations = "serdiuk", icon = "icons.unit.serdiuk"
+}</code></pre>
+<ul><li>A nation with buildings works as a template: <code>tat</code> and <code>lit</code> are empty in the game.</li><li>Special start modes (army, cannons) work for the new nation as they do for the template.</li><li>The nation gets number 24, 25... (the game has 24). The nation's buildings are copies of the template's buildings under its own sid (<code>zapcen</code>, <code>zapbar</code>...). Everything in game scripts that checks the template nation (<code>if (ukr)</code>) also fires for the new one. Differences are set by patches (<code>if (csid='zap')</code>) or by new units.</li><li>A new unit is computed like its parent (all parent-specific handling in <code>_unit_InitBase</code>), then <code>base</code>/<code>prop</code>. Hired in the same place as the parent. Not inherited: whatever the game does by the parent's name outside <code>_unit_InitBase</code> (officer formations, AI lists): use patches for that.</li><li>Names (<code>name</code>, <code>description</code>) — by game language (<code>ru</code>, <code>uk</code>, <code>en</code>...); without them — the parent's name.</li><li>A custom map: <code>battle { sid = "poltava", from = "battle1", map = "maps/poltava.map", name = {...} }</code> — appears in "Historical battles" (player positions come from the template). The game does not scan map folders: the battle list is <code>game/var/battles.cfg</code>, which the modloader extends.</li><li><code>.content</code> in the console — what is described; <code>[content]</code> in the log — what was built.</li><li>Changes game rules → <code>multiplayer = "required"</code>. Saves with the new nation do not open without the mod.</li></ul>
+<h2 id="7-network" data-t="7. Network">7. Network<a class="h-anchor" href="#7-network">#</a></h2>
+<ul><li>A host with the modloader checks incoming players' <code>multiplayer = "required"</code> mods (those that have a server/shared part, assets or patches) and kicks anyone who lacks them or has different ones.</li><li>Client mods (<code>optional</code>) are not checked.</li><li>The modloader's built-in edits must not change the lobby checksum (for library edits it is also verified by the <code>.checksum</code> command) — you can play online with the modloader. Mods with patches and script replacement do change it: you can play only with those who have them installed too.</li></ul>
+<h2 id="8-debugging" data-t="8. Debugging">8. Debugging<a class="h-anchor" href="#8-debugging">#</a></h2>
+<ul><li><code>modloader/dev.txt</code> (an empty file) — verbose log and developer tools.</li><li>The log is always written to <code>modloader/modloader.log</code>; crashes go to <code>modloader/crashes/</code>.</li><li>F12 — page DevTools; pages reload themselves when a file is saved (dev).</li><li>The modloader console (a window next to the game): a line is game Pascal code, <code>=</code> at the start — Lua (<code>=show(units.selected())</code>), <code>?</code> — print an expression, <code>/</code> — a game chat command. Commands: <code>.help</code>, <code>.mods</code>, <code>.events</code>, <code>.assets</code> (replacements and patches), <code>.checksum</code>, <code>.modcheck</code>, <code>.find word</code>, <code>.lua reload</code> — reload Lua mods without restarting the game.</li><li>The <code>dev_tools</code> mod: LMB — point coordinates, order log.</li></ul></article><div class="meta" style="margin-top:36px"><a class="badge" href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/MODDING.md">EDIT ON GITHUB ↗</a></div><div class="pn"><a href="index.html"><small>← BACK</small>API documentation</a><a class="next" href="api-overview.html"><small>NEXT →</small>api overview</a></div></main><aside class="toc" id="toc"><b>ON THIS PAGE</b></aside></div>
+  <footer class="footer">
+    <div><a class="logo" href="index.html" style="display:inline-block">COSSACKS 3 MODLOADER</a><br><br>API documentation<br>Built from the repository's <code>api/</code> folder</div>
+    <div>DOCUMENTS<br><a href="guide.html">Quick start</a><a href="core-rules.html">Reference</a><a href="api-overview.html">api/ overview</a></div>
+    <div>DATA<br><a href="ref-state.html">Game variables</a><a href="ref-screens.html">Screens</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/GAME_API.md">Natives ↗</a></div>
+    <div>PROJECT<br><a href="https://github.com/OverlordDev/cossacks3-modloader">GitHub ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/issues">Issues ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/DOCUMENTATION.md">Internals ↗</a></div>
+  </footer>
+</div>
+<script src="../assets/search-index-en.js"></script>
+<script src="../assets/app.js"></script>
+</body>
+</html>

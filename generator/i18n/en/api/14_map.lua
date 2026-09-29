@@ -1,0 +1,7 @@
+-- map — the current map and match settings.
+--
+--   map.info()        --> { name, gamestage, brating, bbattle, ... }
+--   map.settings()    --> { gen = { mapsize, season, ... }, additional = { peacetime, teams, ... } }
+--
+-- It is more convenient to change generation settings through world{ ... } (see the world reference):
+-- it has clear names and writes at the right moment (game.prepare).

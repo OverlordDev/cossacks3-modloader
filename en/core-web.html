@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>web — CEF pages (client) — Cossacks 3 Modloader</title>
+<meta name="description" content="web.open(&quot;hud.html&quot;)        -- &lt;mod&gt;/web/hud.html (or a full URL)">
+<link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/style.css">
+<script>try{var t=localStorage.getItem('cs3-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light')}catch(e){}window.CS3_I18N={"none": "Nothing found"};</script>
+</head>
+<body>
+<div class="page">
+  <header class="site-header">
+    <div class="hl">
+      <a class="logo" href="index.html">COSSACKS 3 MODLOADER</a>
+      <nav class="nav"><a href="guide.html">GUIDE</a><a href="core-rules.html">REFERENCE</a><a href="core-log.html" class="active">LUA API</a><a href="api-schema.html">MODULES</a><a href="ref-state.html">DATA</a></nav>
+    </div>
+    <div class="ha">
+      <button class="iconbtn menu-btn" id="menu" type="button" aria-label="Menu">☰</button>
+      <div class="search-wrap"><input class="search" id="q" placeholder="Search the API…" autocomplete="off" aria-label="Search"><span class="kbd">/</span><div class="results" id="results"></div></div>
+      <a class="btn sm" href="../core-web.html" title="Русская версия" hreflang="ru">RU</a>
+      <a class="btn black sm" href="https://github.com/OverlordDev/cossacks3-modloader" target="_blank" rel="noopener">GITHUB →</a>
+      <button class="iconbtn" id="theme" type="button" aria-label="Theme">☀</button>
+    </div>
+  </header>
+  <div class="layout"><aside class="side"><div class="group"><span class="group-title">START</span>
+<a href="index.html">Home</a>
+<a href="guide.html">Quick start</a>
+<a href="api-overview.html">api/ overview</a>
+</div>
+<div class="group"><span class="group-title">REFERENCE</span>
+<a href="core-rules.html">Main rules (read first)</a>
+<a href="core-structure.html">Mod structure</a>
+<a href="core-manifest.html">manifest.lua</a>
+<a href="core-sides.html">What is available on which side</a>
+<a href="core-assets.html">Replacing files</a>
+<a href="core-patches.html">Game script patches</a>
+<a href="core-content.html">New nations and units</a>
+<a href="core-templates.html">Templates</a>
+<a href="core-errors.html">Common errors</a>
+</div>
+<div class="group"><span class="group-title">ENGINE LUA API</span>
+<a href="core-log.html">log, mod, require, show</a>
+<a href="core-events.html">events</a>
+<a href="core-game.html">game</a>
+<a href="core-player.html">player, world</a>
+<a href="core-state.html">state and G</a>
+<a href="core-objects.html">objects and mem</a>
+<a href="core-units.html">units</a>
+<a href="core-buildings.html">buildings</a>
+<a href="core-balance.html">balance</a>
+<a href="core-misc.html">Other data</a>
+<a href="core-net.html">net</a>
+<a href="core-input.html">input</a>
+<a href="core-web.html" class="active">web</a>
+<a href="core-ui.html">ui</a>
+<a href="core-screens.html">screens</a>
+<a href="core-gfx.html">gfx</a>
+<a href="core-savedata.html">savedata</a>
+<a href="core-native.html">native</a>
+</div>
+<div class="group"><span class="group-title">API MODULES</span>
+<a href="api-schema.html">schema</a>
+<a href="api-state.html">state</a>
+<a href="api-screens_data.html">screens_data</a>
+<a href="api-show.html">show</a>
+<a href="api-profile.html">profile</a>
+<a href="api-options.html">options</a>
+<a href="api-saves.html">saves</a>
+<a href="api-players.html">players</a>
+<a href="api-map.html">map</a>
+<a href="api-screens.html">screens</a>
+<a href="api-balance.html">balance</a>
+<a href="api-buildings.html">buildings</a>
+<a href="api-units.html">units</a>
+<a href="api-objects.html">objects</a>
+<a href="api-call.html">call</a>
+</div>
+<div class="group"><span class="group-title">GAME DATA</span>
+<a href="ref-state.html">Variables and types</a>
+<a href="ref-screens.html">Screens and buttons</a>
+<a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/GAME_API.md" target="_blank" rel="noopener">Natives (GAME_API) ↗</a>
+</div></aside><main><article><h1>web — CEF pages (client)</h1>
+<pre><code data-lang="lua">web.open("hud.html")        -- &lt;mod&gt;/web/hud.html (or a full URL)
+web.close()   web.reload()   web.isOpen()   web.url()
+web.eval("js code")         -- run in the page
+web.passthrough(true)       -- HUD mode: transparent (alpha &lt; 16) lets the mouse through to the game</code></pre>
+<p>One page on screen at a time (the last <code>web.open</code> replaces the previous one).</p>
+<p><strong>JS in a page</strong> (the <code>window.game</code> object appears after load — wait for it):</p>
+<pre><code data-lang="js">const v = await game.api('buildings.info', handle);   // any api function: 'module.function', arguments as in Lua
+await game.api('state.set', 'gProfile.sndmaster', 0.5);
+await game.tag('EventMainMenu', 104);                  // press a native button (state, tag)
+await game.exec('ShowSettings');                       // run an interface state
+const r = JSON.parse(await game.lua('1 + 1'));        // Lua code: an expression or a statement, the answer is a JSON string
+game.log('text');   game.close();   await game.files('img');</code></pre>
+<p>An error in <code>game.api</code> is an exception (Promise reject) with the Lua error text. Page code (<code>game.api</code>, <code>game.lua</code>) runs in the modloader console environment (server side), not in the mod's environment: the mod's global variables and functions are not visible from the page. A mod and a page exchange data through api functions, <code>web.eval(...)</code> (Lua → page) and the game's global tables. <code>game.lua</code> is available only to local pages (from the mod folder).</p></article><div class="meta" style="margin-top:36px"><a class="badge" href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/AI_MODDING_REFERENCE.md">EDIT ON GITHUB ↗</a></div><div class="pn"><a href="core-input.html"><small>← BACK</small>input (client)</a><a class="next" href="core-ui.html"><small>NEXT →</small>ui — the game&#x27;s native interface (client)</a></div></main><aside class="toc" id="toc"><b>ON THIS PAGE</b></aside></div>
+  <footer class="footer">
+    <div><a class="logo" href="index.html" style="display:inline-block">COSSACKS 3 MODLOADER</a><br><br>API documentation<br>Built from the repository's <code>api/</code> folder</div>
+    <div>DOCUMENTS<br><a href="guide.html">Quick start</a><a href="core-rules.html">Reference</a><a href="api-overview.html">api/ overview</a></div>
+    <div>DATA<br><a href="ref-state.html">Game variables</a><a href="ref-screens.html">Screens</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/GAME_API.md">Natives ↗</a></div>
+    <div>PROJECT<br><a href="https://github.com/OverlordDev/cossacks3-modloader">GitHub ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/issues">Issues ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/DOCUMENTATION.md">Internals ↗</a></div>
+  </footer>
+</div>
+<script src="../assets/search-index-en.js"></script>
+<script src="../assets/app.js"></script>
+</body>
+</html>

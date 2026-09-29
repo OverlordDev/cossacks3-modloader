@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Templates — Cossacks 3 Modloader</title>
+<meta name="description" content="return { id = &quot;hp_report&quot;, name = &quot;HP Report&quot;, version = &quot;1.0.0&quot;, client = &quot;client.lua&quot;, multiplayer = &quot;optional&quot; }">
+<link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/style.css">
+<script>try{var t=localStorage.getItem('cs3-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light')}catch(e){}window.CS3_I18N={"none": "Nothing found"};</script>
+</head>
+<body>
+<div class="page">
+  <header class="site-header">
+    <div class="hl">
+      <a class="logo" href="index.html">COSSACKS 3 MODLOADER</a>
+      <nav class="nav"><a href="guide.html">GUIDE</a><a href="core-rules.html" class="active">REFERENCE</a><a href="core-log.html">LUA API</a><a href="api-schema.html">MODULES</a><a href="ref-state.html">DATA</a></nav>
+    </div>
+    <div class="ha">
+      <button class="iconbtn menu-btn" id="menu" type="button" aria-label="Menu">☰</button>
+      <div class="search-wrap"><input class="search" id="q" placeholder="Search the API…" autocomplete="off" aria-label="Search"><span class="kbd">/</span><div class="results" id="results"></div></div>
+      <a class="btn sm" href="../core-templates.html" title="Русская версия" hreflang="ru">RU</a>
+      <a class="btn black sm" href="https://github.com/OverlordDev/cossacks3-modloader" target="_blank" rel="noopener">GITHUB →</a>
+      <button class="iconbtn" id="theme" type="button" aria-label="Theme">☀</button>
+    </div>
+  </header>
+  <div class="layout"><aside class="side"><div class="group"><span class="group-title">START</span>
+<a href="index.html">Home</a>
+<a href="guide.html">Quick start</a>
+<a href="api-overview.html">api/ overview</a>
+</div>
+<div class="group"><span class="group-title">REFERENCE</span>
+<a href="core-rules.html">Main rules (read first)</a>
+<a href="core-structure.html">Mod structure</a>
+<a href="core-manifest.html">manifest.lua</a>
+<a href="core-sides.html">What is available on which side</a>
+<a href="core-assets.html">Replacing files</a>
+<a href="core-patches.html">Game script patches</a>
+<a href="core-content.html">New nations and units</a>
+<a href="core-templates.html" class="active">Templates</a>
+<a href="core-errors.html">Common errors</a>
+</div>
+<div class="group"><span class="group-title">ENGINE LUA API</span>
+<a href="core-log.html">log, mod, require, show</a>
+<a href="core-events.html">events</a>
+<a href="core-game.html">game</a>
+<a href="core-player.html">player, world</a>
+<a href="core-state.html">state and G</a>
+<a href="core-objects.html">objects and mem</a>
+<a href="core-units.html">units</a>
+<a href="core-buildings.html">buildings</a>
+<a href="core-balance.html">balance</a>
+<a href="core-misc.html">Other data</a>
+<a href="core-net.html">net</a>
+<a href="core-input.html">input</a>
+<a href="core-web.html">web</a>
+<a href="core-ui.html">ui</a>
+<a href="core-screens.html">screens</a>
+<a href="core-gfx.html">gfx</a>
+<a href="core-savedata.html">savedata</a>
+<a href="core-native.html">native</a>
+</div>
+<div class="group"><span class="group-title">API MODULES</span>
+<a href="api-schema.html">schema</a>
+<a href="api-state.html">state</a>
+<a href="api-screens_data.html">screens_data</a>
+<a href="api-show.html">show</a>
+<a href="api-profile.html">profile</a>
+<a href="api-options.html">options</a>
+<a href="api-saves.html">saves</a>
+<a href="api-players.html">players</a>
+<a href="api-map.html">map</a>
+<a href="api-screens.html">screens</a>
+<a href="api-balance.html">balance</a>
+<a href="api-buildings.html">buildings</a>
+<a href="api-units.html">units</a>
+<a href="api-objects.html">objects</a>
+<a href="api-call.html">call</a>
+</div>
+<div class="group"><span class="group-title">GAME DATA</span>
+<a href="ref-state.html">Variables and types</a>
+<a href="ref-screens.html">Screens and buttons</a>
+<a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/GAME_API.md" target="_blank" rel="noopener">Natives (GAME_API) ↗</a>
+</div></aside><main><article><h1>Templates</h1>
+<h2 id="71-client-mod-a-key-and-reading" data-t="7.1. Client mod: a key and reading">7.1. Client mod: a key and reading<a class="h-anchor" href="#71-client-mod-a-key-and-reading">#</a></h2>
+<pre><code data-lang="lua">-- manifest.lua
+return { id = "hp_report", name = "HP Report", version = "1.0.0", client = "client.lua", multiplayer = "optional" }
+
+-- client.lua
+input.bind("F7", function()
+    if not game.isInGame() then return end
+    local me = native.GetPlayerIndexInterfaceIO()
+    local total, n = 0, 0
+    for _, h in ipairs(objects.list(me)) do
+        local o = objects.read(h)
+        if o and not o.bdead then total, n = total + o.hp, n + 1 end
+    end
+    log.info(string.format("units and buildings: %d, total HP: %d", n, total))
+end)</code></pre>
+<h2 id="72-balance-for-everyone-shared" data-t="7.2. Balance for everyone (shared)">7.2. Balance for everyone (shared)<a class="h-anchor" href="#72-balance-for-everyone-shared">#</a></h2>
+<pre><code data-lang="lua">-- manifest.lua
+return { id = "strong_musketeers", name = "Strong Musketeers", version = "1.0.0",
+         shared = "shared.lua", multiplayer = "required" }
+
+-- shared.lua
+events.on("game.start", function()
+    balance.setHP("musketeer18", 200)
+    balance.setDamage("musketeer18", 40, 1)       -- weapon 1 — the shot
+    balance.set("musketeer18", "price[3]", 30)    -- gold
+end)</code></pre>
+<h2 id="73-the-client-asks-the-host-decides" data-t="7.3. The client asks — the host decides">7.3. The client asks — the host decides<a class="h-anchor" href="#73-the-client-asks-the-host-decides">#</a></h2>
+<pre><code data-lang="lua">-- manifest: client = "client.lua", server = "server.lua", multiplayer = "required"
+-- client.lua
+input.bind("F6", function() net.send("give_gold", { amount = 500 }) end)
+net.on("gold_given", function(data) log.info("player " .. data.player .. " was given " .. data.amount) end)
+
+-- server.lua
+net.on("give_gold", function(data, from)
+    local who = game.playerIndexOf(from)
+    local amount = math.min(tonumber(data and data.amount) or 0, 1000)   -- validate client data
+    player(who):add("gold", amount)
+    net.broadcast("gold_given", { player = who, amount = amount })
+end)</code></pre>
+<h2 id="74-unit-events" data-t="7.4. Unit events">7.4. Unit events<a class="h-anchor" href="#74-unit-events">#</a></h2>
+<pre><code data-lang="lua">-- shared.lua (or server.lua)
+local kills = {}
+events.on("unit.death", function(_, handle, basename)
+    kills[basename] = (kills[basename] or 0) + 1
+end)
+events.on("unit.damage", function(_, attacker, target, damage)
+    if damage &gt; 100 then log.info("heavy hit", attacker, "-&gt;", target, damage) end
+end)
+events.on("unit.order", function(_, handle, kind, target, x, z)
+    if kind == "attackobj" and target == 0 then return true end   -- cancel (shared — on all machines)
+end)
+events.on("game.end", function() log.info(show(kills)) end)</code></pre>
+<h2 id="75-a-hud-on-a-page" data-t="7.5. A HUD on a page">7.5. A HUD on a page<a class="h-anchor" href="#75-a-hud-on-a-page">#</a></h2>
+<pre><code data-lang="lua">-- client.lua
+events.on("game.start", function() web.open("hud.html"); web.passthrough(true) end)
+events.on("game.end", function() web.close() end)</code></pre>
+<pre><code data-lang="html">&lt;!-- web/hud.html: the background is transparent, otherwise clicks won't reach the game --&gt;
+&lt;html&gt;&lt;body style="margin:0;background:transparent"&gt;
+&lt;div id="box" style="position:absolute;right:16px;bottom:16px;background:rgba(0,0,0,.7);color:#fc6;padding:8px"&gt;&lt;/div&gt;
+&lt;script&gt;
+const wait = setInterval(() =&gt; {
+  if (typeof window.game !== 'object') return;
+  clearInterval(wait);
+  setInterval(async () =&gt; {
+    const h = await game.api('buildings.selected');
+    document.getElementById('box').textContent = h ? JSON.stringify(await game.api('buildings.info', h)).slice(0, 200) : '';
+  }, 500);
+}, 50);
+&lt;/script&gt;&lt;/body&gt;&lt;/html&gt;</code></pre>
+<h2 id="76-your-own-button-instead-of-a-native-one" data-t="7.6. Your own button instead of a native one">7.6. Your own button instead of a native one<a class="h-anchor" href="#76-your-own-button-instead-of-a-native-one">#</a></h2>
+<pre><code data-lang="lua">-- client.lua
+screens.onButton("MainMenu", function(button)
+    if button == "Settings" then web.open("settings.html"); return true end
+end)</code></pre>
+<h2 id="77-patching-a-game-function" data-t="7.7. Patching a game function">7.7. Patching a game function<a class="h-anchor" href="#77-patching-a-game-function">#</a></h2>
+<pre><code data-lang="lua">@@ patches/data/scripts/lib/miscext2.script.patch — damage x2
+@before _misc_DoDamage
+function ML_DamageMultiplier : Integer;
+begin
+   Result := 2;
+end;
+
+@find
+            var damage : Integer = indamage;
+@with
+            var damage : Integer = indamage * ML_DamageMultiplier;</code></pre></article><div class="meta" style="margin-top:36px"><a class="badge" href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/AI_MODDING_REFERENCE.md">EDIT ON GITHUB ↗</a></div><div class="pn"><a href="core-content.html"><small>← BACK</small>New nations and units — content.lua (data, not code)</a><a class="next" href="core-errors.html"><small>NEXT →</small>Common errors</a></div></main><aside class="toc" id="toc"><b>ON THIS PAGE</b></aside></div>
+  <footer class="footer">
+    <div><a class="logo" href="index.html" style="display:inline-block">COSSACKS 3 MODLOADER</a><br><br>API documentation<br>Built from the repository's <code>api/</code> folder</div>
+    <div>DOCUMENTS<br><a href="guide.html">Quick start</a><a href="core-rules.html">Reference</a><a href="api-overview.html">api/ overview</a></div>
+    <div>DATA<br><a href="ref-state.html">Game variables</a><a href="ref-screens.html">Screens</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/GAME_API.md">Natives ↗</a></div>
+    <div>PROJECT<br><a href="https://github.com/OverlordDev/cossacks3-modloader">GitHub ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/issues">Issues ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/DOCUMENTATION.md">Internals ↗</a></div>
+  </footer>
+</div>
+<script src="../assets/search-index-en.js"></script>
+<script src="../assets/app.js"></script>
+</body>
+</html>

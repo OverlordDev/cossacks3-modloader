@@ -1,0 +1,12 @@
+-- profile — the player profile: sound, controls, language, behaviour settings.
+--
+--   profile.get("sndmaster")        --> 0.75
+--   profile.set("sndmaster", 0.5)   -- server/console/pages only
+--   profile.all()                   --> the whole profile as a table
+--   profile.save()                  -- write the profile to disk, as "Accept" does
+--
+-- Fields — the TProfile type in GAME_STATE.md.
+--
+-- The game's settings screen edits not gProfile but a temporary copy gProfileTmp and moves it over on the
+-- "Accept" button. If you make your own settings screen, work through profile.tmp, otherwise "Accept"
+-- overwrites your edits with the old values.

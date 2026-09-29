@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>saves — Cossacks 3 Modloader</title>
+<meta name="description" content="saves and replays, the same natives as the &quot;Load game&quot; screen.">
+<link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/style.css">
+<script>try{var t=localStorage.getItem('cs3-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light')}catch(e){}window.CS3_I18N={"none": "Nothing found"};</script>
+</head>
+<body>
+<div class="page">
+  <header class="site-header">
+    <div class="hl">
+      <a class="logo" href="index.html">COSSACKS 3 MODLOADER</a>
+      <nav class="nav"><a href="guide.html">GUIDE</a><a href="core-rules.html">REFERENCE</a><a href="core-log.html">LUA API</a><a href="api-schema.html" class="active">MODULES</a><a href="ref-state.html">DATA</a></nav>
+    </div>
+    <div class="ha">
+      <button class="iconbtn menu-btn" id="menu" type="button" aria-label="Menu">☰</button>
+      <div class="search-wrap"><input class="search" id="q" placeholder="Search the API…" autocomplete="off" aria-label="Search"><span class="kbd">/</span><div class="results" id="results"></div></div>
+      <a class="btn sm" href="../api-saves.html" title="Русская версия" hreflang="ru">RU</a>
+      <a class="btn black sm" href="https://github.com/OverlordDev/cossacks3-modloader" target="_blank" rel="noopener">GITHUB →</a>
+      <button class="iconbtn" id="theme" type="button" aria-label="Theme">☀</button>
+    </div>
+  </header>
+  <div class="layout"><aside class="side"><div class="group"><span class="group-title">START</span>
+<a href="index.html">Home</a>
+<a href="guide.html">Quick start</a>
+<a href="api-overview.html">api/ overview</a>
+</div>
+<div class="group"><span class="group-title">REFERENCE</span>
+<a href="core-rules.html">Main rules (read first)</a>
+<a href="core-structure.html">Mod structure</a>
+<a href="core-manifest.html">manifest.lua</a>
+<a href="core-sides.html">What is available on which side</a>
+<a href="core-assets.html">Replacing files</a>
+<a href="core-patches.html">Game script patches</a>
+<a href="core-content.html">New nations and units</a>
+<a href="core-templates.html">Templates</a>
+<a href="core-errors.html">Common errors</a>
+</div>
+<div class="group"><span class="group-title">ENGINE LUA API</span>
+<a href="core-log.html">log, mod, require, show</a>
+<a href="core-events.html">events</a>
+<a href="core-game.html">game</a>
+<a href="core-player.html">player, world</a>
+<a href="core-state.html">state and G</a>
+<a href="core-objects.html">objects and mem</a>
+<a href="core-units.html">units</a>
+<a href="core-buildings.html">buildings</a>
+<a href="core-balance.html">balance</a>
+<a href="core-misc.html">Other data</a>
+<a href="core-net.html">net</a>
+<a href="core-input.html">input</a>
+<a href="core-web.html">web</a>
+<a href="core-ui.html">ui</a>
+<a href="core-screens.html">screens</a>
+<a href="core-gfx.html">gfx</a>
+<a href="core-savedata.html">savedata</a>
+<a href="core-native.html">native</a>
+</div>
+<div class="group"><span class="group-title">API MODULES</span>
+<a href="api-schema.html">schema</a>
+<a href="api-state.html">state</a>
+<a href="api-screens_data.html">screens_data</a>
+<a href="api-show.html">show</a>
+<a href="api-profile.html">profile</a>
+<a href="api-options.html">options</a>
+<a href="api-saves.html" class="active">saves</a>
+<a href="api-players.html">players</a>
+<a href="api-map.html">map</a>
+<a href="api-screens.html">screens</a>
+<a href="api-balance.html">balance</a>
+<a href="api-buildings.html">buildings</a>
+<a href="api-units.html">units</a>
+<a href="api-objects.html">objects</a>
+<a href="api-call.html">call</a>
+</div>
+<div class="group"><span class="group-title">GAME DATA</span>
+<a href="ref-state.html">Variables and types</a>
+<a href="ref-screens.html">Screens and buttons</a>
+<a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/GAME_API.md" target="_blank" rel="noopener">Natives (GAME_API) ↗</a>
+</div></aside><main><article><h1>saves</h1>
+<p class="lead">saves and replays, the same natives as the "Load game" screen.</p>
+<div class="meta"><span class="badge fill">api/12_saves.lua</span><span class="badge">5 functions</span><a class="badge" href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/api/12_saves.lua">GITHUB ↗</a></div>
+<h2 id="opisanie" data-t="Description">Description</h2>
+<pre><code data-lang="lua">saves.list()            --&gt; { { name = "autosave", date = "20.09.26 12:40" }, ... }
+saves.load("autosave")  -- start loading (then the game loads the map itself)
+saves.delete("old")
+saves.replays.list()
+saves.replays.load(name)</code></pre>
+<h2 id="funkcii" data-t="Functions">Functions</h2>
+<div class="tblwrap"><table class="fn"><thead><tr><th>FUNCTION</th><th>DESCRIPTION</th></tr></thead><tbody>
+<tr id="f-saves-list"><td><code>saves.list()</code></td><td>Returns: { { name = "autosave", date = "20.09.26 12:40" }, ... }<span class="ex"><code>saves.list()            --&gt; { { name = "autosave", date = "20.09.26 12:40" }, ... }</code></span></td></tr>
+<tr id="f-saves-load"><td><code>saves.load(name)</code></td><td>start loading (then the game loads the map itself)<span class="ex"><code>saves.load("autosave")  -- start loading (then the game loads the map itself)</code></span></td></tr>
+<tr id="f-saves-delete"><td><code>saves.delete(name)</code></td><td><span style="opacity:.55">—</span><span class="ex"><code>saves.delete("old")</code></span></td></tr>
+<tr id="f-saves-replays-list"><td><code>saves.replays.list()</code></td><td><span style="opacity:.55">—</span><span class="ex"><code>saves.replays.list()</code></span></td></tr>
+<tr id="f-saves-replays-load"><td><code>saves.replays.load(name)</code></td><td><span style="opacity:.55">—</span><span class="ex"><code>saves.replays.load(name)</code></span></td></tr>
+</tbody></table></div>
+<h2 id="istochnik" data-t="Source">Source</h2>
+<div class="acc"><div class="acc-head"><span>api/12_saves.lua — 31 lines (comments in Russian)</span><span>+</span></div><div class="acc-body"><pre><code data-lang="lua">-- saves — сохранения и повторы, те же нативы, что у экрана «Загрузить игру».
+--
+--   saves.list()            --&gt; { { name = "autosave", date = "20.09.26 12:40" }, ... }
+--   saves.load("autosave")  -- начать загрузку (дальше игра грузит карту сама)
+--   saves.delete("old")
+--   saves.replays.list()
+--   saves.replays.load(name)
+
+saves = { replays = {} }
+
+local function list(count, byIndex, date)
+    local out = {}
+    for i = 0, native[count]() - 1 do
+        out[#out + 1] = { name = native[byIndex](i), date = native[date](i) }
+    end
+    return out
+end
+
+function saves.list()
+    return list("UserGetProfileSavesCount", "UserGetProfileSaveByIndex", "UserGetProfileSaveDateByIndex")
+end
+
+function saves.load(name) native.UserProfileLoadMap(name) end
+function saves.delete(name) native.UserProfileDeleteMap(name) end
+
+function saves.replays.list()
+    return list("UserGetProfileReplaysCount", "UserGetProfileReplayByIndex", "UserGetProfileReplayDateByIndex")
+end
+
+function saves.replays.load(name) native.UserProfileLoadReplay(name) end
+</code></pre></div></div></article><div class="meta" style="margin-top:36px"><a class="badge" href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/api/12_saves.lua">EDIT ON GITHUB ↗</a></div><div class="pn"><a href="api-options.html"><small>← BACK</small>options</a><a class="next" href="api-players.html"><small>NEXT →</small>players</a></div></main><aside class="toc" id="toc"><b>ON THIS PAGE</b></aside></div>
+  <footer class="footer">
+    <div><a class="logo" href="index.html" style="display:inline-block">COSSACKS 3 MODLOADER</a><br><br>API documentation<br>Built from the repository's <code>api/</code> folder</div>
+    <div>DOCUMENTS<br><a href="guide.html">Quick start</a><a href="core-rules.html">Reference</a><a href="api-overview.html">api/ overview</a></div>
+    <div>DATA<br><a href="ref-state.html">Game variables</a><a href="ref-screens.html">Screens</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/GAME_API.md">Natives ↗</a></div>
+    <div>PROJECT<br><a href="https://github.com/OverlordDev/cossacks3-modloader">GitHub ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/issues">Issues ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/DOCUMENTATION.md">Internals ↗</a></div>
+  </footer>
+</div>
+<script src="../assets/search-index-en.js"></script>
+<script src="../assets/app.js"></script>
+</body>
+</html>

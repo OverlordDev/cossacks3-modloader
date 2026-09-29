@@ -1,0 +1,25 @@
+-- balance — unit and building type parameters: read and change in the middle of a match.
+--
+-- Where the game keeps them (data/scripts/lib/classes.script, unit.script):
+--   gObjProp[nation][type]                   TObjProp — common to all players: vision, radii,
+--                                            role, flags (bartillery, bofficer...), weapons (static)
+--   gPlayer[player].objbase[nation][type]    TObjBase — each player has their own (upgrades change it):
+--                                            maxhp, shield, price[0..6], buildtime, speed,
+--                                            protection[0..9], weapon[0..3].damage/radiusmax/pause...
+-- The game fills them at the start of a match (_unit_InitBase), so change them in game.start or later.
+--
+--   balance.types()                          --> { {sid="rus_strelets", country=4, id=12}, ... }
+--   balance.find("rus_strelets")             --> 4, 12        (nation, type number)
+--   balance.get("rus_strelets")              --> { base = {maxhp=..., weapon={[0]={damage=...}}...}, prop = {...} }
+--   balance.get("rus_strelets", 2)           --  player 2's base
+--   balance.set("rus_strelets", "maxhp", 300)             -- for all players
+--   balance.set("rus_strelets", "weapon[0].damage", 40, 1) -- for player 1 only
+--   balance.set("rus_strelets", "price[3]", 50)            -- price: 0 food 1 wood 2 stone 3 gold 4 iron 5 coal
+--   balance.setProp("rus_strelets", "vision", 900)         -- a common type property
+--   balance.dump("rus_strelets")             --  everything to the log — to see the field names
+--
+-- Fields and types — GAME_STATE.md (TObjBase, TObjWeapon, TObjProp, TObjWeaponStatic).
+--
+-- MULTIPLAYER: unit stats are computed on every machine. Change them identically for all players:
+-- a mod with the shared side (server.lua runs on all machines) and the change in game.start.
+-- Otherwise the matches diverge (desync).

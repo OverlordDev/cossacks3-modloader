@@ -1,0 +1,5 @@
+-- show — a table as readable text (the console prints tables as "table: 22FC0CF8").
+--
+--   =show(buildings.info(buildings.selected()))
+--   =show(balance.get("musketeer18"), 2)      -- only 2 levels of nesting
+--   log.info(show(t))

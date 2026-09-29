@@ -7,7 +7,7 @@
 <meta name="description" content="Документация API Cossacks 3 Modloader: Lua, события, интерфейсы, замена файлов и правка скриптов игры.">
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="assets/style.css">
-<script>try{var t=localStorage.getItem('cs3-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light')}catch(e){}</script>
+<script>try{var t=localStorage.getItem('cs3-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light')}catch(e){}window.CS3_I18N={"none": "Ничего не найдено"};</script>
 </head>
 <body>
 <div class="page">
@@ -19,37 +19,38 @@
     <div class="ha">
       <button class="iconbtn menu-btn" id="menu" type="button" aria-label="Меню">☰</button>
       <div class="search-wrap"><input class="search" id="q" placeholder="Поиск по API…" autocomplete="off" aria-label="Поиск"><span class="kbd">/</span><div class="results" id="results"></div></div>
+      <a class="btn sm" href="en/404.html" title="English version" hreflang="en">EN</a>
       <a class="btn black sm" href="https://github.com/OverlordDev/cossacks3-modloader" target="_blank" rel="noopener">GITHUB →</a>
       <button class="iconbtn" id="theme" type="button" aria-label="Тема">☀</button>
     </div>
   </header>
   <div class="layout"><aside class="side"><div class="group"><span class="group-title">НАЧАЛО</span>
-<a href="index.html">Главная</a>
-<a href="guide.html">Быстрый старт</a>
-<a href="api-overview.html">Обзор api/</a>
+<a href="index.html">Home</a>
+<a href="guide.html">Quick start</a>
+<a href="api-overview.html">api/ overview</a>
 </div>
 <div class="group"><span class="group-title">СПРАВОЧНИК</span>
-<a href="core-rules.html">Главные правила (читать первыми)</a>
-<a href="core-structure.html">Структура мода</a>
+<a href="core-rules.html">Main rules (read first)</a>
+<a href="core-structure.html">Mod structure</a>
 <a href="core-manifest.html">manifest.lua</a>
-<a href="core-sides.html">Что доступно на какой стороне</a>
-<a href="core-assets.html">Замена файлов</a>
-<a href="core-patches.html">Патчи скриптов игры</a>
-<a href="core-content.html">Новые нации и юниты</a>
-<a href="core-templates.html">Шаблоны</a>
-<a href="core-errors.html">Частые ошибки</a>
+<a href="core-sides.html">What is available on which side</a>
+<a href="core-assets.html">Replacing files</a>
+<a href="core-patches.html">Game script patches</a>
+<a href="core-content.html">New nations and units</a>
+<a href="core-templates.html">Templates</a>
+<a href="core-errors.html">Common errors</a>
 </div>
 <div class="group"><span class="group-title">LUA API ДВИЖКА</span>
 <a href="core-log.html">log, mod, require, show</a>
 <a href="core-events.html">events</a>
 <a href="core-game.html">game</a>
 <a href="core-player.html">player, world</a>
-<a href="core-state.html">state и G</a>
-<a href="core-objects.html">objects и mem</a>
+<a href="core-state.html">state and G</a>
+<a href="core-objects.html">objects and mem</a>
 <a href="core-units.html">units</a>
 <a href="core-buildings.html">buildings</a>
 <a href="core-balance.html">balance</a>
-<a href="core-misc.html">Прочие данные</a>
+<a href="core-misc.html">Other data</a>
 <a href="core-net.html">net</a>
 <a href="core-input.html">input</a>
 <a href="core-web.html">web</a>
@@ -77,10 +78,10 @@
 <a href="api-call.html">call</a>
 </div>
 <div class="group"><span class="group-title">ДАННЫЕ ИГРЫ</span>
-<a href="ref-state.html">Переменные и типы</a>
-<a href="ref-screens.html">Экраны и кнопки</a>
+<a href="ref-state.html">Variables and types</a>
+<a href="ref-screens.html">Screens and buttons</a>
 <a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/GAME_API.md" target="_blank" rel="noopener">Нативы (GAME_API) ↗</a>
-</div></aside><main><article><h1>404</h1><p class="lead">Такой страницы нет.</p><p><a class="btn black" href="index.html">НА ГЛАВНУЮ →</a></p></article><div class="pn"><span></span><a class="next" href="guide.html"><small>ДАЛЬШЕ →</small>Быстрый старт</a></div></main><aside></aside></div>
+</div></aside><main><article><h1>404</h1><p class="lead">Такой страницы нет.</p><p><a class="btn black" href="index.html">НА ГЛАВНУЮ →</a></p></article><div class="pn"><span></span><a class="next" href="guide.html"><small>ДАЛЬШЕ →</small>Quick start</a></div></main><aside></aside></div>
   <footer class="footer">
     <div><a class="logo" href="index.html" style="display:inline-block">COSSACKS 3 MODLOADER</a><br><br>Документация API<br>Собрана из папки <code>api/</code> репозитория</div>
     <div>ДОКУМЕНТЫ<br><a href="guide.html">Быстрый старт</a><a href="core-rules.html">Справочник</a><a href="api-overview.html">Обзор api/</a></div>

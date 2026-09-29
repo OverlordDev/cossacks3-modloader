@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>balance — Cossacks 3 Modloader</title>
+<meta name="description" content="unit and building type parameters: read and change in the middle of a match.">
+<link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/style.css">
+<script>try{var t=localStorage.getItem('cs3-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light')}catch(e){}window.CS3_I18N={"none": "Nothing found"};</script>
+</head>
+<body>
+<div class="page">
+  <header class="site-header">
+    <div class="hl">
+      <a class="logo" href="index.html">COSSACKS 3 MODLOADER</a>
+      <nav class="nav"><a href="guide.html">GUIDE</a><a href="core-rules.html">REFERENCE</a><a href="core-log.html">LUA API</a><a href="api-schema.html" class="active">MODULES</a><a href="ref-state.html">DATA</a></nav>
+    </div>
+    <div class="ha">
+      <button class="iconbtn menu-btn" id="menu" type="button" aria-label="Menu">☰</button>
+      <div class="search-wrap"><input class="search" id="q" placeholder="Search the API…" autocomplete="off" aria-label="Search"><span class="kbd">/</span><div class="results" id="results"></div></div>
+      <a class="btn sm" href="../api-balance.html" title="Русская версия" hreflang="ru">RU</a>
+      <a class="btn black sm" href="https://github.com/OverlordDev/cossacks3-modloader" target="_blank" rel="noopener">GITHUB →</a>
+      <button class="iconbtn" id="theme" type="button" aria-label="Theme">☀</button>
+    </div>
+  </header>
+  <div class="layout"><aside class="side"><div class="group"><span class="group-title">START</span>
+<a href="index.html">Home</a>
+<a href="guide.html">Quick start</a>
+<a href="api-overview.html">api/ overview</a>
+</div>
+<div class="group"><span class="group-title">REFERENCE</span>
+<a href="core-rules.html">Main rules (read first)</a>
+<a href="core-structure.html">Mod structure</a>
+<a href="core-manifest.html">manifest.lua</a>
+<a href="core-sides.html">What is available on which side</a>
+<a href="core-assets.html">Replacing files</a>
+<a href="core-patches.html">Game script patches</a>
+<a href="core-content.html">New nations and units</a>
+<a href="core-templates.html">Templates</a>
+<a href="core-errors.html">Common errors</a>
+</div>
+<div class="group"><span class="group-title">ENGINE LUA API</span>
+<a href="core-log.html">log, mod, require, show</a>
+<a href="core-events.html">events</a>
+<a href="core-game.html">game</a>
+<a href="core-player.html">player, world</a>
+<a href="core-state.html">state and G</a>
+<a href="core-objects.html">objects and mem</a>
+<a href="core-units.html">units</a>
+<a href="core-buildings.html">buildings</a>
+<a href="core-balance.html">balance</a>
+<a href="core-misc.html">Other data</a>
+<a href="core-net.html">net</a>
+<a href="core-input.html">input</a>
+<a href="core-web.html">web</a>
+<a href="core-ui.html">ui</a>
+<a href="core-screens.html">screens</a>
+<a href="core-gfx.html">gfx</a>
+<a href="core-savedata.html">savedata</a>
+<a href="core-native.html">native</a>
+</div>
+<div class="group"><span class="group-title">API MODULES</span>
+<a href="api-schema.html">schema</a>
+<a href="api-state.html">state</a>
+<a href="api-screens_data.html">screens_data</a>
+<a href="api-show.html">show</a>
+<a href="api-profile.html">profile</a>
+<a href="api-options.html">options</a>
+<a href="api-saves.html">saves</a>
+<a href="api-players.html">players</a>
+<a href="api-map.html">map</a>
+<a href="api-screens.html">screens</a>
+<a href="api-balance.html" class="active">balance</a>
+<a href="api-buildings.html">buildings</a>
+<a href="api-units.html">units</a>
+<a href="api-objects.html">objects</a>
+<a href="api-call.html">call</a>
+</div>
+<div class="group"><span class="group-title">GAME DATA</span>
+<a href="ref-state.html">Variables and types</a>
+<a href="ref-screens.html">Screens and buttons</a>
+<a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/GAME_API.md" target="_blank" rel="noopener">Natives (GAME_API) ↗</a>
+</div></aside><main><article><h1>balance</h1>
+<p class="lead">unit and building type parameters: read and change in the middle of a match.</p>
+<div class="meta"><span class="badge fill">api/17_balance.lua</span><span class="badge">11 functions</span><a class="badge" href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/api/17_balance.lua">GITHUB ↗</a></div>
+<h2 id="opisanie" data-t="Description">Description</h2>
+<p>Where the game keeps them (data/scripts/lib/classes.script, unit.script):</p>
+<pre><code data-lang="lua">gObjProp[nation][type]                   TObjProp — common to all players: vision, radii,
+                                         role, flags (bartillery, bofficer...), weapons (static)
+gPlayer[player].objbase[nation][type]    TObjBase — each player has their own (upgrades change it):
+                                         maxhp, shield, price[0..6], buildtime, speed,
+                                         protection[0..9], weapon[0..3].damage/radiusmax/pause...</code></pre>
+<p>The game fills them at the start of a match (_unit_InitBase), so change them in game.start or later.</p>
+<pre><code data-lang="lua">balance.types()                          --&gt; { {sid="rus_strelets", country=4, id=12}, ... }
+balance.find("rus_strelets")             --&gt; 4, 12        (nation, type number)
+balance.get("rus_strelets")              --&gt; { base = {maxhp=..., weapon={[0]={damage=...}}...}, prop = {...} }
+balance.get("rus_strelets", 2)           --  player 2's base
+balance.set("rus_strelets", "maxhp", 300)             -- for all players
+balance.set("rus_strelets", "weapon[0].damage", 40, 1) -- for player 1 only
+balance.set("rus_strelets", "price[3]", 50)            -- price: 0 food 1 wood 2 stone 3 gold 4 iron 5 coal
+balance.setProp("rus_strelets", "vision", 900)         -- a common type property
+balance.dump("rus_strelets")             --  everything to the log — to see the field names</code></pre>
+<p>Fields and types — GAME_STATE.md (TObjBase, TObjWeapon, TObjProp, TObjWeaponStatic).</p>
+<p>MULTIPLAYER: unit stats are computed on every machine. Change them identically for all players: a mod with the shared side (server.lua runs on all machines) and the change in game.start. Otherwise the matches diverge (desync).</p>
+<h2 id="funkcii" data-t="Functions">Functions</h2>
+<div class="tblwrap"><table class="fn"><thead><tr><th>FUNCTION</th><th>DESCRIPTION</th></tr></thead><tbody>
+<tr id="f-balance-types"><td><code>balance.types()</code></td><td>Returns: { {sid="rus_strelets", country=4, id=12}, ... }<span class="ex"><code>balance.types()                          --&gt; { {sid="rus_strelets", country=4, id=12}, ... }</code></span></td></tr>
+<tr id="f-balance-refresh"><td><code>balance.refresh()</code></td><td>The type list is built on first use; after the set of nations changes in a new match — reset it.</td></tr>
+<tr id="f-balance-find"><td><code>balance.find(sid)</code></td><td>The first match: nation and type number. Other nations with the same name — balance.places(sid).<span class="ex"><code>balance.find("rus_strelets")             --&gt; 4, 12        (nation, type number)</code></span></td></tr>
+<tr id="f-balance-places"><td><code>balance.places(sid)</code></td><td><span style="opacity:.55">—</span></td></tr>
+<tr id="f-balance-get"><td><code>balance.get(sid,<wbr> player)</code></td><td>Returns: { base = {maxhp=..., weapon={[0]={damage=...}}...}, prop = {...} }<span class="ex"><code>balance.get("rus_strelets")              --&gt; { base = {maxhp=..., weapon={[0]={damage=...}}...}, prop = {...} }</code></span></td></tr>
+<tr id="f-balance-set"><td><code>balance.set(sid,<wbr> field,<wbr> value,<wbr> player)</code></td><td>field: a path inside TObjBase: "maxhp", "speed", "price[3]", "weapon[0].damage", "protection[2]".<span class="ex"><code>balance.set("rus_strelets", "maxhp", 300)             -- for all players</code></span></td></tr>
+<tr id="f-balance-setProp"><td><code>balance.setProp(sid,<wbr> field,<wbr> value)</code></td><td>a common type property<span class="ex"><code>balance.setProp("rus_strelets", "vision", 900)         -- a common type property</code></span></td></tr>
+<tr id="f-balance-dump"><td><code>balance.dump(sid,<wbr> player)</code></td><td>everything to the log — to see the field names<span class="ex"><code>balance.dump("rus_strelets")             --  everything to the log — to see the field names</code></span></td></tr>
+<tr id="f-balance-setHP"><td><code>balance.setHP(sid,<wbr> maxhp,<wbr> player)</code></td><td>and to living units of this type<span class="ex"><code>balance.setHP(sid, maxhp, player)        -- and to living units of this type</code></span></td></tr>
+<tr id="f-balance-setDamage"><td><code>balance.setDamage(sid,<wbr> damage,<wbr> weapon,<wbr> player)</code></td><td>weapon — index 0..3 (musketeer: 0 bayonet, 1 shot); nil — all<span class="ex"><code>balance.setDamage(sid, damage, weapon, player)   -- weapon — index 0..3 (musketeer: 0 bayonet, 1 shot); nil — all</code></span></td></tr>
+<tr id="f-balance-setSpeed"><td><code>balance.setSpeed(sid,<wbr> multiplier,<wbr> player)</code></td><td>In the game, speed is a multiplier of the step interval (smaller — faster); here it is an ordinary speed multiplier.<span class="ex"><code>balance.setSpeed(sid, multiplier, player)        -- and to living ones</code></span></td></tr>
+</tbody></table></div>
+<h2 id="istochnik" data-t="Source">Source</h2>
+<div class="acc"><div class="acc-head"><span>api/17_balance.lua — 245 lines (comments in Russian)</span><span>+</span></div><div class="acc-body"><pre><code data-lang="lua">-- balance — параметры типов юнитов и зданий: читать и менять посреди партии.
+--
+-- Где это у игры (data/scripts/lib/classes.script, unit.script):
+--   gObjProp[нация][тип]                     TObjProp — общее для всех игроков: обзор, радиусы,
+--                                            роль, флаги (bartillery, bofficer...), оружие (статика)
+--   gPlayer[игрок].objbase[нация][тип]       TObjBase — своё у каждого игрока (его меняют улучшения):
+--                                            maxhp, shield, price[0..6], buildtime, speed,
+--                                            protection[0..9], weapon[0..3].damage/radiusmax/pause...
+-- Игра заполняет их в начале партии (_unit_InitBase), поэтому менять — в game.start или позже.
+--
+--   balance.types()                          --&gt; { {sid="rus_strelets", country=4, id=12}, ... }
+--   balance.find("rus_strelets")             --&gt; 4, 12        (нация, номер типа)
+--   balance.get("rus_strelets")              --&gt; { base = {maxhp=..., weapon={[0]={damage=...}}...}, prop = {...} }
+--   balance.get("rus_strelets", 2)           --  base игрока 2
+--   balance.set("rus_strelets", "maxhp", 300)             -- всем игрокам
+--   balance.set("rus_strelets", "weapon[0].damage", 40, 1) -- только игроку 1
+--   balance.set("rus_strelets", "price[3]", 50)            -- цена: 0 еда 1 дерево 2 камень 3 золото 4 железо 5 уголь
+--   balance.setProp("rus_strelets", "vision", 900)         -- общее свойство типа
+--   balance.dump("rus_strelets")             --  всё в лог — чтобы посмотреть имена полей
+--
+-- Поля и типы — GAME_STATE.md (TObjBase, TObjWeapon, TObjProp, TObjWeaponStatic).
+--
+-- МУЛЬТИПЛЕЕР: статы юнитов считаются на каждой машине. Меняйте их одинаково у всех игроков:
+-- мод со стороной shared (server.lua выполняется на всех машинах) и изменение в game.start.
+-- Иначе партии разойдутся (рассинхрон).
+
+balance = {}
+
+local PLAYERS = 12
+local cache -- sid (нижний регистр) -&gt; { {country, id, sid}, ... } — одно имя бывает у нескольких наций
+
+-- Все непустые типы одним вызовом скрипта: цикл по gObjProp собирает строку "нация,тип,sid;".
+local function scan()
+    local list = {}
+    local text
+    if game.exec then
+        text = game.exec([[
+var s : String;
+var c, u : Integer;
+for c := 0 to gc_MaxCountryCount-1 do
+for u := 0 to gc_country_maxmembers-1 do
+if gObjProp[c][u].sid &lt;&gt; '' then
+s := s + IntToStr(c) + ',' + IntToStr(u) + ',' + gObjProp[c][u].sid + ';';
+ML_RET(s);]])
+    else
+        -- Клиенту исполнять код нельзя — читаем по одному (медленнее, но только один раз).
+        local parts = {}
+        for c = 0, 23 do
+            for u = 0, 79 do
+                local sid = game.eval("gObjProp[" .. c .. "][" .. u .. "].sid")
+                if sid ~= "" then parts[#parts + 1] = c .. "," .. u .. "," .. sid end
+            end
+        end
+        text = table.concat(parts, ";")
+    end
+    for c, u, sid in text:gmatch("(%d+),(%d+),([^;]+)") do
+        list[#list + 1] = { sid = sid, country = tonumber(c), id = tonumber(u) }
+    end
+    return list
+end
+
+local function index()
+    if cache then return cache end
+    cache = {}
+    for _, t in ipairs(scan()) do
+        local key = t.sid:lower()
+        cache[key] = cache[key] or {}
+        table.insert(cache[key], t)
+    end
+    return cache
+end
+
+function balance.types()
+    local out = {}
+    for _, list in pairs(index()) do
+        for _, t in ipairs(list) do out[#out + 1] = t end
+    end
+    table.sort(out, function(a, b) return a.sid &lt; b.sid or (a.sid == b.sid and a.country &lt; b.country) end)
+    return out
+end
+
+-- Список типов строится при первом обращении; после смены набора наций в новой партии — сбросить.
+function balance.refresh() cache = nil end
+
+-- Все места, где живёт тип: { {country, id}, ... }.
+local function places(sid, level)
+    local list = index()[tostring(sid):lower()]
+    if not list then
+        error("balance: unknown unit type '" .. tostring(sid) .. "' (balance.types() lists all)", (level or 1) + 2)
+    end
+    return list
+end
+
+-- Первое совпадение: нация и номер типа. Остальные нации с тем же именем — balance.places(sid).
+function balance.find(sid)
+    local t = places(sid, 1)[1]
+    return t.country, t.id
+end
+
+function balance.places(sid) return places(sid, 1) end
+
+local function basePath(t, player)
+    return string.format("gPlayer[%d].objbase[%d][%d]", player, t.country, t.id)
+end
+
+local function propPath(t)
+    return string.format("gObjProp[%d][%d]", t.country, t.id)
+end
+
+function balance.get(sid, player)
+    local t = places(sid, 1)[1]
+    return {
+        base = state.read(basePath(t, player or 0), 2),
+        prop = state.read(propPath(t), 2),
+    }
+end
+
+-- field: путь внутри TObjBase: "maxhp", "speed", "price[3]", "weapon[0].damage", "protection[2]".
+function balance.set(sid, field, value, player)
+    if not game.exec then
+        error("balance.set: only server/shared scripts can change the game", 2)
+    end
+    local first, last = 0, PLAYERS - 1
+    if player then first, last = player, player end
+    local sep = field:sub(1, 1) == "[" and "" or "."
+    for _, t in ipairs(places(sid, 1)) do -- у всех наций с этим типом
+        for p = first, last do
+            state.set(basePath(t, p) .. sep .. field, value)
+        end
+    end
+end
+
+function balance.setProp(sid, field, value)
+    if not game.exec then
+        error("balance.setProp: only server/shared scripts can change the game", 2)
+    end
+    local sep = field:sub(1, 1) == "[" and "" or "."
+    for _, t in ipairs(places(sid, 1)) do
+        state.set(propPath(t) .. sep .. field, value)
+    end
+end
+
+local function flatten(t, prefix, out)
+    local keys = {}
+    for k in pairs(t) do keys[#keys + 1] = k end
+    table.sort(keys, function(a, b) return tostring(a) &lt; tostring(b) end)
+    for _, k in ipairs(keys) do
+        local v = t[k]
+        local name = prefix == "" and tostring(k) or (prefix .. "." .. tostring(k))
+        if type(v) == "table" then flatten(v, name, out) else out[#out + 1] = name .. " = " .. tostring(v) end
+    end
+end
+
+function balance.dump(sid, player)
+    local data = balance.get(sid, player)
+    local lines = {}
+    flatten(data, "", lines)
+    local text = sid .. ":\n  " .. table.concat(lines, "\n  ")
+    if log and log.info then log.info(text) end
+    return text
+end
+
+-- ---------- как улучшения игры: тип + все живые юниты ----------
+--
+-- balance.set меняет только тип: игра копирует здоровье и скорость в юнита при его появлении,
+-- поэтому уже живые юниты изменения не увидят. Эти функции делают то же, что улучшения самой
+-- игры (data/scripts/lib/player.script): меняют тип и пересчитывают всех живых.
+--
+--   balance.setHP("musketeer18", 500)          -- макс. здоровье; текущее у живых — пропорционально
+--   balance.setDamage("musketeer18", 60)       -- урон всех видов оружия (с учётом улучшений игрока)
+--   balance.setDamage("musketeer18", 60, 1)    -- только оружие 1 (у мушкетёра 0 — штык, 1 — выстрел)
+--   balance.setSpeed("musketeer18", 2)         -- в 2 раза быстрее обычного (1 — как в игре)
+-- Последний аргумент у всех — номер игрока (без него — все игроки).
+
+local function needExec(name)
+    if not game.exec then error("balance." .. name .. ": only server/shared scripts can change the game", 3) end
+end
+
+-- Код для каждой нации с этим типом и каждого игрока; body видит c, u, p, plHnd.
+local function forEach(sid, player, body)
+    local out = {}
+    for _, t in ipairs(places(sid, 2)) do
+        local first, last = player or 0, player or (PLAYERS - 1)
+        out[#out + 1] = string.format([[
+for p := %d to %d do
+begin
+c := %d; u := %d;
+plHnd := GetPlayerHandleByIndex(p);
+%s
+end;]], first, last, t.country, t.id, body)
+    end
+    return "var c, u, p, i, k, plHnd, h : Integer;\nvar pobj : Pointer;\nvar old, ratio : Float;\n" ..
+        table.concat(out, "\n")
+end
+
+-- Цикл по живым объектам этого типа у игрока p: тело видит pobj (TObj) и h (хендл).
+local EACH_UNIT = [[
+if plHnd &lt;&gt; 0 then
+for i := 0 to GetPlayerGameObjectsCountByHandle(plHnd)-1 do
+begin
+h := GetGameObjectHandleByIndex(i, plHnd);
+pobj := _unit_GetTObj(h);
+if (pobj &lt;&gt; nil) and (TObj(pobj).cid = c) and (TObj(pobj).id = u) then
+begin
+%s
+end;
+end;]]
+
+function balance.setHP(sid, maxhp, player)
+    needExec("setHP")
+    maxhp = math.floor(tonumber(maxhp) or 0)
+    game.exec(forEach(sid, player, [[
+old := gPlayer[p].objbase[c][u].maxhp;
+gPlayer[p].objbase[c][u].maxhp := ]] .. maxhp .. [[;
+if old &gt; 0 then
+]] .. EACH_UNIT:format("TObj(pobj).hp := Round(TObj(pobj).hp / old * " .. maxhp .. ");")))
+end
+
+function balance.setDamage(sid, damage, weapon, player)
+    needExec("setDamage")
+    damage = math.floor(tonumber(damage) or 0)
+    local first, last = weapon or 0, weapon or 3
+    game.exec(forEach(sid, player, string.format([[
+for k := %d to %d do
+if gObjProp[c][u].weapon[k].enabled then
+begin
+gPlayer[p].objbase[c][u].weapon[k].damageinit := %d;
+gPlayer[p].objbase[c][u].weapon[k].damage := Floor((gPlayer[p].objbase[c][u].weapon[k].damageinit + gPlayer[p].objbase[c][u].weapon[k].damagestatic) * (1 + gPlayer[p].objbase[c][u].weapon[k].damagepercent / 100));
+end;]], first, last, damage)))
+end
+
+-- Скорость у игры — множитель интервала шага (меньше — быстрее); здесь — понятный множитель скорости.
+function balance.setSpeed(sid, multiplier, player)
+    needExec("setSpeed")
+    local interval = 1 / (tonumber(multiplier) or 1)
+    game.exec(forEach(sid, player, string.format([[
+old := gPlayer[p].objbase[c][u].speed;
+if old &lt;= 0 then old := 1;
+ratio := StrToInt('%d') / 1000000 / old;
+gPlayer[p].objbase[c][u].speed := StrToInt('%d') / 1000000;
+]], math.floor(interval * 1000000 + 0.5), math.floor(interval * 1000000 + 0.5)) .. EACH_UNIT:format([[
+SetGameObjectTrackPointMoveStepIntervalByHandle(h, Floor(GetGameObjectTrackPointMoveStepIntervalByHandle(h) * ratio));
+SetGameObjectTrackPointTurnStepIntervalByHandle(h, Floor(GetGameObjectTrackPointTurnStepIntervalByHandle(h) * ratio));]])))
+end
+</code></pre></div></div></article><div class="meta" style="margin-top:36px"><a class="badge" href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/api/17_balance.lua">EDIT ON GITHUB ↗</a></div><div class="pn"><a href="api-screens.html"><small>← BACK</small>screens</a><a class="next" href="api-buildings.html"><small>NEXT →</small>buildings</a></div></main><aside class="toc" id="toc"><b>ON THIS PAGE</b></aside></div>
+  <footer class="footer">
+    <div><a class="logo" href="index.html" style="display:inline-block">COSSACKS 3 MODLOADER</a><br><br>API documentation<br>Built from the repository's <code>api/</code> folder</div>
+    <div>DOCUMENTS<br><a href="guide.html">Quick start</a><a href="core-rules.html">Reference</a><a href="api-overview.html">api/ overview</a></div>
+    <div>DATA<br><a href="ref-state.html">Game variables</a><a href="ref-screens.html">Screens</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/GAME_API.md">Natives ↗</a></div>
+    <div>PROJECT<br><a href="https://github.com/OverlordDev/cossacks3-modloader">GitHub ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/issues">Issues ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/DOCUMENTATION.md">Internals ↗</a></div>
+  </footer>
+</div>
+<script src="../assets/search-index-en.js"></script>
+<script src="../assets/app.js"></script>
+</body>
+</html>

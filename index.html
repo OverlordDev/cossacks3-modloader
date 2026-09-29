@@ -7,7 +7,7 @@
 <meta name="description" content="Документация API Cossacks 3 Modloader: Lua, события, интерфейсы, замена файлов и правка скриптов игры.">
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="assets/style.css">
-<script>try{var t=localStorage.getItem('cs3-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light')}catch(e){}</script>
+<script>try{var t=localStorage.getItem('cs3-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light')}catch(e){}window.CS3_I18N={"none": "Ничего не найдено"};</script>
 </head>
 <body>
 <div class="page">
@@ -19,6 +19,7 @@
     <div class="ha">
       <button class="iconbtn menu-btn" id="menu" type="button" aria-label="Меню">☰</button>
       <div class="search-wrap"><input class="search" id="q" placeholder="Поиск по API…" autocomplete="off" aria-label="Поиск"><span class="kbd">/</span><div class="results" id="results"></div></div>
+      <a class="btn sm" href="en/index.html" title="English version" hreflang="en">EN</a>
       <a class="btn black sm" href="https://github.com/OverlordDev/cossacks3-modloader" target="_blank" rel="noopener">GITHUB →</a>
       <button class="iconbtn" id="theme" type="button" aria-label="Тема">☀</button>
     </div>
@@ -26,8 +27,7 @@
   <div class="layout home-layout" style="grid-template-columns:minmax(0,1fr)"><main>
 <section class="hero rv"><div class="bg"></div>
   <h1>МОДЫ ДЛЯ COSSACKS 3<br>БЕЗ ПЕРЕСБОРКИ<span class="caret"></span></h1>
-  <p>Modloader встраивается в игру при запуске: Lua, события, HTML-интерфейсы, замена файлов и правка скриптов игры.
-  Файлы игры не меняются — всё в памяти процесса. Здесь — полная документация по API.</p>
+  <p>Modloader встраивается в игру при запуске: Lua, события, HTML-интерфейсы, замена файлов и правка скриптов игры. Файлы игры не меняются — всё в памяти процесса. Здесь — полная документация по API.</p>
   <div class="cta"><a class="btn black" href="guide.html">НАЧАТЬ →</a><a class="btn" href="api-overview.html">ОБЗОР API →</a>
   <a class="btn" href="core-events.html">СОБЫТИЯ →</a></div>
 </section>

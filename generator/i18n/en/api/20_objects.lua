@@ -1,0 +1,16 @@
+-- objects — fast reading of units and buildings straight from game memory, without compiling Pascal.
+--
+-- The usual path (state.read, units.info) builds and compiles a piece of Pascal every time — that is
+-- milliseconds per call. Here a field is read from memory in microseconds: you can walk thousands
+-- of units every tick (HUD, logic, statistics).
+--
+--   objects.get(h, "hp")                    --> the value of a TObj field (path as in state: "orders[0].info.x")
+--   objects.read(h)                         --> all simple TObj fields as a table {hp=, cid=, pl=, bdead=, ...}
+--   objects.list(player)                    --> handles of a player's objects (player index; nil — all players)
+--   objects.each(function(h) ... end, player)
+--   objects.pos(h)                          --> x, z
+--   objects.status()                        --> "fast" | "slow" | "not calibrated", and a description of the layout
+--
+-- The modloader computes the field layout from the game schema (GAME_STATE.md, TObj) and on first use in a
+-- match verifies it against what the game itself returns. If it does not match, all functions work through Pascal (slowly,
+-- but correctly) and a warning is written to the log. Read-only: to write use state.set / balance / buildings.

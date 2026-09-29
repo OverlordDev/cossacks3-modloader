@@ -1,0 +1,7 @@
+-- players — match participants (and lobby slots before it starts).
+--
+--   players.list()          --> occupied gMap.players slots: { index, name, team, color, bai, bhuman, ... }
+--   players.me()            --> the index of the player on this computer (in a match only)
+--   players.resources(i)    --> { food, wood, stone, gold, iron, coal } (in a match only)
+--
+-- All slot fields — the TMapPlayer type in GAME_STATE.md. For resources and changing them there is player(i).

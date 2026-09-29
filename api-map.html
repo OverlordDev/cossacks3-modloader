@@ -7,7 +7,7 @@
 <meta name="description" content="текущая карта и настройки партии.">
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="assets/style.css">
-<script>try{var t=localStorage.getItem('cs3-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light')}catch(e){}</script>
+<script>try{var t=localStorage.getItem('cs3-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light')}catch(e){}window.CS3_I18N={"none": "Ничего не найдено"};</script>
 </head>
 <body>
 <div class="page">
@@ -19,6 +19,7 @@
     <div class="ha">
       <button class="iconbtn menu-btn" id="menu" type="button" aria-label="Меню">☰</button>
       <div class="search-wrap"><input class="search" id="q" placeholder="Поиск по API…" autocomplete="off" aria-label="Поиск"><span class="kbd">/</span><div class="results" id="results"></div></div>
+      <a class="btn sm" href="en/api-map.html" title="English version" hreflang="en">EN</a>
       <a class="btn black sm" href="https://github.com/OverlordDev/cossacks3-modloader" target="_blank" rel="noopener">GITHUB →</a>
       <button class="iconbtn" id="theme" type="button" aria-label="Тема">☀</button>
     </div>

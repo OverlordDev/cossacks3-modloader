@@ -1,0 +1,16 @@
+{
+  "collectValue": "One value: a simple one — a leaf; a record — descend into it (if depth allows); an array — element by element (element keys are numbers: t.price[3], t.weapon[0].damage). Arrays with unknown bounds are skipped.",
+  "state.list": "All elements of an array: state.list(\"gMap.players\") — a list of records (or values).",
+  "state.set": "The code is kept constant and the value is passed as an argument: this way the game compiles it only once.",
+  "screens.button": "The button name by tag; for unknown ones — the number as a string.",
+  "screens.of": "The screen name by state name: \"EventMainMenu\" / \"ShowMainMenu\" -> \"MainMenu\".",
+  "screens.bind": "A per-mod copy: hooks go through the mod's ui and are removed when it unloads. Called by the modloader when it creates the mod environment; you do not need to call it yourself.",
+  "balance.refresh": "The type list is built on first use; after the set of nations changes in a new match — reset it.",
+  "balance.find": "The first match: nation and type number. Other nations with the same name — balance.places(sid).",
+  "balance.set": "field: a path inside TObjBase: \"maxhp\", \"speed\", \"price[3]\", \"weapon[0].damage\", \"protection[2]\".",
+  "balance.setSpeed": "In the game, speed is a multiplier of the step interval (smaller — faster); here it is an ordinary speed multiplier.",
+  "buildings.setProduceList": "A new list for all nations that have this building. Button positions (x, y) — a grid of 6 per row, like the game.",
+  "buildings.setUpgrade": "An upgrade field for all nations that have it: \"time\", \"value\", \"price[3]\", \"enabled\", \"level\".",
+  "objects.ptr": "Like _unit_GetTObj: the object's state data, argument gc_argunit_obj (= 0).",
+  "objects.calibrate": "Verification on several objects: the layout must match on all of them, otherwise zeros in fields could be mistaken for a correct one."
+}

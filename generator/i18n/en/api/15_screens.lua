@@ -1,0 +1,21 @@
+-- screens — game screens and their buttons by name.
+--
+-- A game screen = two GUI states: Show<Name> builds it, Event<Name> handles presses.
+-- Buttons are told apart by a tag, tag names are taken from the game scripts (02_screens_data.lua, GAME_SCREENS.md).
+--
+--   screens.list()                          --> { "AIAssistant", "Campaign", "MainMenu", ... }
+--   screens.tags("MainMenu")                --> { Campaign = 101, Settings = 104, Exit = 109, ... }
+--   screens.button("MainMenu", 104)         --> "Settings"
+--   screens.open("Settings")                --  show a screen (like the game does)
+--   screens.press("MainMenu", "Settings")   --  press a screen button (like a player)
+--
+-- In mods only (client):
+--   screens.onButton("MainMenu", function(button, tag, element)
+--       log.info("pressed", button)
+--       -- return true  -- the game will NOT handle this press (you replaced it with your own)
+--   end)
+--   screens.onAnyButton(function(screen, button, tag, element) ... end)   -- all screens at once
+--   screens.replace("Settings", function() web.open("settings") end)     -- instead of the native screen
+--
+-- Replacing a screen with your own page is one line, screens.replace; the page's buttons trigger the
+-- native handlers through game.tag('EventMainMenu', 104) or game.api('screens.press', 'MainMenu', 'Settings').

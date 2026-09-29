@@ -1,0 +1,33 @@
+-- buildings — buildings: what they build, upgrades, the queue; player commands; logic editing.
+--
+-- Everything is built for a CEF interface: each function returns a ready table (in a page —
+-- game.api('buildings.info', handle) and so on), commands go through the game's own functions —
+-- the same as the native buttons (_unit_ProduceUnit, _unit_MakeUpgrade), so resource checks,
+-- access and networking work as for an ordinary player.
+--
+-- READING
+--   buildings.list()                   --> the current player's buildings: { {handle, sid, built, hp, maxhp, x, z, queue}, ... }
+--   buildings.list(2)                  --  player 2's buildings
+--   buildings.selected()               --> the handle of the building selected by the player, or nil (for a CEF HUD)
+--   buildings.info(handle)             --> {
+--       handle, sid, country, id, player, hp, maxhp, built, buildprogress,
+--       produce  = { {sid, id, available, price = {food, wood, stone, gold, iron, coal}, buildtime, x, y}, ... },
+--       upgrades = { {sid, index, available, enabled, level, kind, value, price = {...}, time}, ... },
+--       queue    = { {kind = "unit"|"upgrade", sid, amount (-1 — infinite), progress}, ... },
+--   }
+--   available — whether it can be ordered right now (requirements, epoch, limits — as the game decides).
+--
+-- COMMANDS (like the player pressing a button — the building's owner)
+--   buildings.produce(handle, "musketeer18", 5)     -- 5 pieces; -1 — infinite
+--   buildings.cancel(handle, "musketeer18", 1)      -- remove from the queue
+--   buildings.upgrade(handle, "upg_sid")
+--   buildings.cancelUpgrade(handle, "upg_sid")
+--
+-- LOGIC (change identically on all machines — a shared mod, in game.start)
+--   buildings.produceList("barracks18")                       --> { "pikeman18", "musketeer18", ... }
+--   buildings.setProduceList("barracks18", { "musketeer18", "grenadier18" })
+--   buildings.addProduce("barracks18", "grenadier18")
+--   buildings.removeProduce("barracks18", "pikeman18")
+--   buildings.setUpgrade("upg_sid", "time", 30)            -- TCountryUpgrade fields: price[3], time, value, enabled...
+--
+-- Data types — GAME_STATE.md: TCountry, TCountryFixedProduce, TCountryUpgrade, TObj, TOrder.

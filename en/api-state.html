@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>state — Cossacks 3 Modloader</title>
+<meta name="description" content="reading and writing any game script variable by path.">
+<link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/style.css">
+<script>try{var t=localStorage.getItem('cs3-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light')}catch(e){}window.CS3_I18N={"none": "Nothing found"};</script>
+</head>
+<body>
+<div class="page">
+  <header class="site-header">
+    <div class="hl">
+      <a class="logo" href="index.html">COSSACKS 3 MODLOADER</a>
+      <nav class="nav"><a href="guide.html">GUIDE</a><a href="core-rules.html">REFERENCE</a><a href="core-log.html">LUA API</a><a href="api-schema.html" class="active">MODULES</a><a href="ref-state.html">DATA</a></nav>
+    </div>
+    <div class="ha">
+      <button class="iconbtn menu-btn" id="menu" type="button" aria-label="Menu">☰</button>
+      <div class="search-wrap"><input class="search" id="q" placeholder="Search the API…" autocomplete="off" aria-label="Search"><span class="kbd">/</span><div class="results" id="results"></div></div>
+      <a class="btn sm" href="../api-state.html" title="Русская версия" hreflang="ru">RU</a>
+      <a class="btn black sm" href="https://github.com/OverlordDev/cossacks3-modloader" target="_blank" rel="noopener">GITHUB →</a>
+      <button class="iconbtn" id="theme" type="button" aria-label="Theme">☀</button>
+    </div>
+  </header>
+  <div class="layout"><aside class="side"><div class="group"><span class="group-title">START</span>
+<a href="index.html">Home</a>
+<a href="guide.html">Quick start</a>
+<a href="api-overview.html">api/ overview</a>
+</div>
+<div class="group"><span class="group-title">REFERENCE</span>
+<a href="core-rules.html">Main rules (read first)</a>
+<a href="core-structure.html">Mod structure</a>
+<a href="core-manifest.html">manifest.lua</a>
+<a href="core-sides.html">What is available on which side</a>
+<a href="core-assets.html">Replacing files</a>
+<a href="core-patches.html">Game script patches</a>
+<a href="core-content.html">New nations and units</a>
+<a href="core-templates.html">Templates</a>
+<a href="core-errors.html">Common errors</a>
+</div>
+<div class="group"><span class="group-title">ENGINE LUA API</span>
+<a href="core-log.html">log, mod, require, show</a>
+<a href="core-events.html">events</a>
+<a href="core-game.html">game</a>
+<a href="core-player.html">player, world</a>
+<a href="core-state.html">state and G</a>
+<a href="core-objects.html">objects and mem</a>
+<a href="core-units.html">units</a>
+<a href="core-buildings.html">buildings</a>
+<a href="core-balance.html">balance</a>
+<a href="core-misc.html">Other data</a>
+<a href="core-net.html">net</a>
+<a href="core-input.html">input</a>
+<a href="core-web.html">web</a>
+<a href="core-ui.html">ui</a>
+<a href="core-screens.html">screens</a>
+<a href="core-gfx.html">gfx</a>
+<a href="core-savedata.html">savedata</a>
+<a href="core-native.html">native</a>
+</div>
+<div class="group"><span class="group-title">API MODULES</span>
+<a href="api-schema.html">schema</a>
+<a href="api-state.html" class="active">state</a>
+<a href="api-screens_data.html">screens_data</a>
+<a href="api-show.html">show</a>
+<a href="api-profile.html">profile</a>
+<a href="api-options.html">options</a>
+<a href="api-saves.html">saves</a>
+<a href="api-players.html">players</a>
+<a href="api-map.html">map</a>
+<a href="api-screens.html">screens</a>
+<a href="api-balance.html">balance</a>
+<a href="api-buildings.html">buildings</a>
+<a href="api-units.html">units</a>
+<a href="api-objects.html">objects</a>
+<a href="api-call.html">call</a>
+</div>
+<div class="group"><span class="group-title">GAME DATA</span>
+<a href="ref-state.html">Variables and types</a>
+<a href="ref-screens.html">Screens and buttons</a>
+<a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/GAME_API.md" target="_blank" rel="noopener">Natives (GAME_API) ↗</a>
+</div></aside><main><article><h1>state</h1>
+<p class="lead">reading and writing any game script variable by path.</p>
+<div class="meta"><span class="badge fill">api/01_state.lua</span><span class="badge">6 functions</span><a class="badge" href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/api/01_state.lua">GITHUB ↗</a></div>
+<h2 id="opisanie" data-t="Description">Description</h2>
+<pre><code data-lang="lua">state.get("gProfile.sndmaster")          --&gt; 0.75
+state.get("gMap.players[2].name")        --&gt; "Cossack"
+state.read("gMap.players[2]")            --&gt; { id = 2, name = "Cossack", team = 1, ... }
+state.list("gMap.players")               --&gt; all 12 records of the array
+state.set("gProfile.sndmaster", 0.5)     --  server and console only (and pages through game.api)
+state.type("gMap.settings.gen")          --&gt; "TMapSettingsGen"</code></pre>
+<p>The same with dots — G mirrors the game's global variables:</p>
+<pre><code data-lang="lua">G.gProfile.sndmaster                     --&gt; 0.75
+G.gMap.players[2].team                   --&gt; 1
+G.gProfile.sndmaster = 0.5               --  write
+G.gMap.players[2]()                      --&gt; the whole record as a table</code></pre>
+<p>An object on the map (unit, building) — the root obj(&lt;handle&gt;), its data is TObj:</p>
+<pre><code data-lang="lua">state.read("obj(39878848)")                    --&gt; { hp = 120, pl = 0, cid = 4, id = 12, bbuilt = true, ... }
+state.get("obj(39878848).orders[0].itype")      --  the first order in the queue
+state.set("obj(39878848).hp", 50)</code></pre>
+<p>Which variables and fields exist — GAME_STATE.md, generated together with the schema.</p>
+<p>Types come from the schema (00_schema.lua), so the right read function is chosen automatically: you do not need to remember where evalInt, evalFloat or a string applies.</p>
+<h2 id="funkcii" data-t="Functions">Functions</h2>
+<div class="tblwrap"><table class="fn"><thead><tr><th>FUNCTION</th><th>DESCRIPTION</th></tr></thead><tbody>
+<tr id="f-state-type"><td><code>state.type(path)</code></td><td>Returns: "TMapSettingsGen"<span class="ex"><code>state.type("gMap.settings.gen")          --&gt; "TMapSettingsGen"</code></span></td></tr>
+<tr id="f-state-get"><td><code>state.get(path)</code></td><td>Returns: 0.75<span class="ex"><code>state.get("gProfile.sndmaster")          --&gt; 0.75</code></span></td></tr>
+<tr id="f-collectValue"><td><code>collectValue(path,<wbr> node,<wbr> depth,<wbr> out,<wbr> key)</code></td><td>One value: a simple one — a leaf; a record — descend into it (if depth allows); an array — element by element (element keys are numbers: t.price[3], t.weapon[0].damage). Arrays with unknown bounds are skipped.</td></tr>
+<tr id="f-state-read"><td><code>state.read(path,<wbr> depth)</code></td><td>Returns: { id = 2, name = "Cossack", team = 1, ... }<span class="ex"><code>state.read("gMap.players[2]")            --&gt; { id = 2, name = "Cossack", team = 1, ... }</code></span></td></tr>
+<tr id="f-state-list"><td><code>state.list(path,<wbr> depth)</code></td><td>All elements of an array: state.list("gMap.players") — a list of records (or values).<span class="ex"><code>state.list("gMap.players")               --&gt; all 12 records of the array</code></span></td></tr>
+<tr id="f-state-set"><td><code>state.set(path,<wbr> value)</code></td><td>The code is kept constant and the value is passed as an argument: this way the game compiles it only once.<span class="ex"><code>state.set("gProfile.sndmaster", 0.5)     --  server and console only (and pages through game.api)</code></span></td></tr>
+</tbody></table></div>
+<h2 id="istochnik" data-t="Source">Source</h2>
+<div class="acc"><div class="acc-head"><span>api/01_state.lua — 251 lines (comments in Russian)</span><span>+</span></div><div class="acc-body"><pre><code data-lang="lua">-- state — чтение и запись любой переменной скриптов игры по пути.
+--
+--   state.get("gProfile.sndmaster")          --&gt; 0.75
+--   state.get("gMap.players[2].name")        --&gt; "Cossack"
+--   state.read("gMap.players[2]")            --&gt; { id = 2, name = "Cossack", team = 1, ... }
+--   state.list("gMap.players")               --&gt; все 12 записей массива
+--   state.set("gProfile.sndmaster", 0.5)     --  только сервер и консоль (и страницы через game.api)
+--   state.type("gMap.settings.gen")          --&gt; "TMapSettingsGen"
+--
+-- То же через точку — G отражает глобальные переменные игры:
+--   G.gProfile.sndmaster                     --&gt; 0.75
+--   G.gMap.players[2].team                   --&gt; 1
+--   G.gProfile.sndmaster = 0.5               --  запись
+--   G.gMap.players[2]()                      --&gt; вся запись таблицей
+--
+-- Объект на карте (юнит, здание) — корень obj(&lt;хендл&gt;), его данные TObj:
+--   state.read("obj(39878848)")                    --&gt; { hp = 120, pl = 0, cid = 4, id = 12, bbuilt = true, ... }
+--   state.get("obj(39878848).orders[0].itype")      --  первый заказ в очереди
+--   state.set("obj(39878848).hp", 50)
+--
+-- Какие переменные и поля есть — GAME_STATE.md, он сгенерирован вместе со схемой.
+--
+-- Типы берутся из схемы (00_schema.lua), поэтому нужная функция чтения выбирается сама:
+-- не надо помнить, где evalInt, где evalFloat, а где строка.
+
+local SCHEMA = GAME_SCHEMA or error("state: GAME_SCHEMA is missing (api/00_schema.lua)")
+
+state = {}
+
+-- ---------- путь -&gt; описание типа ----------
+
+-- "gMap.players[2].name" -&gt; { "gMap", ".players", "[2]", ".name" }
+local function tokens(path)
+    local out = {}
+    local head, rest = path:match("^(obj%(%-?%d+%))(.*)$")
+    if not head then head, rest = path:match("^([%a_][%w_]*)(.*)$") end
+    if not head then error("state: bad path '" .. tostring(path) .. "'", 3) end
+    out[1] = head
+    for token in rest:gmatch("[%.%[][^%.%[]*") do
+        out[#out + 1] = token
+    end
+    return out
+end
+
+local function fieldOf(typeName, field)
+    local fields = SCHEMA.types[typeName]
+    if not fields then return nil end
+    for _, f in ipairs(fields) do
+        if f.name:lower() == field:lower() then return f end
+    end
+end
+
+-- Описание значения по пути: { type = "int" | "float" | "string" | "bool" | "&lt;TRecord&gt;" } или массив.
+-- Путь -&gt; выражение скрипта игры: obj(123) — это TObj(_unit_GetTObj(123)).
+local function expr(path)
+    return (path:gsub("^obj%((%-?%d+)%)", "TObj(_unit_GetTObj(%1))"))
+end
+
+local function describe(path)
+    local parts = tokens(path)
+    local node = SCHEMA.globals[parts[1]]
+    if parts[1]:sub(1, 4) == "obj(" then node = { type = "TObj" } end
+    if not node then error("state: unknown global '" .. parts[1] .. "' (see GAME_STATE.md)", 3) end
+    for i = 2, #parts do
+        local token = parts[i]
+        if token:sub(1, 1) == "[" then
+            if not node.array then error("state: '" .. path .. "': not an array before " .. token, 3) end
+            node = node.of
+        else
+            local name = token:sub(2)
+            local f = node.type and fieldOf(node.type, name)
+            if not f then error("state: '" .. path .. "': no field '" .. name .. "'", 3) end
+            node = f
+        end
+    end
+    return node
+end
+
+local SCALAR = { int = true, float = true, string = true, bool = true }
+
+function state.type(path)
+    local node = describe(path)
+    if node.array then return "array" end
+    return node.type
+end
+
+-- ---------- чтение ----------
+
+local function toNumber(text)
+    -- FloatToStr зависит от локали Windows: в русской раскладке разделитель — запятая.
+    return tonumber((tostring(text):gsub(",", "."))) or 0
+end
+
+local function readScalar(path, kind)
+    path = expr(path)
+    if kind == "int" then return game.evalInt(path) end
+    if kind == "float" then return game.evalFloat(path) end
+    if kind == "bool" then return game.evalBool(path) end
+    return game.eval(path)
+end
+
+function state.get(path)
+    local node = describe(path)
+    if node.array then return state.list(path) end
+    if SCALAR[node.type] then return readScalar(path, node.type) end
+    return state.read(path)
+end
+
+-- Все простые поля записи (и вложенных записей до depth) одним вызовом скрипта:
+-- поля склеиваются в одну строку через символ #1 и режутся обратно здесь.
+local SEP = "\1"
+
+local collectValue
+
+local function collect(path, typeName, depth, out, prefix)
+    for _, f in ipairs(SCHEMA.types[typeName] or {}) do
+        collectValue(path .. "." .. f.name, f, depth, out, prefix .. f.name)
+    end
+end
+
+-- Одно значение: простое — лист; запись — внутрь (если хватает глубины); массив — поэлементно
+-- (ключи элементов — числа: t.price[3], t.weapon[0].damage). Массивы с неизвестными границами
+-- пропускаются.
+function collectValue(path, node, depth, out, key)
+    if node.array then
+        local lo, hi = node.array[1], node.array[2]
+        if not lo or not hi or hi - lo &gt; 64 then return end -- огромные массивы — через state.list
+        if not SCALAR[node.of.type] and depth &lt;= 1 then return end
+        for i = lo, hi do
+            collectValue(path .. "[" .. i .. "]", node.of, depth, out, key .. "." .. i)
+        end
+    elseif SCALAR[node.type] then
+        out[#out + 1] = { key = key, path = path, type = node.type }
+    elseif depth &gt; 1 and SCHEMA.types[node.type] then
+        collect(path, node.type, depth - 1, out, key .. ".")
+    end
+end
+
+local CONVERT = {
+    int    = function(p) return "IntToStr(" .. p .. ")" end,
+    float  = function(p) return "FloatToStr(" .. p .. ")" end,
+    bool   = function(p) return "BoolToStr(" .. p .. ")" end,
+    string = function(p) return p end,
+}
+
+local function place(result, key, value)
+    local t = result
+    for part in key:gmatch("([^%.]+)%.") do
+        part = tonumber(part) or part -- элементы массивов — числовые ключи
+        t[part] = t[part] or {}
+        t = t[part]
+    end
+    local last = key:match("([^%.]+)$")
+    t[tonumber(last) or last] = value
+end
+
+function state.read(path, depth)
+    local node = describe(path)
+    if node.array or SCALAR[node.type] then return state.get(path) end
+
+    local leaves = {}
+    collect(path, node.type, depth or 1, leaves, "")
+    if #leaves == 0 then return {} end
+
+    local parts = {}
+    for i, leaf in ipairs(leaves) do
+        parts[i] = CONVERT[leaf.type](expr(leaf.path))
+    end
+    local text = game.eval(table.concat(parts, "+#1+"))
+
+    local result, i = {}, 0
+    for piece in (text .. SEP):gmatch("(.-)" .. SEP) do
+        i = i + 1
+        local leaf = leaves[i]
+        if not leaf then break end
+        local value = piece
+        if leaf.type == "int" then value = math.tointeger(tonumber(piece)) or 0
+        elseif leaf.type == "float" then value = toNumber(piece)
+        elseif leaf.type == "bool" then value = piece == "True" or piece == "1"
+        end
+        place(result, leaf.key, value)
+    end
+    return result
+end
+
+-- Все элементы массива: state.list("gMap.players") — список записей (или значений).
+function state.list(path, depth)
+    local node = describe(path)
+    if not node.array then error("state.list: '" .. path .. "' is not an array", 2) end
+    local lo, hi = node.array[1], node.array[2]
+    if not lo or not hi then error("state.list: '" .. path .. "' has unknown bounds", 2) end
+    local out = {}
+    for i = lo, hi do
+        local item = path .. "[" .. i .. "]"
+        out[#out + 1] = SCALAR[node.of.type] and readScalar(item, node.of.type) or state.read(item, depth)
+    end
+    return out
+end
+
+-- ---------- запись ----------
+
+-- Код держим постоянным, а значение передаём аргументом: так игра компилирует его один раз.
+function state.set(path, value)
+    if not game.exec then
+        error("state.set: only server scripts can change the game (client: ask the server via net.send)", 2)
+    end
+    local node = describe(path)
+    local kind = node.type
+    if node.array or not SCALAR[kind] then error("state.set: '" .. path .. "' is not a simple value", 2) end
+    path = expr(path)
+
+    if kind == "int" then
+        game.exec(path .. " := StrToInt(ML_ARG);", tostring(math.floor(tonumber(value) or 0)))
+    elseif kind == "float" then
+        -- Дробное передаём целым в миллионных: StrToFloat зависит от локали, StrToInt — нет.
+        local scaled = math.floor((tonumber(value) or 0) * 1000000 + 0.5)
+        game.exec(path .. " := StrToInt(ML_ARG) / 1000000;", tostring(scaled))
+    elseif kind == "bool" then
+        game.exec(path .. " := (ML_ARG = '1');", value and "1" or "0")
+    else
+        game.exec(path .. " := ML_ARG;", tostring(value))
+    end
+end
+
+-- ---------- G: то же через точку ----------
+
+local function proxy(path)
+    return setmetatable({}, {
+        __index = function(_, key)
+            local sub = type(key) == "number" and (path .. "[" .. key .. "]") or (path .. "." .. key)
+            local node = describe(sub)
+            if not node.array and SCALAR[node.type] then return readScalar(sub, node.type) end
+            return proxy(sub)
+        end,
+        __newindex = function(_, key, value)
+            local sub = type(key) == "number" and (path .. "[" .. key .. "]") or (path .. "." .. key)
+            state.set(sub, value)
+        end,
+        __call = function(_, depth) return state.read(path, depth) end,
+        __tostring = function() return "state&lt;" .. path .. "&gt;" end,
+    })
+end
+
+G = setmetatable({}, {
+    __index = function(_, name)
+        if not SCHEMA.globals[name] then error("G." .. tostring(name) .. ": unknown game global", 2) end
+        return proxy(name)
+    end,
+    __newindex = function() error("G: assign fields, not globals (G.gProfile.x = 1)", 2) end,
+})
+</code></pre></div></div></article><div class="meta" style="margin-top:36px"><a class="badge" href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/api/01_state.lua">EDIT ON GITHUB ↗</a></div><div class="pn"><a href="api-schema.html"><small>← BACK</small>schema</a><a class="next" href="api-screens_data.html"><small>NEXT →</small>screens_data</a></div></main><aside class="toc" id="toc"><b>ON THIS PAGE</b></aside></div>
+  <footer class="footer">
+    <div><a class="logo" href="index.html" style="display:inline-block">COSSACKS 3 MODLOADER</a><br><br>API documentation<br>Built from the repository's <code>api/</code> folder</div>
+    <div>DOCUMENTS<br><a href="guide.html">Quick start</a><a href="core-rules.html">Reference</a><a href="api-overview.html">api/ overview</a></div>
+    <div>DATA<br><a href="ref-state.html">Game variables</a><a href="ref-screens.html">Screens</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/GAME_API.md">Natives ↗</a></div>
+    <div>PROJECT<br><a href="https://github.com/OverlordDev/cossacks3-modloader">GitHub ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/issues">Issues ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/DOCUMENTATION.md">Internals ↗</a></div>
+  </footer>
+</div>
+<script src="../assets/search-index-en.js"></script>
+<script src="../assets/app.js"></script>
+</body>
+</html>

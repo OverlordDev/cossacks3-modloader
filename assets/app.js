@@ -162,7 +162,7 @@
   }
   function render(list) {
     shown = list; current = -1;
-    if (!list.length) { box.innerHTML = '<div class="none">Ничего не найдено</div>'; box.classList.add('show'); return; }
+    if (!list.length) { box.innerHTML = '<div class="none">' + esc((window.CS3_I18N && window.CS3_I18N.none) || 'Nothing found') + '</div>'; box.classList.add('show'); return; }
     box.innerHTML = list.map(function (r) {
       return '<a href="' + r.u + '"><b>' + esc(r.t) + '</b><small>' + esc(r.s) + (r.d ? ' — ' + esc(r.d) : '') + '</small></a>';
     }).join('');
@@ -205,4 +205,10 @@
       }
     });
   }
+})();
+
+// смена языка сохраняет якорь (#f-balance-set и т.п.)
+(function () {
+  var link = document.querySelector('a[hreflang]');
+  if (link) link.addEventListener('click', function () { link.href = link.getAttribute('href').split('#')[0] + location.hash; });
 })();

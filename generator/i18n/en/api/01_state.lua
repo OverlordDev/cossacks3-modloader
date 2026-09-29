@@ -1,0 +1,24 @@
+-- state — reading and writing any game script variable by path.
+--
+--   state.get("gProfile.sndmaster")          --> 0.75
+--   state.get("gMap.players[2].name")        --> "Cossack"
+--   state.read("gMap.players[2]")            --> { id = 2, name = "Cossack", team = 1, ... }
+--   state.list("gMap.players")               --> all 12 records of the array
+--   state.set("gProfile.sndmaster", 0.5)     --  server and console only (and pages through game.api)
+--   state.type("gMap.settings.gen")          --> "TMapSettingsGen"
+--
+-- The same with dots — G mirrors the game's global variables:
+--   G.gProfile.sndmaster                     --> 0.75
+--   G.gMap.players[2].team                   --> 1
+--   G.gProfile.sndmaster = 0.5               --  write
+--   G.gMap.players[2]()                      --> the whole record as a table
+--
+-- An object on the map (unit, building) — the root obj(<handle>), its data is TObj:
+--   state.read("obj(39878848)")                    --> { hp = 120, pl = 0, cid = 4, id = 12, bbuilt = true, ... }
+--   state.get("obj(39878848).orders[0].itype")      --  the first order in the queue
+--   state.set("obj(39878848).hp", 50)
+--
+-- Which variables and fields exist — GAME_STATE.md, generated together with the schema.
+--
+-- Types come from the schema (00_schema.lua), so the right read function is chosen automatically:
+-- you do not need to remember where evalInt, evalFloat or a string applies.

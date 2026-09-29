@@ -284,3 +284,4 @@ a.badge:hover{background:var(--acc);border-color:var(--acc);color:var(--acc-ink)
 /* контент не должен просвечивать над липкой шапкой */
 .site-header:before{content:"";position:absolute;left:-1px;right:-1px;top:-13px;height:13px;background:var(--bg)}
 @media(max-width:860px){.site-header{position:static}.site-header:before{display:none}}
+table.fn tr:target td .ex,table.fn tr:target td .ex code{background:transparent;color:var(--acc-ink);opacity:.85}

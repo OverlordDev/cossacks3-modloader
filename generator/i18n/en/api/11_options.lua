@@ -1,0 +1,8 @@
+-- options — project options: engine graphics and sound (what is written to the video settings).
+--
+--   options.get("SSAOEnable")               --> true
+--   options.get("ShadowMap")                --> "sm4096"
+--   options.set("SSAOEnable", false)        -- server/console/pages only
+--
+-- Option names — in data/gui/menu.inc/showsettings.inc and _gui_GetSettingsValues
+-- (data/scripts/lib/gui.script). Options are boolean or string; volume is fractional.
