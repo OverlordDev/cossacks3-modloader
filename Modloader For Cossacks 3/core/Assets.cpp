@@ -5,6 +5,7 @@
 #include "Hooks.h"
 #include "ScriptPatch.h"
 #include "Content.h"
+#include "ModelDecimate.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -441,6 +442,110 @@ namespace
     }
 }
 
+namespace
+{
+    // modloader/lod.txt: "units = 60" — оставить 60% треугольников у моделей юнитов. Нет файла или 100 —
+    // выключено. Модели читаются один раз при старте игры, так что менять надо до запуска.
+    // Упрощённые файлы кладём в modloader/cache/lod/<версия алгоритма>_<процент>/, пока исходник не
+    // изменился — заново не считаем.
+    constexpr int kLodVersion = 1;
+    int g_lodPct = 100;
+    // Что стояло в g_map под ключом модели до нашей подмены ("" — ничего): нужно, чтобы вернуть, как было,
+    // и чтобы не потерять модель из мода (assets/), поверх которой мы положили упрощённую.
+    std::map<std::string, std::string> g_lodPrev;
+
+    int ReadLodPercent()
+    {
+        std::ifstream in(fs::path(g_gameDir) / L"modloader" / L"lod.txt");
+        std::string line;
+        while (std::getline(in, line))
+        {
+            size_t eq = line.find('=');
+            if (eq == std::string::npos || line.find("units") == std::string::npos || line.find('#') < eq)
+                continue;
+            int pct = atoi(line.c_str() + eq + 1);
+            return std::clamp(pct, 10, 100);
+        }
+        return 100;
+    }
+
+    void RemoveLod()
+    {
+        for (const auto& [key, prev] : g_lodPrev)
+        {
+            if (prev.empty())
+                g_map.erase(key);
+            else
+                g_map.insert_or_assign(key, GameApi::DelphiString(prev));
+        }
+        g_lodPrev.clear();
+        std::erase_if(g_list, [](const Assets::Override& o) { return o.mod == "lod"; });
+    }
+
+    void ApplyLod(int pct)
+    {
+        RemoveLod();
+        g_lodPct = pct;
+        if (pct >= 100)
+            return;
+        fs::path srcDir = fs::path(g_gameDir) / L"data" / L"actors" / L"units";
+        fs::path outDir = fs::path(g_gameDir) / L"modloader" / L"cache" / L"lod" /
+                          (L"v" + std::to_wstring(kLodVersion) + L"_" + std::to_wstring(pct));
+        std::error_code ec;
+        fs::create_directories(outDir, ec);
+        int done = 0, cached = 0, failed = 0;
+        long before = 0, after = 0;
+        for (const auto& e : fs::directory_iterator(srcDir, ec))
+        {
+            if (!e.is_regular_file() || e.path().extension() != ".oss")
+                continue;
+            std::string key = Normalize((fs::path(L"data") / L"actors" / L"units" / e.path().filename()).string(), {});
+            // Модель мода (assets/) важнее файла игры — упрощаем то, что игра реально загрузит бы.
+            std::string source = e.path().string();
+            if (auto it = g_map.find(key); it != g_map.end())
+                source = it->second.get();
+            fs::path out = outDir / e.path().filename();
+            std::error_code te;
+            if (fs::exists(out, te) && fs::last_write_time(out, te) >= fs::last_write_time(fs::path(source), te))
+            {
+                ++cached;
+            }
+            else
+            {
+                std::string in, res, err;
+                ModelDecimate::Stats st;
+                if (!ReadAll(source, &in) || !ModelDecimate::DecimateOss(in, pct / 100.0f, &res, &st, &err))
+                {
+                    LOG_WARN("[lod] %s: %s", key.c_str(), err.empty() ? "не прочитан" : err.c_str());
+                    ++failed;
+                    continue;
+                }
+                std::ofstream o(out, std::ios::binary | std::ios::trunc);
+                o.write(res.data(), static_cast<std::streamsize>(res.size()));
+                if (!o)
+                {
+                    LOG_ERROR("[lod] не записать %s", out.string().c_str());
+                    ++failed;
+                    continue;
+                }
+                before += st.trisBefore;
+                after += st.trisAfter;
+                ++done;
+            }
+            if (auto it = g_map.find(key); it != g_map.end())
+                g_lodPrev[key] = it->second.get();
+            else
+                g_lodPrev[key] = "";
+            g_map.insert_or_assign(key, GameApi::DelphiString(out.string()));
+            g_list.push_back({ "lod", key, out.string() });
+        }
+        LOG_INFO("[lod] units = %d%%: упрощено %d, из кеша %d, ошибок %d%s", pct, done, cached, failed,
+                 done ? (" (треугольников " + std::to_string(before) + " -> " + std::to_string(after) + ")").c_str() : "");
+    }
+
+    void GenerateLod() { ApplyLod(ReadLodPercent()); }
+}
+
 bool Assets::Install()
 {
     g_gameDir = GameDir();
@@ -449,6 +554,7 @@ bool Assets::Install()
         g_pending.insert(key);
     Scan();
     GenerateContent();
+    GenerateLod();
     ScanWorkshop();
     // Перехваты нужны всегда: встроенные правки скриптов (события модлоадера) собираются при чтении.
 
@@ -499,6 +605,25 @@ bool Assets::Built(const std::string& key)
         return false;
     auto it = g_map.find(key);
     return it != g_map.end() && Normalize(it->second.get(), g_gameDirKey).rfind("modloader\\cache", 0) == 0;
+}
+
+int Assets::LodPercent()
+{
+    return g_lodPct;
+}
+
+void Assets::SetLod(int percent)
+{
+    percent = std::clamp(percent, 10, 100);
+    {
+        std::lock_guard lock(g_mutex);
+        ApplyLod(percent);
+    }
+    // Чтобы следующий запуск начался с того же: lod.txt — единственное место, где это записано.
+    std::ofstream out(fs::path(g_gameDir) / L"modloader" / L"lod.txt", std::ios::trunc);
+    out << "# units = процент треугольников у моделей юнитов (10..100, 100 = выключено).\n"
+        << "# В игре меняется командой .lod <процент>; файл пишется ею же.\n"
+        << "units = " << percent << "\n";
 }
 
 const std::vector<Assets::Override>& Assets::List()

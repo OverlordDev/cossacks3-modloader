@@ -182,6 +182,7 @@ namespace
             "  .events             счётчики событий\n"
             "  .checksum           хеш скриптов для лобби: движка, чистый (без модлоадера) и сохранённый игрой\n"
             "  =<lua>              выполнить Lua:  =player().gold   =native.GetBuildVersion()\n"
+            "  .lod [процент]      доля треугольников у юнитов (10..100): без числа — текущая, с числом — сменить на ходу\n"
             "  .content            нации и типы юнитов из content.lua модов\n"
             "  .content reload     перечитать content.lua (увидит следующая партия)\n"
             "  .mods               Lua-моды (modloader/mods/*/manifest.lua) и их статус\n"
@@ -285,6 +286,21 @@ namespace
             }
             else if (cmd == "assets")
                 Assets::Print();
+            else if (cmd == "lod")
+            {
+                if (arg.empty())
+                    Console::Print("lod: units = %d%% (10..100; .lod <процент> — сменить на ходу)", Assets::LodPercent());
+                else
+                {
+                    int pct = atoi(arg.c_str());
+                    // Подмена путей и перезагрузка библиотеки — в потоке игры: движок в это время не должен читать файлы.
+                    ScriptRunner::RunOnGameThread([pct] {
+                        Assets::SetLod(pct);
+                        RunCode("ResourceLODActorLibraryFullReload;");
+                        Console::Print("lod: units = %d%%, библиотека моделей перечитывается", Assets::LodPercent());
+                    });
+                }
+            }
             else if (cmd == "crashtest")
             {
                 CrashHandler::Scope scope("консоль: .crashtest " + arg);
