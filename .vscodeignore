@@ -1,0 +1,6 @@
+.vscode/**
+test/**
+media/*.svg
+node_modules/**
+**/*.vsix
+package-lock.json
