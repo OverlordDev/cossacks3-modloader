@@ -1,0 +1,99 @@
+{
+  "name": "cossacks3-modding",
+  "displayName": "Cossacks 3 Modding",
+  "description": "Автодополнение, проверка манифеста и создание модов для Cossacks 3 Modloader. Подсказки берутся прямо из папки modloader/api игры — плагин обновлять не нужно.",
+  "version": "0.1.0",
+  "publisher": "overlorddev",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Snippets",
+    "Other"
+  ],
+  "keywords": [
+    "cossacks",
+    "cossacks 3",
+    "modding",
+    "lua",
+    "modloader"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OverlordDev/cossacks3-modloader.git",
+    "directory": "vscode-extension"
+  },
+  "extensionDependencies": [
+    "sumneko.lua"
+  ],
+  "main": "./src/extension.js",
+  "activationEvents": [
+    "workspaceContains:**/manifest.lua",
+    "workspaceContains:**/content.lua",
+    "onLanguage:lua"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "cossacks3.newMod",
+        "title": "Создать мод",
+        "category": "Cossacks 3"
+      },
+      {
+        "command": "cossacks3.selectModloader",
+        "title": "Указать папку modloader",
+        "category": "Cossacks 3"
+      },
+      {
+        "command": "cossacks3.openLog",
+        "title": "Открыть modloader.log",
+        "category": "Cossacks 3"
+      },
+      {
+        "command": "cossacks3.openDocs",
+        "title": "Открыть документацию по модам",
+        "category": "Cossacks 3"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "lua",
+        "path": "./snippets/lua.json"
+      }
+    ],
+    "configuration": {
+      "title": "Cossacks 3 Modding",
+      "properties": {
+        "cossacks3.modloaderPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Путь к папке `modloader` игры (в которой лежат `api` и `mods`). Пусто — искать автоматически вверх от открытого файла."
+        },
+        "cossacks3.validateManifest": {
+          "type": "boolean",
+          "default": true,
+          "description": "Проверять manifest.lua: id, стороны, режим multiplayer, существование файлов."
+        },
+        "cossacks3.configureLuaServer": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Автоматически подключать `modloader/api` и описания функций модлоадера к Lua Language Server (`sumneko.lua`) в настройках рабочей области."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "test": "node test/manifest.test.js",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^3.0.0"
+  },
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#182030",
+    "theme": "dark"
+  }
+}
