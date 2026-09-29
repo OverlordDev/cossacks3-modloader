@@ -25,6 +25,7 @@
 #include <type_traits>
 #include <filesystem>
 #include <fstream>
+#include <chrono>
 #include <map>
 #include <sstream>
 
@@ -199,10 +200,39 @@ namespace
         return 1;
     }
 
+    // ---------- чей это расход ----------
+    //
+    // Обращения к игре стоят дорого: каждое game.exec — компиляция и исполнение
+    // куска Pascal внутри движка, а каждый НОВЫЙ текст ещё и навсегда занимает
+    // состояние в машине GUI (снять его нечем до конца партии).
+    //
+    // Раньше всё это считалось общей кучей: в логе было "500 cached script calls"
+    // без имени виновника, а профайлер мерил всех вместе. Оба раза, когда это
+    // выстрелило — фриз раз в секунду и утечка состояний, — виновника искали
+    // руками по многу часов. Здесь он называется сам.
+    //
+    // Владелец берётся из того же who, с которым уже вызывается любой код мода.
+    struct Cost
+    {
+        long long calls = 0;      // обращений к игре
+        long long micros = 0;     // суммарное время в них
+        long long states = 0;     // новых состояний движка (то, что не вернуть)
+    };
+    std::map<std::string, Cost> g_cost;
+    std::vector<std::string> g_owners; // стек: обработчик мода может позвать другой код
+
+    const std::string& CurrentOwner()
+    {
+        static const std::string none = "(модлоадер)";
+        return g_owners.empty() ? none : g_owners.back();
+    }
+
     // pcall с трассировкой; false — ошибка уже залогирована.
     bool Call(int nargs, int nresults, const std::string& who)
     {
         CrashHandler::Scope scope("Lua: " + who);
+        g_owners.push_back(who);
+        struct Pop { ~Pop() { g_owners.pop_back(); } } pop;
         int base = lua_gettop(L) - nargs;
         lua_pushcfunction(L, Traceback);
         lua_insert(L, base);
@@ -455,7 +485,18 @@ namespace
     // Синхронный вызов скрипта; результат ML_RET(...) — строкой (или nil).
     bool ScriptCall(const std::string& code, const std::string& arg, std::string* result)
     {
-        if (!ScriptRunner::Call(Text::Utf8ToAnsi(code), Text::Utf8ToAnsi(arg), result))
+        bool created = false;
+        auto started = std::chrono::steady_clock::now();
+        bool ok = ScriptRunner::Call(Text::Utf8ToAnsi(code), Text::Utf8ToAnsi(arg), result, &created);
+        auto spent = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - started).count();
+
+        Cost& cost = g_cost[CurrentOwner()];
+        cost.calls += 1;
+        cost.micros += spent;
+        cost.states += created ? 1 : 0;
+
+        if (!ok)
             return false;
         *result = Text::AnsiToUtf8(*result);
         return true;
@@ -1196,6 +1237,35 @@ namespace
 
     // mods.list() -> { { id=, name=, version=, loaded=, shared=, permissions = {...} }, ... }
     // Для content.check: какие моды стоят и их версии/разрешения.
+    // mods.cost() -> { { who, calls, ms, states }, ... } по убыванию времени.
+    // who — "мод/сторона" ровно в том виде, в каком он пишется в лог, чтобы одно
+    // с другим можно было сопоставить глазами.
+    int l_modsCost(lua_State* L)
+    {
+        std::vector<std::pair<std::string, Cost>> rows(g_cost.begin(), g_cost.end());
+        std::sort(rows.begin(), rows.end(),
+                  [](const auto& a, const auto& b) { return a.second.micros > b.second.micros; });
+        lua_createtable(L, static_cast<int>(rows.size()), 0);
+        int n = 0;
+        for (const auto& [who, cost] : rows)
+        {
+            lua_newtable(L);
+            lua_pushstring(L, who.c_str());                lua_setfield(L, -2, "who");
+            lua_pushinteger(L, cost.calls);                lua_setfield(L, -2, "calls");
+            lua_pushnumber(L, cost.micros / 1000.0);       lua_setfield(L, -2, "ms");
+            lua_pushinteger(L, cost.states);               lua_setfield(L, -2, "states");
+            lua_rawseti(L, -2, ++n);
+        }
+        return 1;
+    }
+
+    // mods.costReset() — обнулить счёт (мерить отдельный кусок игры).
+    int l_modsCostReset(lua_State*)
+    {
+        g_cost.clear();
+        return 0;
+    }
+
     int l_modsList(lua_State* L)
     {
         lua_newtable(L);
@@ -1271,6 +1341,15 @@ namespace
     }
 
     // web.eval("document.title = 'x'") — выполнить код в открытой странице.
+    // web.keyboard(true) — клавиатура странице, а не игре (в режиме HUD).
+    // Обычно этим управляет сама страница (game.keyboard в JS): ей видно, когда
+    // её поле в фокусе. Модам нужно, когда страница чужая или без скриптов.
+    int l_webKeyboard(lua_State* L)
+    {
+        WebUi::SetKeyboard(lua_toboolean(L, 1) != 0);
+        return 0;
+    }
+
     // web.passthrough(true) — режим HUD: прозрачные места страницы пропускают мышь в игру.
     int l_webPassthrough(lua_State* L)
     {
@@ -2053,6 +2132,10 @@ end
         lua_newtable(L); // mods — какие моды загружены (для content.check, всем)
         lua_pushcfunction(L, l_modsList);
         lua_setfield(L, -2, "list");
+        lua_pushcfunction(L, l_modsCost);
+        lua_setfield(L, -2, "cost");
+        lua_pushcfunction(L, l_modsCostReset);
+        lua_setfield(L, -2, "costReset");
         lua_setfield(L, -2, "mods");
 
         g_baseEnvRef[side] = luaL_ref(L, LUA_REGISTRYINDEX);
@@ -2129,6 +2212,7 @@ end
             SetPlain("isOpen", l_webIsOpen);
             SetPlain("eval", l_webEval);
             SetPlain("passthrough", l_webPassthrough);
+            SetPlain("keyboard", l_webKeyboard);
             SetPlain("url", l_webUrl);
             lua_setfield(L, -2, "web");
 

@@ -306,8 +306,11 @@ namespace
     int g_callCounter = 0;
 }
 
-bool ScriptRunner::Call(const std::string& code, const std::string& arg, std::string* result)
+bool ScriptRunner::Call(const std::string& code, const std::string& arg, std::string* result,
+                        bool* createdState)
 {
+    if (createdState)
+        *createdState = false;
     CrashHandler::Scope scope("скрипт игры: " + code.substr(0, 160) + (code.size() > 160 ? "..." : "") +
                               (arg.empty() ? "" : "  [ML_ARG=" + arg.substr(0, 80) + "]"));
     uint8_t* sm = Engine::GuiStateMachine();
@@ -325,6 +328,8 @@ bool ScriptRunner::Call(const std::string& code, const std::string& arg, std::st
         auto addState = reinterpret_cast<GameApi::StateAddFn>(GameApi::Addr(GameApi::Va::StateMachineStateAdd));
         auto addLine  = reinterpret_cast<GameApi::StateAddCodeLineFn>(GameApi::Addr(GameApi::Va::StateMachineStateAddCodeLine));
 
+        if (createdState)
+            *createdState = true;
         std::string name = "ModLoader.Call." + std::to_string(++g_callCounter);
         if (g_callCounter % 500 == 0)
             LOG_WARN("ScriptRunner: %d cached script calls — pass changing values via arg, not in the code text", g_callCounter);
