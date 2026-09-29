@@ -43,6 +43,12 @@ CATALOG = os.path.join(ROOT, "api", "57_native_catalog.lua")
 
 ERROR, WARN = "ошибка", "внимание"
 
+# Вызов функции в Lua: скобки, таблица или строка сразу за именем —
+# world.spawn{ ... } и log.info"текст" такие же вызовы, как со скобками.
+# Без фигурной скобки проверка молча не видела самый частый способ
+# что-нибудь создать в мире.
+CALL = re.compile(r"(\w+)\.(\w+)\s*[({\"']")
+
 
 class Finding:
     def __init__(self, level, where, text):
@@ -198,6 +204,35 @@ def engine_surface():
     return {k: v for k, v in surface.items() if len(v) > 1}
 
 
+def world_changing_api():
+    """Функции api, которые меняют мир: множество "модуль.функция".
+
+    Признак берётся из самих исходников api — needServer/serverOnly в теле. Это
+    та же проверка, которая во время игры не даёт клиенту менять мир, так что
+    список не выдуман отдельно и не может с ней разойтись.
+    """
+    out = set()
+    for path in sorted(glob.glob(os.path.join(ROOT, "api", "*.lua"))):
+        lines = open(path, encoding="utf-8").read().splitlines()
+        funcs = lua_functions(path)
+        for i, f in enumerate(funcs):
+            end = funcs[i + 1].line - 1 if i + 1 < len(funcs) else len(lines)
+            body = "\n".join(lines[f.line:end])
+            # Три написания одной и той же защиты. Вызов общего помощника —
+            # самое частое, но не единственное: часть модулей проверяет
+            # game.exec прямо в теле, и по одному needServer их было не видно.
+            # Пропустить такую функцию опаснее, чем лишний раз предупредить:
+            # незамеченная правка мира — это разошедшаяся партия.
+            if re.search(r"needServer\(|serverOnly\(", body) or \
+               re.search(r"if\s+not\s+game\.exec\s+then", body):
+                out.add(f.name)
+    # Сами первоисточники: через них мод исполняет Pascal в движке напрямую, и
+    # что именно он там делает, статически не узнать. Модлоадер даёт их только
+    # server/shared — значит, для сети это такая же правка мира.
+    out.update({"game.exec", "game.run", "game.command"})
+    return out
+
+
 def natives():
     """имя натива -> сторона ("client"/"server")."""
     text = open(CATALOG, encoding="utf-8").read()
@@ -338,7 +373,7 @@ def check_file(mod, rel, side, surface, native_side, found, events):
         events.append((rel, line_of(text, m.start()), m.group(1)))
 
     code = strip_comments(raw, keep_strings=False)
-    for m in re.finditer(r"(\w+)\.(\w+)\s*\(", code):
+    for m in re.finditer(CALL, code):
         mod_name, fn = m.group(1), m.group(2)
         where = "%s:%d" % (rel, line_of(code, m.start()))
 
@@ -390,6 +425,76 @@ def check_pages(mod, surface, found):
                 found.append(Finding(ERROR, "%s:%d" % (rel, text.count("\n", 0, m.start()) + 1),
                                      "страница зовёт api '%s', которого нет%s"
                                      % (name, "; ближайшее — %s.%s" % (mod_name, hint) if hint else "")))
+
+
+def check_multiplayer(mod, fields, sides, surface, native_side, world_api, found):
+    """multiplayer в манифесте — обещание. Здесь оно проверяется.
+
+    "optional" означает: у кого мода нет, тот просто ничего не заметит. Если
+    такой мод на самом деле меняет мир, у игроков БЕЗ него случится другая игра —
+    и партия разойдётся. Замечают это не сразу и объясняют чем угодно, только не
+    манифестом, поэтому ошибка дорогая.
+
+    Меняющим мир считается вызов api-функции, которую сам модлоадер пускает
+    только на server/shared, или натива, у которого в каталоге risk = world.
+    Клиентские файлы не смотрим: там движок и так не даст менять мир.
+    """
+    culprits = []
+    for rel, side in sorted(sides.items()):
+        if side == {"client"}:
+            continue
+        path = os.path.join(mod, rel)
+        if not os.path.isfile(path):
+            continue
+        code = strip_comments(open(path, encoding="utf-8", errors="replace").read(),
+                              keep_strings=False)
+        for m in re.finditer(CALL, code):
+            name = m.group(1) + "." + m.group(2)
+            where = "%s:%d" % (rel, line_of(code, m.start()))
+            if name in world_api:
+                culprits.append((where, name))
+            elif m.group(1) == "native" and native_side.get(m.group(2)) == "server" \
+                    and m.group(2) not in surface.get("native", ()):
+                culprits.append((where, "native." + m.group(2)))
+
+    declared = fields.get("multiplayer", "required")
+    if declared == "optional" and culprits:
+        where, name = culprits[0]
+        found.append(Finding(ERROR, where,
+                             "multiplayer = \"optional\", но мод меняет мир (%s%s) — "
+                             "у игроков без мода партия разойдётся"
+                             % (name, "" if len(culprits) == 1 else " и ещё %d" % (len(culprits) - 1))))
+        return
+
+    # Мод может менять игру и вовсе без кода: заменой файлов, патчами скриптов
+    # или новым содержимым. Тогда он обязателен для всех, сколько бы чистым ни
+    # выглядел его Lua, — иначе у игроков разные данные и разная игра.
+    # Но не всякая замена файла меняет игру: шейдер, текстура кнопки или звук
+    # видны только их владельцу, и требовать мод от всех из-за картинки — вредный
+    # совет. Считаем опасными лишь те файлы, по которым игра СЧИТАЕТ: скрипты и
+    # свойства объектов (их же сверяет Checksum в лобби).
+    SIM = (".script", ".aix", ".inc", ".prop", ".lib", ".global")
+    data = []
+    assets = os.path.join(mod, "assets")
+    risky = sorted({os.path.relpath(os.path.join(root, f), assets).replace("\\", "/")
+                    for root, _, files in os.walk(assets) for f in files
+                    if f.lower().endswith(SIM) and "data/scripts" in
+                    os.path.join(root, f).replace("\\", "/").lower()})
+    if risky:
+        data.append("assets/" + risky[0] + ("" if len(risky) == 1 else " и ещё %d" % (len(risky) - 1)))
+    if os.path.isdir(os.path.join(mod, "patches")):
+        data.append("patches/")
+    if os.path.isfile(os.path.join(mod, "content.lua")):
+        data.append("content.lua")
+    if declared == "optional" and data:
+        found.append(Finding(ERROR, "manifest.lua",
+                             "multiplayer = \"optional\", но мод меняет данные игры (%s) — "
+                             "у игроков без него будет другая игра" % ", ".join(data)))
+    elif declared == "required" and not culprits and not data:
+        found.append(Finding(WARN, "manifest.lua",
+                             "мир не меняется ни в одном месте — можно поставить "
+                             "multiplayer = \"optional\", тогда мод не будет мешать "
+                             "играть с теми, у кого его нет"))
 
 
 def check_events(events, found):
@@ -445,6 +550,8 @@ def check_mod(mod):
         check_file(mod, rel, sides[rel], surface, native_side, found, events)
     check_events(events, found)
     check_pages(mod, surface, found)
+    if fields:
+        check_multiplayer(mod, fields, sides, surface, native_side, world_changing_api(), found)
 
     paths = [os.path.join(mod, f) for f in lua_files]
     if paths:

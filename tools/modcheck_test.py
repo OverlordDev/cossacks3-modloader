@@ -27,10 +27,11 @@ EXPECTED = [
     ("client.lua:11", "серверный"),           # серверный натив в клиентском файле
     ("client.lua:12", "NoSuchNativeAtAll"),
     ("lib/orphan.lua", "manifest"),           # файл мимо манифеста
-    ("manifest.lua",  "multiplayer"),
-    ("manifest.lua",  "lib/missing.lua"),
+        ("manifest.lua",  "lib/missing.lua"),
     ("возвраты",      "GetCurrentMouseWorldCoord"),
     ("web/page.html", "query.scan"),          # страница зовёт api по строке
+    ("server.lua:7",  "optional"),            # обещал optional, а меняет мир
+    ("server.lua:7",  "world.spawn"),         # и вызов виден даже с фигурной скобкой
 ]
 
 # Сколько всего находок должно быть: чтобы заметить и лишние срабатывания.

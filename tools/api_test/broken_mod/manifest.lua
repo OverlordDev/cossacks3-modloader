@@ -7,6 +7,6 @@ return {
     version = "0.1.0",
     client = "client.lua",
     server = "server.lua",
-    multiplayer = "sometimes",      -- ошибка: бывает только required или optional
+    multiplayer = "optional",       -- ошибка: мод меняет мир (см. server.lua)
     files = { "lib/helper.lua", "lib/missing.lua" },  -- ошибка: missing.lua нет
 }
