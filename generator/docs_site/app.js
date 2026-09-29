@@ -7,16 +7,16 @@
     set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
   };
 
-  // ---- тема
+  // ---- тема: по умолчанию тёмная «Amber Docs», светлая — «бумага»
   var root = document.documentElement;
   var saved = store.get('cs3-theme');
-  if (saved) root.setAttribute('data-theme', saved);
-  else if (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) root.setAttribute('data-theme', 'dark');
+  if (saved === 'light') root.setAttribute('data-theme', 'light');
   var themeBtn = $('#theme');
-  function paintTheme() { if (themeBtn) themeBtn.textContent = root.getAttribute('data-theme') === 'dark' ? '☀' : '☾'; }
+  function paintTheme() { if (themeBtn) themeBtn.textContent = root.getAttribute('data-theme') === 'light' ? '☾' : '☀'; }
   if (themeBtn) themeBtn.addEventListener('click', function () {
-    var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-    root.setAttribute('data-theme', next); store.set('cs3-theme', next); paintTheme();
+    var next = root.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+    if (next === 'light') root.setAttribute('data-theme', 'light'); else root.removeAttribute('data-theme');
+    store.set('cs3-theme', next); paintTheme();
   });
   paintTheme();
 

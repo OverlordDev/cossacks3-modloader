@@ -753,7 +753,7 @@ def render_page(idx, p):
 <meta name="description" content="%(desc)s">
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="assets/style.css">
-<script>try{var t=localStorage.getItem('cs3-theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+<script>try{var t=localStorage.getItem('cs3-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light')}catch(e){}</script>
 </head>
 <body>
 <div class="page">
@@ -766,7 +766,7 @@ def render_page(idx, p):
       <button class="iconbtn menu-btn" id="menu" type="button" aria-label="Меню">☰</button>
       <div class="search-wrap"><input class="search" id="q" placeholder="Поиск по API…" autocomplete="off" aria-label="Поиск"><span class="kbd">/</span><div class="results" id="results"></div></div>
       <a class="btn black sm" href="%(repo)s" target="_blank" rel="noopener">GITHUB →</a>
-      <button class="iconbtn" id="theme" type="button" aria-label="Тема">☾</button>
+      <button class="iconbtn" id="theme" type="button" aria-label="Тема">☀</button>
     </div>
   </header>
   %(layout)s
