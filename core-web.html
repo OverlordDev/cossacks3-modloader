@@ -13,8 +13,7 @@
 <div class="page">
   <header class="site-header">
     <div class="hl">
-      <a class="logo" href="index.html">COSSACKS 3 MODLOADER</a>
-      <nav class="nav"><a href="guide.html">ГАЙД</a><a href="core-rules.html">СПРАВОЧНИК</a><a href="core-log.html" class="active">LUA API</a><a href="api-schema.html">МОДУЛИ</a><a href="ref-state.html">ДАННЫЕ</a></nav>
+      <nav class="nav"><a href="index.html">ГЛАВНАЯ</a><a href="guide.html">ГАЙД</a><a href="core-rules.html">СПРАВОЧНИК</a><a href="core-log.html" class="active">LUA API</a><a href="api-schema.html">МОДУЛИ</a><a href="ref-state.html">ДАННЫЕ</a></nav>
     </div>
     <div class="ha">
       <button class="iconbtn menu-btn" id="menu" type="button" aria-label="Меню">☰</button>
@@ -96,7 +95,7 @@ const r = JSON.parse(await game.lua('1 + 1'));        // код Lua: выраж�
 game.log('text');   game.close();   await game.files('img');</code></pre>
 <p>Ошибка в <code>game.api</code> — исключение (Promise reject) с текстом ошибки Lua. Код страницы (<code>game.api</code>, <code>game.lua</code>) выполняется в окружении консоли модлоадера (сторона server), а не в окружении мода: глобальные переменные и функции мода со страницы не видны. Мод и страница обмениваются данными через api-функции, <code>web.eval(...)</code> (Lua → страница) и глобальные таблицы игры. <code>game.lua</code> доступен только локальным страницам (из папки мода).</p></article><div class="meta" style="margin-top:36px"><a class="badge" href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/AI_MODDING_REFERENCE.md">РЕДАКТИРОВАТЬ НА GITHUB ↗</a></div><div class="pn"><a href="core-input.html"><small>← НАЗАД</small>input (client)</a><a class="next" href="core-ui.html"><small>ДАЛЬШЕ →</small>ui — родной интерфейс игры (client)</a></div></main><aside class="toc" id="toc"><b>НА СТРАНИЦЕ</b></aside></div>
   <footer class="footer">
-    <div><a class="logo" href="index.html" style="display:inline-block">COSSACKS 3 MODLOADER</a><br><br>Документация API<br>Собрана из папки <code>api/</code> репозитория</div>
+    <div><b>COSSACKS 3 MODLOADER</b><br>Документация API<br>Собрана из папки <code>api/</code> репозитория</div>
     <div>ДОКУМЕНТЫ<br><a href="guide.html">Быстрый старт</a><a href="core-rules.html">Справочник</a><a href="api-overview.html">Обзор api/</a></div>
     <div>ДАННЫЕ<br><a href="ref-state.html">Переменные игры</a><a href="ref-screens.html">Экраны</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/GAME_API.md">Нативы ↗</a></div>
     <div>ПРОЕКТ<br><a href="https://github.com/OverlordDev/cossacks3-modloader">GitHub ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/issues">Issues ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/DOCUMENTATION.md">Устройство ↗</a></div>

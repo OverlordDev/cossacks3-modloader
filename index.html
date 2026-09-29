@@ -13,8 +13,7 @@
 <div class="page">
   <header class="site-header">
     <div class="hl">
-      <a class="logo" href="index.html">COSSACKS 3 MODLOADER</a>
-      <nav class="nav"><a href="guide.html">ГАЙД</a><a href="core-rules.html">СПРАВОЧНИК</a><a href="core-log.html">LUA API</a><a href="api-schema.html">МОДУЛИ</a><a href="ref-state.html">ДАННЫЕ</a></nav>
+      <nav class="nav"><a href="index.html" class="active">ГЛАВНАЯ</a><a href="guide.html">ГАЙД</a><a href="core-rules.html">СПРАВОЧНИК</a><a href="core-log.html">LUA API</a><a href="api-schema.html">МОДУЛИ</a><a href="ref-state.html">ДАННЫЕ</a></nav>
     </div>
     <div class="ha">
       <button class="iconbtn menu-btn" id="menu" type="button" aria-label="Меню">☰</button>
@@ -26,9 +25,16 @@
   </header>
   <div class="layout home-layout" style="grid-template-columns:minmax(0,1fr)"><main>
 <section class="hero rv"><div class="bg"></div>
-  <h1>МОДЫ ДЛЯ COSSACKS 3<br>БЕЗ ПЕРЕСБОРКИ<span class="caret"></span></h1>
-  <p>Modloader встраивается в игру при запуске: Lua, события, HTML-интерфейсы, замена файлов и правка скриптов игры. Файлы игры не меняются — всё в памяти процесса. Здесь — полная документация по API.</p>
-  <div class="cta"><a class="btn black" href="guide.html">НАЧАТЬ →</a><a class="btn" href="api-overview.html">ОБЗОР API →</a>
+  <h1>ТА ЖЕ ИГРА.<br>ПРАВИЛА — ТВОИ.<span class="caret"></span></h1>
+  <p>Новые нации, свои юниты, битвы на карте, которой в игре не было, и картинка как в кино. Ставишь моды — и Казаки 3 играются так, будто вышли вчера. Файлы игры не трогаем, откатиться можно в любой момент.</p>
+  <div class="cta"><a class="btn black" href="#features">ЧТО МОЖНО ПОЛУЧИТЬ ↓</a><a class="btn" href="#dev">Я ХОЧУ ДЕЛАТЬ МОДЫ →</a></div>
+</section>
+<h2 class="sec-title" id="features">Что дают моды</h2>
+<div class="cards"><div class="card rv"><b>Новые нации</b><span>Монголы с конными лучниками, Запорожская Сечь. Любую нацию собирают из шаблона за пару строк.</span></div><div class="card rv"><b>Свои юниты</b><span>Сердюк-ветеран, другие цены, урон и скорость. Баланс подкручивается под то, как ты играешь.</span></div><div class="card rv"><b>Новые битвы</b><span>Исторические сражения на своих картах прямо в меню игры.</span></div><div class="card rv"><b>Другая картинка</b><span>Пресеты пост-обработки, туман, тени и свет. Игра выглядит как кино.</span></div><div class="card rv"><b>Свой интерфейс</b><span>Панель найма, HUD и меню на HTML прямо поверх игры.</span></div><div class="card rv"><b>Играй по сети</b><span>Хост сверяет моды у всех игроков, а встроенный сторож ловит рассинхрон на лету.</span></div></div>
+<section class="devzone" id="dev">
+  <h2 class="dev-title">Хочешь делать моды сам?</h2>
+  <p class="dev-p">Всё пишется на Lua. Поправил скрипт, набрал <code>.lua reload</code> — и смотришь результат в игре, без перезапуска. Ниже всё, что для этого нужно.</p>
+  <div class="cta"><a class="btn black" href="guide.html">БЫСТРЫЙ СТАРТ →</a><a class="btn" href="api-overview.html">ОБЗОР API →</a>
   <a class="btn" href="core-events.html">СОБЫТИЯ →</a></div>
 </section>
 <div class="stats">
@@ -64,7 +70,7 @@ end)</code></pre></div></div>
 <div class="rv"><div class="acc"><div class="acc-head"><span>Как установить модлоадер?</span><span>+</span></div><div class="acc-body"><ol><li>Собрать решение <code>Modloader For Cossacks 3.slnx</code> (Release, x86).</li><li>Скопировать в папку игры <code>Cossacks3Launcher.exe</code>, <code>Cossacks3Loader.dll</code>, основную DLL и <code>Cossacks3Cef.exe</code>.</li><li>Поставить CEF: <code>python tools/install_cef.py</code>.</li><li>Скопировать <code>api/</code> в <code>&lt;игра&gt;/modloader/api/</code>, моды — в <code>modloader/mods/</code>.</li><li>Запускать через <code>Cossacks3Launcher.exe</code>.</li></ol></div></div><div class="acc"><div class="acc-head"><span>Где лежат моды?</span><span>+</span></div><div class="acc-body"><p><code>&lt;игра&gt;/modloader/mods/&lt;папка мода&gt;/</code> — внутри обязательно <code>manifest.lua</code>. Мод может быть только из данных: одни <code>assets/</code>, <code>patches/</code> или <code>content.lua</code>.</p></div></div><div class="acc"><div class="acc-head"><span>Как поправить api без пересборки?</span><span>+</span></div><div class="acc-body"><p>Файлы <code>api/*.lua</code> лежат отдельно от DLL: поправил файл — команда <code>.lua reload</code> в консоли модлоадера.</p></div></div><div class="acc"><div class="acc-head"><span>Что менять на клиенте, а что на сервере?</span><span>+</span></div><div class="acc-body"><p>Интерфейс и клавиши — <code>client</code>. Решения хоста — <code>server</code>. Всё, что меняет мир одинаково на всех машинах (баланс, статы, логика), — <code>shared</code>: иначе в сети партия разойдётся. Подробнее — <a href="core-sides.html">какая сторона что умеет</a>.</p></div></div></div>
 </main></div>
   <footer class="footer">
-    <div><a class="logo" href="index.html" style="display:inline-block">COSSACKS 3 MODLOADER</a><br><br>Документация API<br>Собрана из папки <code>api/</code> репозитория</div>
+    <div><b>COSSACKS 3 MODLOADER</b><br>Документация API<br>Собрана из папки <code>api/</code> репозитория</div>
     <div>ДОКУМЕНТЫ<br><a href="guide.html">Быстрый старт</a><a href="core-rules.html">Справочник</a><a href="api-overview.html">Обзор api/</a></div>
     <div>ДАННЫЕ<br><a href="ref-state.html">Переменные игры</a><a href="ref-screens.html">Экраны</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/GAME_API.md">Нативы ↗</a></div>
     <div>ПРОЕКТ<br><a href="https://github.com/OverlordDev/cossacks3-modloader">GitHub ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/issues">Issues ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/DOCUMENTATION.md">Устройство ↗</a></div>

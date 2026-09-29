@@ -13,8 +13,7 @@
 <div class="page">
   <header class="site-header">
     <div class="hl">
-      <a class="logo" href="index.html">COSSACKS 3 MODLOADER</a>
-      <nav class="nav"><a href="guide.html">GUIDE</a><a href="core-rules.html">REFERENCE</a><a href="core-log.html" class="active">LUA API</a><a href="api-schema.html">MODULES</a><a href="ref-state.html">DATA</a></nav>
+      <nav class="nav"><a href="index.html">HOME</a><a href="guide.html">GUIDE</a><a href="core-rules.html">REFERENCE</a><a href="core-log.html" class="active">LUA API</a><a href="api-schema.html">MODULES</a><a href="ref-state.html">DATA</a></nav>
     </div>
     <div class="ha">
       <button class="iconbtn menu-btn" id="menu" type="button" aria-label="Menu">☰</button>
@@ -96,7 +95,7 @@ const r = JSON.parse(await game.lua('1 + 1'));        // Lua code: an expression
 game.log('text');   game.close();   await game.files('img');</code></pre>
 <p>An error in <code>game.api</code> is an exception (Promise reject) with the Lua error text. Page code (<code>game.api</code>, <code>game.lua</code>) runs in the modloader console environment (server side), not in the mod's environment: the mod's global variables and functions are not visible from the page. A mod and a page exchange data through api functions, <code>web.eval(...)</code> (Lua → page) and the game's global tables. <code>game.lua</code> is available only to local pages (from the mod folder).</p></article><div class="meta" style="margin-top:36px"><a class="badge" href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/AI_MODDING_REFERENCE.md">EDIT ON GITHUB ↗</a></div><div class="pn"><a href="core-input.html"><small>← BACK</small>input (client)</a><a class="next" href="core-ui.html"><small>NEXT →</small>ui — the game&#x27;s native interface (client)</a></div></main><aside class="toc" id="toc"><b>ON THIS PAGE</b></aside></div>
   <footer class="footer">
-    <div><a class="logo" href="index.html" style="display:inline-block">COSSACKS 3 MODLOADER</a><br><br>API documentation<br>Built from the repository's <code>api/</code> folder</div>
+    <div><b>COSSACKS 3 MODLOADER</b><br>API documentation<br>Built from the repository's <code>api/</code> folder</div>
     <div>DOCUMENTS<br><a href="guide.html">Quick start</a><a href="core-rules.html">Reference</a><a href="api-overview.html">api/ overview</a></div>
     <div>DATA<br><a href="ref-state.html">Game variables</a><a href="ref-screens.html">Screens</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/GAME_API.md">Natives ↗</a></div>
     <div>PROJECT<br><a href="https://github.com/OverlordDev/cossacks3-modloader">GitHub ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/issues">Issues ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/DOCUMENTATION.md">Internals ↗</a></div>

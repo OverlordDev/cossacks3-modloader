@@ -285,3 +285,16 @@ a.badge:hover{background:var(--acc);border-color:var(--acc);color:var(--acc-ink)
 .site-header:before{content:"";position:absolute;left:-1px;right:-1px;top:-13px;height:13px;background:var(--bg)}
 @media(max-width:860px){.site-header{position:static}.site-header:before{display:none}}
 table.fn tr:target td .ex,table.fn tr:target td .ex code{background:transparent;color:var(--acc-ink);opacity:.85}
+
+/* ===== шапка без плашки, главная для игроков ===== */
+.hl{gap:0}
+.hero{padding:72px 44px 64px}
+.hero h1{font-size:64px;line-height:1.02;margin-bottom:22px}
+.hero p{font-size:16px;max-width:600px}
+.hero .cta .btn{padding:15px 22px}
+.cards .card b{font-size:17px}
+div.card{cursor:default}
+.devzone{border:1px dashed var(--ctl);padding:32px 30px;margin:34px 0 26px;background:color-mix(in srgb,var(--acc) 5%,var(--bg))}
+.dev-title{font-size:26px;letter-spacing:.03em;margin-bottom:10px;text-transform:uppercase}
+.dev-p{max-width:640px;color:var(--mute);margin-bottom:20px}
+@media(max-width:860px){.hero{padding:36px 22px}.hero h1{font-size:38px}.devzone{padding:22px 18px}.dev-title{font-size:20px}}

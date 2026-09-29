@@ -667,6 +667,9 @@ def home_page(stats, cards, code, fn_names):
         % (pid, html.escape(name), html.escape(summary[:120]),
            (S("card.funcs") % cnt) if cnt else S("card.data"))
         for name, pid, summary, cnt, gen in cards)
+    feat_html = "".join(
+        '<div class="card rv"><b>%s</b><span>%s</span></div>' % (html.escape(S("feat.%d.t" % i)), html.escape(S("feat.%d.d" % i)))
+        for i in range(1, 7))
     tabs = "".join('<button class="%s">%s</button>' % ("active" if i == 0 else "", t.upper())
                    for i, t in enumerate(("client", "shared", "server")))
     panes = "".join('<div class="tabpane%s"><pre><code data-lang="lua">%s</code></pre></div>'
@@ -678,8 +681,15 @@ def home_page(stats, cards, code, fn_names):
 <section class="hero rv"><div class="bg"></div>
   <h1>%(h1)s<span class="caret"></span></h1>
   <p>%(p)s</p>
-  <div class="cta"><a class="btn black" href="guide.html">%(start)s</a><a class="btn" href="api-overview.html">%(overview)s</a>
-  <a class="btn" href="core-events.html">%(events)s</a></div>
+  <div class="cta"><a class="btn black" href="#features">%(cta1)s</a><a class="btn" href="#dev">%(cta2)s</a></div>
+</section>
+<h2 class="sec-title" id="features">%(t_feat)s</h2>
+<div class="cards">%(feat)s</div>
+<section class="devzone" id="dev">
+  <h2 class="dev-title">%(t_dev)s</h2>
+  <p class="dev-p">%(dev_p)s</p>
+  <div class="cta"><a class="btn black" href="guide.html">%(d_guide)s</a><a class="btn" href="api-overview.html">%(d_overview)s</a>
+  <a class="btn" href="core-events.html">%(d_events)s</a></div>
 </section>
 <div class="stats">
   <div class="stat rv"><div class="cnt" data-count="%(modules)d">0</div><small>%(s_modules)s</small></div>
@@ -694,19 +704,20 @@ def home_page(stats, cards, code, fn_names):
 <div class="cards">%(cards)s</div>
 <h2 class="sec-title">%(t_faq)s</h2>
 <div class="rv">%(faq)s</div>
-""" % {"h1": S("hero.h1"), "p": S("hero.p"), "start": S("hero.start"), "overview": S("hero.overview"),
-       "events": S("hero.events"), "modules": stats["modules"], "functions": stats["functions"],
-       "natives": stats["natives"], "screens": stats["screens"], "s_modules": S("stat.modules"),
-       "s_funcs": S("stat.funcs"), "s_natives": S("stat.natives"), "s_screens": S("stat.screens"),
-       "marquee": marquee, "tabs": tabs, "panes": panes, "cards": card_html, "t_example": S("home.example"),
-       "t_modules": S("home.modules"), "t_faq": S("home.faq"), "faq": faq_html}
+""" % {"h1": S("hero.h1"), "p": S("hero.p"), "cta1": S("hero.cta1"), "cta2": S("hero.cta2"), "t_feat": S("feat.title"),
+       "feat": feat_html, "t_dev": S("dev.title"), "dev_p": S("dev.p"), "d_guide": S("dev.guide"),
+       "d_overview": S("dev.overview"), "d_events": S("dev.events"), "modules": stats["modules"],
+       "functions": stats["functions"], "natives": stats["natives"], "screens": stats["screens"],
+       "s_modules": S("stat.modules"), "s_funcs": S("stat.funcs"), "s_natives": S("stat.natives"),
+       "s_screens": S("stat.screens"), "marquee": marquee, "tabs": tabs, "panes": panes, "cards": card_html,
+       "t_example": S("home.example"), "t_modules": S("home.modules"), "t_faq": S("home.faq"), "faq": faq_html}
 
 
 # --------------------------------------------------------------------------------------------------
 # Шаблон страницы и вывод
 # --------------------------------------------------------------------------------------------------
 
-TOP_NAV = [("nav.guide", "guide.html", ("start",)), ("nav.ref", "core-rules.html", ("ref",)),
+TOP_NAV = [("nav.home", "index.html", ()), ("nav.guide", "guide.html", ("start",)), ("nav.ref", "core-rules.html", ("ref",)),
            ("nav.engine", "core-log.html", ("engine",)), ("nav.modules", None, ("modules",)),
            ("nav.data", "ref-state.html", ("data",))]
 
@@ -736,7 +747,10 @@ def topnav(current):
     out = []
     for key, target, groups in TOP_NAV:
         href = target or firsts.get(groups[0], "index.html")
-        active = ' class="active"' if current["group"] in groups and not current.get("home") else ""
+        if key == "nav.home":
+            active = ' class="active"' if current.get("home") else ""
+        else:
+            active = ' class="active"' if current["group"] in groups and not current.get("home") else ""
         out.append('<a href="%s"%s>%s</a>' % (href, active, S(key)))
     return "".join(out)
 
@@ -788,7 +802,6 @@ def render_page(idx, p):
 <div class="page">
   <header class="site-header">
     <div class="hl">
-      <a class="logo" href="index.html">%(site)s</a>
       <nav class="nav">%(nav)s</nav>
     </div>
     <div class="ha">
@@ -801,7 +814,7 @@ def render_page(idx, p):
   </header>
   %(layout)s
   <footer class="footer">
-    <div><a class="logo" href="index.html" style="display:inline-block">%(site)s</a><br><br>%(f_about)s</div>
+    <div><b>%(site)s</b><br>%(f_about)s</div>
     <div>%(f_docs)s<br><a href="guide.html">%(f_guide)s</a><a href="core-rules.html">%(f_ref)s</a><a href="api-overview.html">%(f_overview)s</a></div>
     <div>%(f_data)s<br><a href="ref-state.html">%(f_state)s</a><a href="ref-screens.html">%(f_screens)s</a><a href="%(blob)sGAME_API.md">%(f_natives)s</a></div>
     <div>%(f_project)s<br><a href="%(repo)s">GitHub ↗</a><a href="%(repo)s/issues">Issues ↗</a><a href="%(blob)sDOCUMENTATION.md">%(f_internals)s</a></div>

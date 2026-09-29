@@ -13,8 +13,7 @@
 <div class="page">
   <header class="site-header">
     <div class="hl">
-      <a class="logo" href="index.html">COSSACKS 3 MODLOADER</a>
-      <nav class="nav"><a href="guide.html">GUIDE</a><a href="core-rules.html">REFERENCE</a><a href="core-log.html">LUA API</a><a href="api-schema.html">MODULES</a><a href="ref-state.html">DATA</a></nav>
+      <nav class="nav"><a href="index.html" class="active">HOME</a><a href="guide.html">GUIDE</a><a href="core-rules.html">REFERENCE</a><a href="core-log.html">LUA API</a><a href="api-schema.html">MODULES</a><a href="ref-state.html">DATA</a></nav>
     </div>
     <div class="ha">
       <button class="iconbtn menu-btn" id="menu" type="button" aria-label="Menu">☰</button>
@@ -26,9 +25,16 @@
   </header>
   <div class="layout home-layout" style="grid-template-columns:minmax(0,1fr)"><main>
 <section class="hero rv"><div class="bg"></div>
-  <h1>MODS FOR COSSACKS 3<br>WITHOUT REBUILDING<span class="caret"></span></h1>
-  <p>The modloader hooks into the game at launch: Lua, events, HTML interfaces, file replacement and game script patching. Game files are not modified — everything happens in process memory. This is the full API documentation.</p>
-  <div class="cta"><a class="btn black" href="guide.html">GET STARTED →</a><a class="btn" href="api-overview.html">API OVERVIEW →</a>
+  <h1>SAME GAME.<br>YOUR RULES.<span class="caret"></span></h1>
+  <p>New nations, your own units, battles on maps the game never had, and visuals that look like a movie. Drop in mods and Cossacks 3 plays like it launched yesterday. We never touch the game files, so you can roll back any time.</p>
+  <div class="cta"><a class="btn black" href="#features">SEE WHAT YOU GET ↓</a><a class="btn" href="#dev">I WANT TO MAKE MODS →</a></div>
+</section>
+<h2 class="sec-title" id="features">What mods give you</h2>
+<div class="cards"><div class="card rv"><b>New nations</b><span>Mongols with horse archers, the Zaporozhian Sich. Any nation is built from a template in a couple of lines.</span></div><div class="card rv"><b>Your own units</b><span>A veteran Serdiuk, different prices, damage and speed. Tune the balance to how you play.</span></div><div class="card rv"><b>New battles</b><span>Historical battles on your own maps, right in the game&#x27;s menu.</span></div><div class="card rv"><b>A different look</b><span>Post-processing presets, fog, shadows and light. The game looks like a movie.</span></div><div class="card rv"><b>Your own interface</b><span>A hire panel, a HUD and menus in HTML, right over the game.</span></div><div class="card rv"><b>Play online</b><span>The host checks everyone&#x27;s mods, and the built-in watchdog catches desyncs on the fly.</span></div></div>
+<section class="devzone" id="dev">
+  <h2 class="dev-title">Want to make mods yourself?</h2>
+  <p class="dev-p">It's all Lua. Tweak a script, type <code>.lua reload</code> and see the result in the game with no restart. Everything you need is below.</p>
+  <div class="cta"><a class="btn black" href="guide.html">QUICK START →</a><a class="btn" href="api-overview.html">API OVERVIEW →</a>
   <a class="btn" href="core-events.html">EVENTS →</a></div>
 </section>
 <div class="stats">
@@ -64,7 +70,7 @@ end)</code></pre></div></div>
 <div class="rv"><div class="acc"><div class="acc-head"><span>How do I install the modloader?</span><span>+</span></div><div class="acc-body"><ol><li>Build the solution <code>Modloader For Cossacks 3.slnx</code> (Release, x86).</li><li>Copy <code>Cossacks3Launcher.exe</code>, <code>Cossacks3Loader.dll</code>, the main DLL and <code>Cossacks3Cef.exe</code> into the game folder.</li><li>Install CEF: <code>python tools/install_cef.py</code>.</li><li>Copy <code>api/</code> to <code>&lt;game&gt;/modloader/api/</code>, mods to <code>modloader/mods/</code>.</li><li>Launch through <code>Cossacks3Launcher.exe</code>.</li></ol></div></div><div class="acc"><div class="acc-head"><span>Where do mods go?</span><span>+</span></div><div class="acc-body"><p><code>&lt;game&gt;/modloader/mods/&lt;mod folder&gt;/</code> — it must contain <code>manifest.lua</code>. A mod can be data-only: just <code>assets/</code>, <code>patches/</code> or <code>content.lua</code>.</p></div></div><div class="acc"><div class="acc-head"><span>How do I edit the api without rebuilding?</span><span>+</span></div><div class="acc-body"><p>The <code>api/*.lua</code> files live separately from the DLL: edit a file, then run <code>.lua reload</code> in the modloader console.</p></div></div><div class="acc"><div class="acc-head"><span>What goes on the client and what on the server?</span><span>+</span></div><div class="acc-body"><p>Interface and keys — <code>client</code>. Host decisions — <code>server</code>. Anything that changes the world identically on all machines (balance, stats, logic) — <code>shared</code>: otherwise the match desyncs online. More — <a href="core-sides.html">which side can do what</a>.</p></div></div></div>
 </main></div>
   <footer class="footer">
-    <div><a class="logo" href="index.html" style="display:inline-block">COSSACKS 3 MODLOADER</a><br><br>API documentation<br>Built from the repository's <code>api/</code> folder</div>
+    <div><b>COSSACKS 3 MODLOADER</b><br>API documentation<br>Built from the repository's <code>api/</code> folder</div>
     <div>DOCUMENTS<br><a href="guide.html">Quick start</a><a href="core-rules.html">Reference</a><a href="api-overview.html">api/ overview</a></div>
     <div>DATA<br><a href="ref-state.html">Game variables</a><a href="ref-screens.html">Screens</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/GAME_API.md">Natives ↗</a></div>
     <div>PROJECT<br><a href="https://github.com/OverlordDev/cossacks3-modloader">GitHub ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/issues">Issues ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/DOCUMENTATION.md">Internals ↗</a></div>
