@@ -2,7 +2,7 @@
   "name": "cossacks3-modding",
   "displayName": "Cossacks 3 Modding",
   "description": "Автодополнение, проверка манифеста и создание модов для Cossacks 3 Modloader. Подсказки берутся прямо из папки modloader/api игры — плагин обновлять не нужно.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "overlorddev",
   "license": "MIT",
   "engines": {
@@ -85,7 +85,7 @@
     }
   },
   "scripts": {
-    "test": "node test/manifest.test.js",
+    "test": "node test/manifest.test.js && node test/templates.test.js",
     "package": "vsce package"
   },
   "devDependencies": {

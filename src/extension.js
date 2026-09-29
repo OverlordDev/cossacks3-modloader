@@ -4,7 +4,7 @@ const path = require('path');
 const vscode = require('vscode');
 const { findModloaderRoot, modsDirOf } = require('./locate');
 const { validateManifest } = require('./manifest');
-const { KINDS, modFiles } = require('./templates');
+const { PRESETS, PARTS, modFiles, mainFile } = require('./templates');
 
 const DOCS_URL = 'https://github.com/OverlordDev/cossacks3-modloader/blob/main/MODDING.md';
 const OWNED_KEY = 'cossacks3.libraryEntries';
@@ -187,8 +187,42 @@ async function newMod(context) {
     }
     const modsDir = modsDirOf(root);
 
+    // 1. Набор: готовый шаблон или свой выбор.
+    const preset = await vscode.window.showQuickPick(
+        PRESETS.map((p) => ({ label: p.label, detail: p.detail, preset: p })),
+        { title: 'Новый мод (1/3): что делаем?', matchOnDetail: true },
+    );
+    if (!preset) return;
+
+    let parts = preset.preset.parts;
+    if (!parts) {
+        const picked = await vscode.window.showQuickPick(
+            PARTS.map((p) => ({ label: p.label, detail: p.detail, picked: !!p.picked, key: p.key })),
+            { title: 'Новый мод (2/3): что создать?', canPickMany: true, matchOnDetail: true },
+        );
+        if (!picked) return;
+        parts = {};
+        for (const item of picked) parts[item.key] = true;
+        if (parts.server && parts.shared) {
+            const side = await vscode.window.showQuickPick(
+                [
+                    { label: 'shared.lua', detail: 'Выполняется у всех одинаково (баланс, правила)', side: 'shared' },
+                    { label: 'server.lua', detail: 'Только у хоста / в одиночной игре', side: 'server' },
+                ],
+                { title: 'В манифесте можно указать только одно: server или shared', placeHolder: 'Что оставить?' },
+            );
+            if (!side) return;
+            parts.server = side.side === 'server';
+            parts.shared = side.side === 'shared';
+        }
+        if (parts.web && !parts.client) {
+            vscode.window.showInformationMessage('Страницу открывает клиентский скрипт — client.lua добавлен автоматически.');
+        }
+    }
+
+    // 2. Описание мода.
     const id = await vscode.window.showInputBox({
-        title: 'Новый мод: идентификатор',
+        title: 'Новый мод (3/3): идентификатор',
         prompt: 'Латиница, цифры и _ (станет именем папки)',
         placeHolder: 'my_mod',
         validateInput: (value) => {
@@ -199,34 +233,31 @@ async function newMod(context) {
     });
     if (!id) return;
 
-    const name = await vscode.window.showInputBox({ title: 'Новый мод: название', value: id });
+    const name = await vscode.window.showInputBox({ title: 'Название мода', value: id });
     if (name === undefined) return;
 
-    const kind = await vscode.window.showQuickPick(
-        KINDS.map((k) => ({ label: k.label, detail: k.detail, id: k.id })),
-        { title: 'Новый мод: что он делает?', matchOnDetail: true },
-    );
-    if (!kind) return;
+    const description = await vscode.window.showInputBox({ title: 'Описание (можно пропустить)', prompt: 'Одна строка: что делает мод' });
+    if (description === undefined) return;
 
     const author = await vscode.window.showInputBox({
-        title: 'Новый мод: автор',
+        title: 'Автор',
         value: context.globalState.get('cossacks3.author', ''),
     });
     if (author === undefined) return;
     await context.globalState.update('cossacks3.author', author);
 
     const dir = path.join(modsDir, id);
-    const files = modFiles({ id, name: name || id, author, kind: kind.id });
+    const files = modFiles({ id, name: name || id, author, description, parts });
     for (const [rel, content] of Object.entries(files)) {
         const target = path.join(dir, rel);
         fs.mkdirSync(path.dirname(target), { recursive: true });
         fs.writeFileSync(target, content, 'utf8');
     }
 
-    const main = Object.keys(files).find((f) => f !== 'manifest.lua') || 'manifest.lua';
-    const doc = await vscode.workspace.openTextDocument(path.join(dir, main));
+    const doc = await vscode.workspace.openTextDocument(path.join(dir, mainFile(files)));
     await vscode.window.showTextDocument(doc);
-    vscode.window.showInformationMessage(`Мод «${id}» создан в ${dir}`);
+    const created = Object.keys(files).join(', ');
+    vscode.window.showInformationMessage(`Мод «${id}» создан в ${dir}: ${created}`);
 }
 
 async function openLog() {

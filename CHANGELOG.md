@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.0
+- Генератор мода: шаблоны (HUD, баланс, сетевой, новые юниты, графика) или ручной выбор частей — client, server/shared, content, web/hud.html, utils.lua, assets/, patches/.
+- Манифест собирается под выбор; `multiplayer` определяется автоматически; server и shared не могут оказаться вместе.
+
 ## 0.1.0
 - Подсказки и автодополнение по `modloader/api` игры (через Lua Language Server), обновляются вместе с игрой.
 - Описания функций, которые создаёт сама DLL: `events`, `game`, `net`, `input`, `web`, `ui`, `gfx`, `savedata`, `native`, `mem`, `player`, `world`, `nation/unit/battle`.
