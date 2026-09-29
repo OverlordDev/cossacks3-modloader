@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cossacks 3 Modloader — документация API</title>
+<meta name="description" content="Документация API Cossacks 3 Modloader: Lua, события, интерфейсы, замена файлов и правка скриптов игры.">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/style.css">
+<script>try{var t=localStorage.getItem('cs3-theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+</head>
+<body>
+<div class="page">
+  <header class="site-header">
+    <div class="hl">
+      <a class="logo" href="index.html">COSSACKS 3 MODLOADER</a>
+      <nav class="nav"><a href="guide.html">ГАЙД</a><a href="core-rules.html">СПРАВОЧНИК</a><a href="core-log.html">LUA API</a><a href="api-schema.html">МОДУЛИ</a><a href="ref-state.html">ДАННЫЕ</a></nav>
+    </div>
+    <div class="ha">
+      <button class="iconbtn menu-btn" id="menu" type="button" aria-label="Меню">☰</button>
+      <div class="search-wrap"><input class="search" id="q" placeholder="Поиск по API…" autocomplete="off" aria-label="Поиск"><span class="kbd">/</span><div class="results" id="results"></div></div>
+      <a class="btn black sm" href="https://github.com/OverlordDev/cossacks3-modloader" target="_blank" rel="noopener">GITHUB →</a>
+      <button class="iconbtn" id="theme" type="button" aria-label="Тема">☾</button>
+    </div>
+  </header>
+  <div class="layout home-layout" style="grid-template-columns:minmax(0,1fr)"><main>
+<section class="hero rv"><div class="bg"></div>
+  <h1>МОДЫ ДЛЯ COSSACKS 3<br>БЕЗ ПЕРЕСБОРКИ<span class="caret"></span></h1>
+  <p>Modloader встраивается в игру при запуске: Lua, события, HTML-интерфейсы, замена файлов и правка скриптов игры.
+  Файлы игры не меняются — всё в памяти процесса. Здесь — полная документация по API.</p>
+  <div class="cta"><a class="btn black" href="guide.html">НАЧАТЬ →</a><a class="btn" href="api-overview.html">ОБЗОР API →</a>
+  <a class="btn" href="core-events.html">СОБЫТИЯ →</a></div>
+</section>
+<div class="stats">
+  <div class="stat rv"><div class="cnt" data-count="13">0</div><small>МОДУЛЕЙ API</small></div>
+  <div class="stat rv"><div class="cnt" data-count="69">0</div><small>ФУНКЦИЙ</small></div>
+  <div class="stat rv"><div class="cnt" data-count="4856">0</div><small>НАТИВОВ ДВИЖКА</small></div>
+  <div class="stat rv"><div class="cnt" data-count="46">0</div><small>ЭКРАНОВ ИГРЫ</small></div>
+</div>
+<div class="marq rv"><div><span>state.type()</span><span>state.get()</span><span>collectValue()</span><span>state.read()</span><span>state.list()</span><span>state.set()</span><span>show()</span><span>profile.get()</span><span>profile.set()</span><span>profile.all()</span><span>profile.save()</span><span>options.get()</span><span>options.set()</span><span>saves.list()</span><span>saves.load()</span><span>saves.delete()</span><span>saves.replays.list()</span><span>saves.replays.load()</span><span>players.list()</span><span>players.me()</span><span>players.resources()</span><span>map.info()</span><span>map.settings()</span><span>screens.list()</span><span>screens.info()</span><span>screens.tags()</span><span>screens.button()</span><span>screens.of()</span><span>screens.open()</span><span>screens.press()</span><span>screens.bind()</span><span>balance.types()</span><span>balance.refresh()</span><span>balance.find()</span><span>balance.places()</span><span>balance.get()</span><span>balance.set()</span><span>balance.setProp()</span><span>balance.dump()</span><span>balance.setHP()</span><span>balance.setDamage()</span><span>balance.setSpeed()</span><span>buildings.list()</span><span>buildings.selected()</span><span>buildings.info()</span><span>buildings.produce()</span><span>buildings.cancel()</span><span>buildings.upgrade()</span><span>buildings.cancelUpgrade()</span><span>buildings.produceList()</span><span>buildings.setProduceList()</span><span>buildings.addProduce()</span><span>buildings.removeProduce()</span><span>buildings.setUpgrade()</span><span>buildings.canPlace()</span><span>buildings.build()</span><span>buildings.finish()</span><span>units.selected()</span><span>units.info()</span><span>units.orders()</span><span>state.type()</span><span>state.get()</span><span>collectValue()</span><span>state.read()</span><span>state.list()</span><span>state.set()</span><span>show()</span><span>profile.get()</span><span>profile.set()</span><span>profile.all()</span><span>profile.save()</span><span>options.get()</span><span>options.set()</span><span>saves.list()</span><span>saves.load()</span><span>saves.delete()</span><span>saves.replays.list()</span><span>saves.replays.load()</span><span>players.list()</span><span>players.me()</span><span>players.resources()</span><span>map.info()</span><span>map.settings()</span><span>screens.list()</span><span>screens.info()</span><span>screens.tags()</span><span>screens.button()</span><span>screens.of()</span><span>screens.open()</span><span>screens.press()</span><span>screens.bind()</span><span>balance.types()</span><span>balance.refresh()</span><span>balance.find()</span><span>balance.places()</span><span>balance.get()</span><span>balance.set()</span><span>balance.setProp()</span><span>balance.dump()</span><span>balance.setHP()</span><span>balance.setDamage()</span><span>balance.setSpeed()</span><span>buildings.list()</span><span>buildings.selected()</span><span>buildings.info()</span><span>buildings.produce()</span><span>buildings.cancel()</span><span>buildings.upgrade()</span><span>buildings.cancelUpgrade()</span><span>buildings.produceList()</span><span>buildings.setProduceList()</span><span>buildings.addProduce()</span><span>buildings.removeProduce()</span><span>buildings.setUpgrade()</span><span>buildings.canPlace()</span><span>buildings.build()</span><span>buildings.finish()</span><span>units.selected()</span><span>units.info()</span><span>units.orders()</span></div></div>
+<h2 class="sec-title">Пример за минуту</h2>
+<div class="rv"><div class="tabs"><button class="active">CLIENT</button><button class="">SHARED</button><button class="">SERVER</button></div><div class="tabpane active"><pre><code data-lang="lua">input.bind("F7", function()
+    if not game.isInGame() then return end
+    local me = native.GetPlayerIndexInterfaceIO()
+    local total, count = 0, 0
+    for _, h in ipairs(objects.list(me)) do
+        local o = objects.read(h)
+        if o and not o.bdead then total, count = total + o.hp, count + 1 end
+    end
+    log.info(string.format("объектов: %d, HP всего: %d", count, total))
+end)</code></pre></div><div class="tabpane"><pre><code data-lang="lua">events.on("game.start", function()
+    balance.setHP("musketeer18", 200)
+    balance.setDamage("musketeer18", 40, 1)   -- оружие 1 — выстрел
+    balance.set("musketeer18", "price[3]", 30) -- цена в золоте
+end)</code></pre></div><div class="tabpane"><pre><code data-lang="lua">net.on("give_gold", function(data, from)
+    local who = game.playerIndexOf(from)
+    local amount = math.min(tonumber(data and data.amount) or 0, 1000)
+    player(who):add("gold", amount)
+    net.broadcast("gold_given", { player = who, amount = amount })
+end)</code></pre></div></div>
+<h2 class="sec-title">Модули api/</h2>
+<div class="cards"><a class="card rv" href="api-schema.html"><b>schema</b><span>Сгенерировано tools/gen_game_api.py из data/scripts/lib/classes.script. Не править руками.</span><em>ДАННЫЕ →</em></a><a class="card rv" href="api-state.html"><b>state</b><span>чтение и запись любой переменной скриптов игры по пути.</span><em>6 ФУНКЦИЙ →</em></a><a class="card rv" href="api-screens_data.html"><b>screens_data</b><span>Сгенерировано tools/gen_screens.py из data/gui/menu.inc. Не править руками.</span><em>ДАННЫЕ →</em></a><a class="card rv" href="api-show.html"><b>show</b><span>таблица в читаемый текст (консоль печатает таблицы как &quot;table: 22FC0CF8&quot;).</span><em>1 ФУНКЦИЙ →</em></a><a class="card rv" href="api-profile.html"><b>profile</b><span>профиль игрока: звук, управление, язык, настройки поведения.</span><em>4 ФУНКЦИЙ →</em></a><a class="card rv" href="api-options.html"><b>options</b><span>опции проекта: графика и звук движка (то, что пишется в настройки видео).</span><em>2 ФУНКЦИЙ →</em></a><a class="card rv" href="api-saves.html"><b>saves</b><span>сохранения и повторы, те же нативы, что у экрана «Загрузить игру».</span><em>5 ФУНКЦИЙ →</em></a><a class="card rv" href="api-players.html"><b>players</b><span>участники партии (и слоты лобби до её начала).</span><em>3 ФУНКЦИЙ →</em></a><a class="card rv" href="api-map.html"><b>map</b><span>текущая карта и настройки партии.</span><em>2 ФУНКЦИЙ →</em></a><a class="card rv" href="api-screens.html"><b>screens</b><span>экраны игры и их кнопки по именам.</span><em>8 ФУНКЦИЙ →</em></a><a class="card rv" href="api-balance.html"><b>balance</b><span>параметры типов юнитов и зданий: читать и менять посреди партии.</span><em>11 ФУНКЦИЙ →</em></a><a class="card rv" href="api-buildings.html"><b>buildings</b><span>здания: что строят, улучшения, очередь; команды игрока; правка логики.</span><em>15 ФУНКЦИЙ →</em></a><a class="card rv" href="api-units.html"><b>units</b><span>юниты: выделение, состояние, очередь приказов.</span><em>3 ФУНКЦИЙ →</em></a><a class="card rv" href="api-objects.html"><b>objects</b><span>быстрое чтение юнитов и зданий прямо из памяти игры, без компиляции Pascal.</span><em>8 ФУНКЦИЙ →</em></a><a class="card rv" href="api-call.html"><b>call</b><span>вход для страниц: game.api(&#x27;saves.list&#x27;) в JS превращается в api_call(&#x27;saves.list&#x27;).</span><em>1 ФУНКЦИЙ →</em></a></div>
+<h2 class="sec-title">Частые вопросы</h2>
+<div class="rv"><div class="acc"><div class="acc-head"><span>Как установить модлоадер?</span><span>+</span></div><div class="acc-body"><ol><li>Собрать решение <code>Modloader For Cossacks 3.slnx</code> (Release, x86).</li><li>Скопировать в папку игры <code>Cossacks3Launcher.exe</code>, <code>Cossacks3Loader.dll</code>, основную DLL и <code>Cossacks3Cef.exe</code>.</li><li>Поставить CEF: <code>python tools/install_cef.py</code>.</li><li>Скопировать <code>api/</code> в <code>&lt;игра&gt;/modloader/api/</code>, моды — в <code>modloader/mods/</code>.</li><li>Запускать через <code>Cossacks3Launcher.exe</code>.</li></ol></div></div><div class="acc"><div class="acc-head"><span>Где лежат моды?</span><span>+</span></div><div class="acc-body"><p><code>&lt;игра&gt;/modloader/mods/&lt;папка мода&gt;/</code> — внутри обязательно <code>manifest.lua</code>. Мод может быть только из данных: одни <code>assets/</code>, <code>patches/</code> или <code>content.lua</code>.</p></div></div><div class="acc"><div class="acc-head"><span>Как поправить api без пересборки?</span><span>+</span></div><div class="acc-body"><p>Файлы <code>api/*.lua</code> лежат отдельно от DLL: поправил файл — команда <code>.lua reload</code> в консоли модлоадера.</p></div></div><div class="acc"><div class="acc-head"><span>Что менять на клиенте, а что на сервере?</span><span>+</span></div><div class="acc-body"><p>Интерфейс и клавиши — <code>client</code>. Решения хоста — <code>server</code>. Всё, что меняет мир одинаково на всех машинах (баланс, статы, логика), — <code>shared</code>: иначе в сети партия разойдётся. Подробнее — <a href="core-sides.html">какая сторона что умеет</a>.</p></div></div></div>
+</main></div>
+  <footer class="footer">
+    <div><a class="logo" href="index.html" style="display:inline-block">COSSACKS 3 MODLOADER</a><br><br>Документация API<br>Собрана из папки <code>api/</code> репозитория</div>
+    <div>ДОКУМЕНТЫ<br><a href="guide.html">Быстрый старт</a><a href="core-rules.html">Справочник</a><a href="api-overview.html">Обзор api/</a></div>
+    <div>ДАННЫЕ<br><a href="ref-state.html">Переменные игры</a><a href="ref-screens.html">Экраны</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/GAME_API.md">Нативы ↗</a></div>
+    <div>ПРОЕКТ<br><a href="https://github.com/OverlordDev/cossacks3-modloader">GitHub ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/issues">Issues ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/DOCUMENTATION.md">Устройство ↗</a></div>
+  </footer>
+</div>
+<script src="assets/search-index.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>

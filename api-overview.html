@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Обзор api — Cossacks 3 Modloader</title>
+<meta name="description" content="Что лежит в папке api, как вызывать из Lua и из страниц, как добавить модуль.">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/style.css">
+<script>try{var t=localStorage.getItem('cs3-theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+</head>
+<body>
+<div class="page">
+  <header class="site-header">
+    <div class="hl">
+      <a class="logo" href="index.html">COSSACKS 3 MODLOADER</a>
+      <nav class="nav"><a href="guide.html" class="active">ГАЙД</a><a href="core-rules.html">СПРАВОЧНИК</a><a href="core-log.html">LUA API</a><a href="api-schema.html">МОДУЛИ</a><a href="ref-state.html">ДАННЫЕ</a></nav>
+    </div>
+    <div class="ha">
+      <button class="iconbtn menu-btn" id="menu" type="button" aria-label="Меню">☰</button>
+      <div class="search-wrap"><input class="search" id="q" placeholder="Поиск по API…" autocomplete="off" aria-label="Поиск"><span class="kbd">/</span><div class="results" id="results"></div></div>
+      <a class="btn black sm" href="https://github.com/OverlordDev/cossacks3-modloader" target="_blank" rel="noopener">GITHUB →</a>
+      <button class="iconbtn" id="theme" type="button" aria-label="Тема">☾</button>
+    </div>
+  </header>
+  <div class="layout"><aside class="side"><div class="group"><span class="group-title">НАЧАЛО</span>
+<a href="index.html">Главная</a>
+<a href="guide.html">Быстрый старт</a>
+<a href="api-overview.html" class="active">Обзор api/</a>
+</div>
+<div class="group"><span class="group-title">СПРАВОЧНИК</span>
+<a href="core-rules.html">Главные правила (читать первыми)</a>
+<a href="core-structure.html">Структура мода</a>
+<a href="core-manifest.html">manifest.lua</a>
+<a href="core-sides.html">Что доступно на какой стороне</a>
+<a href="core-assets.html">Замена файлов</a>
+<a href="core-patches.html">Патчи скриптов игры</a>
+<a href="core-content.html">Новые нации и юниты</a>
+<a href="core-templates.html">Шаблоны</a>
+<a href="core-errors.html">Частые ошибки</a>
+</div>
+<div class="group"><span class="group-title">LUA API ДВИЖКА</span>
+<a href="core-log.html">log, mod, require, show</a>
+<a href="core-events.html">events</a>
+<a href="core-game.html">game</a>
+<a href="core-player.html">player, world</a>
+<a href="core-state.html">state и G</a>
+<a href="core-objects.html">objects и mem</a>
+<a href="core-units.html">units</a>
+<a href="core-buildings.html">buildings</a>
+<a href="core-balance.html">balance</a>
+<a href="core-misc.html">Прочие данные</a>
+<a href="core-net.html">net</a>
+<a href="core-input.html">input</a>
+<a href="core-web.html">web</a>
+<a href="core-ui.html">ui</a>
+<a href="core-screens.html">screens</a>
+<a href="core-gfx.html">gfx</a>
+<a href="core-savedata.html">savedata</a>
+<a href="core-native.html">native</a>
+</div>
+<div class="group"><span class="group-title">МОДУЛИ API</span>
+<a href="api-schema.html">schema</a>
+<a href="api-state.html">state</a>
+<a href="api-screens_data.html">screens_data</a>
+<a href="api-show.html">show</a>
+<a href="api-profile.html">profile</a>
+<a href="api-options.html">options</a>
+<a href="api-saves.html">saves</a>
+<a href="api-players.html">players</a>
+<a href="api-map.html">map</a>
+<a href="api-screens.html">screens</a>
+<a href="api-balance.html">balance</a>
+<a href="api-buildings.html">buildings</a>
+<a href="api-units.html">units</a>
+<a href="api-objects.html">objects</a>
+<a href="api-call.html">call</a>
+</div>
+<div class="group"><span class="group-title">ДАННЫЕ ИГРЫ</span>
+<a href="ref-state.html">Переменные и типы</a>
+<a href="ref-screens.html">Экраны и кнопки</a>
+<a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/GAME_API.md" target="_blank" rel="noopener">Нативы (GAME_API) ↗</a>
+</div></aside><main><article><h1>api — библиотека модлоадера поверх игры</h1>
+<blockquote>Руководство для мододелов (манифест, события, assets, патчи): <code>../MODDING.md</code>.</blockquote>
+<p>Lua-модули, которые модлоадер грузит в окружение каждого мода и в консоль. Лежат отдельными файлами, чтобы их можно было дописывать без пересборки: поправил файл — <code>.lua reload</code> в консоли.</p>
+<p>В игре папка лежит в <code>&lt;игра&gt;/modloader/api/</code>, в репозитории — здесь. Файлы грузятся по порядку имён.</p>
+<div class="tblwrap"><table><thead><tr><th>файл</th><th>что даёт</th></tr></thead><tbody><tr><td><code>00_schema.lua</code></td><td><strong>генерируется</strong>, не править. Все типы и глобальные переменные скриптов игры</td></tr><tr><td><code>02_screens_data.lua</code></td><td><strong>генерируется</strong> (<code>tools/gen_screens.py</code>). Экраны игры и имена тэгов кнопок</td></tr><tr><td><code>01_state.lua</code></td><td><code>state</code>, <code>G</code> — чтение/запись любой переменной игры по пути</td></tr><tr><td><code>10_profile.lua</code></td><td><code>profile</code> — профиль игрока (звук, управление, язык)</td></tr><tr><td><code>11_options.lua</code></td><td><code>options</code> — опции движка (графика)</td></tr><tr><td><code>12_saves.lua</code></td><td><code>saves</code> — сохранения и повторы</td></tr><tr><td><code>13_players.lua</code></td><td><code>players</code> — участники партии</td></tr><tr><td><code>14_map.lua</code></td><td><code>map</code> — карта и настройки партии</td></tr><tr><td><code>15_screens.lua</code></td><td><code>screens</code> — экраны по именам: открыть, нажать кнопку, перехватить кнопку, заменить экран</td></tr><tr><td><code>17_balance.lua</code></td><td><code>balance</code> — параметры типов юнитов/зданий: читать и менять посреди партии</td></tr><tr><td><code>18_buildings.lua</code></td><td><code>buildings</code> — здания: что строят, улучшения, очередь, команды игрока, правка логики</td></tr><tr><td><code>19_units.lua</code></td><td><code>units</code> — выделение, состояние и приказы юнитов; события <code>unit.order</code> / <code>player.order</code></td></tr><tr><td><code>20_objects.lua</code></td><td><code>objects</code> — быстрое чтение юнитов и зданий из памяти (без Pascal), обход всех объектов</td></tr><tr><td><code>90_call.lua</code></td><td><code>api_call</code> — вход для страниц (<code>game.api</code> в JS)</td></tr></tbody></table></div>
+<p>Справочник по всем переменным и полям игры — <code>GAME_STATE.md</code>, по экранам и кнопкам — <code>GAME_SCREENS.md</code>.</p>
+<h2 id="как-пользоваться" data-t="Как пользоваться">Как пользоваться<a class="h-anchor" href="#как-пользоваться">#</a></h2>
+<p>Из Lua мода:</p>
+<pre><code data-lang="lua">local volume = profile.get("sndmaster")
+for _, p in ipairs(players.list()) do log.info(p.name, p.team) end
+local gen = map.settings().gen</code></pre>
+<p>Из страницы (HTML в папке мода):</p>
+<pre><code data-lang="js">const list = await game.api('saves.list');          // [{ name, date }, ...]
+await game.api('profile.set', 'sndmaster', 0.5);    // любые аргументы, ответ — объект
+const slot = await game.api('state.read', 'gMap.players[0]');</code></pre>
+<p><code>game.api('a.b', x, y)</code> вызывает в игре функцию <code>a.b(x, y)</code> и возвращает результат через JSON.</p>
+<h2 id="чтение-и-запись-переменных-игры" data-t="Чтение и запись переменных игры">Чтение и запись переменных игры<a class="h-anchor" href="#чтение-и-запись-переменных-игры">#</a></h2>
+<p><code>state</code> знает тип каждого поля из схемы и сам выбирает, как его читать:</p>
+<pre><code data-lang="lua">state.get("gProfile.sndmaster")        -- 0.75 (дробное)
+state.get("gMap.players[2].name")      -- "Cossack" (строка)
+state.read("gMap.players[2]")          -- вся запись таблицей, ОДНИМ вызовом скрипта
+state.read("gMap.settings", 2)         -- с вложенными записями на 2 уровня
+state.list("gMap.players")             -- все элементы массива
+state.set("gProfile.sndmaster", 0.5)   -- запись
+
+G.gMap.players[2].team                 -- то же через точку
+G.gProfile.sndmaster = 0.5</code></pre>
+<p>Правила, которые важно знать:</p>
+<ul><li><strong>Читать можно отовсюду, писать — только серверу.</strong> На клиенте <code>state.set</code> бросит понятную ошибку. Страницы работают с правами консоли, им писать можно.</li><li><strong>Для записей используйте <code>state.read</code>, а не много <code>state.get</code>.</strong> Каждый <code>get</code> — отдельный вызов скрипта игры; <code>read</code> собирает всю запись в одну строку за один вызов.</li><li><strong>Ошибки называют, что не так.</strong> Опечатка в поле — <code>state: 'gProfile.x': no field 'x'</code>, а не падение.</li></ul>
+<h2 id="как-добавить-модуль" data-t="Как добавить модуль">Как добавить модуль<a class="h-anchor" href="#как-добавить-модуль">#</a></h2>
+<ol><li>Найти, как это делает сама игра: экраны — <code>data/gui/menu.inc/*.inc</code>, библиотека — <code>data/scripts/lib/*.script</code>, нативы — <code>GAME_API.md</code>.</li><li>Если данные лежат в глобальной переменной — брать их через <code>state</code> (типы уже известны). Если через натив — через <code>native.&lt;Имя&gt;</code>. Проверить, что натив существует: <code>grep "function &lt;Имя&gt;(" "Modloader For Cossacks 3/core/NativesTable.inc"</code>.</li><li>Создать <code>api/NN_имя.lua</code> с глобальной таблицей и шапкой-комментарием с примерами.</li><li>Дописать проверки в <code>tools/api_test/run.lua</code> и, если нужно, подставные данные в <code>tools/api_test/fake_game.lua</code>.</li><li>Прогнать тесты, скопировать папку в игру, <code>.lua reload</code>.</li></ol>
+<p>Образец модуля — <code>12_saves.lua</code>: он короткий и показывает оба приёма.</p>
+<h2 id="проверка-без-игры" data-t="Проверка без игры">Проверка без игры<a class="h-anchor" href="#проверка-без-игры">#</a></h2>
+<pre><code data-lang="bash">lua tools/api_test/run.lua</code></pre>
+<p>Подставная игра (<code>fake_game.lua</code>) понимает те же вызовы, что модлоадер (<code>game.eval*</code>, <code>game.exec</code>, нужные нативы), и держит состояние в обычной таблице. Интерпретатор Lua собирается скриптом <code>tools/api_test/build_lua.ps1</code> из исходников в <code>external/lua</code>.</p>
+<h2 id="когда-игру-обновили" data-t="Когда игру обновили">Когда игру обновили<a class="h-anchor" href="#когда-игру-обновили">#</a></h2>
+<pre><code data-lang="bash">python tools/gen_game_api.py "C:/Program Files (x86)/Steam/steamapps/common/Cossacks 3"</code></pre>
+<p>Пересоздаёт <code>00_schema.lua</code> и <code>GAME_STATE.md</code> из скриптов игры.</p>
+<h2 id="чего-пока-нет" data-t="Чего пока нет">Чего пока нет<a class="h-anchor" href="#чего-пока-нет">#</a></h2>
+<ul><li><strong>Кампании</strong> — список и описания живут в отдельных файлах кампаний, не в глобальных переменных; нужен разбор <code>data/gui/menu.inc/showcampaign.inc</code>.</li><li><strong>Лобби и комнаты</strong> — сетевые данные, обновляются по событиям; нужен разбор <code>showinternetshell.inc</code> и событий <code>OnLanEvent</code>.</li><li><strong>Юниты</strong> — статы типов есть (<code>balance</code>), события жизни — <code>unit.spawn/death/destroy</code>, <code>building.*</code>. Нет: урона, приказов, данных конкретного юнита (TObj).</li></ul></article><div class="meta" style="margin-top:36px"><a class="badge" href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/api/README.md">РЕДАКТИРОВАТЬ НА GITHUB ↗</a></div><div class="pn"><a href="guide.html"><small>← НАЗАД</small>Быстрый старт</a><a class="next" href="core-rules.html"><small>ДАЛЬШЕ →</small>Главные правила (читать первыми)</a></div></main><aside class="toc" id="toc"><b>НА СТРАНИЦЕ</b></aside></div>
+  <footer class="footer">
+    <div><a class="logo" href="index.html" style="display:inline-block">COSSACKS 3 MODLOADER</a><br><br>Документация API<br>Собрана из папки <code>api/</code> репозитория</div>
+    <div>ДОКУМЕНТЫ<br><a href="guide.html">Быстрый старт</a><a href="core-rules.html">Справочник</a><a href="api-overview.html">Обзор api/</a></div>
+    <div>ДАННЫЕ<br><a href="ref-state.html">Переменные игры</a><a href="ref-screens.html">Экраны</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/GAME_API.md">Нативы ↗</a></div>
+    <div>ПРОЕКТ<br><a href="https://github.com/OverlordDev/cossacks3-modloader">GitHub ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/issues">Issues ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/DOCUMENTATION.md">Устройство ↗</a></div>
+  </footer>
+</div>
+<script src="assets/search-index.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>

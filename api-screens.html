@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>screens — Cossacks 3 Modloader</title>
+<meta name="description" content="экраны игры и их кнопки по именам.">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/style.css">
+<script>try{var t=localStorage.getItem('cs3-theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+</head>
+<body>
+<div class="page">
+  <header class="site-header">
+    <div class="hl">
+      <a class="logo" href="index.html">COSSACKS 3 MODLOADER</a>
+      <nav class="nav"><a href="guide.html">ГАЙД</a><a href="core-rules.html">СПРАВОЧНИК</a><a href="core-log.html">LUA API</a><a href="api-schema.html" class="active">МОДУЛИ</a><a href="ref-state.html">ДАННЫЕ</a></nav>
+    </div>
+    <div class="ha">
+      <button class="iconbtn menu-btn" id="menu" type="button" aria-label="Меню">☰</button>
+      <div class="search-wrap"><input class="search" id="q" placeholder="Поиск по API…" autocomplete="off" aria-label="Поиск"><span class="kbd">/</span><div class="results" id="results"></div></div>
+      <a class="btn black sm" href="https://github.com/OverlordDev/cossacks3-modloader" target="_blank" rel="noopener">GITHUB →</a>
+      <button class="iconbtn" id="theme" type="button" aria-label="Тема">☾</button>
+    </div>
+  </header>
+  <div class="layout"><aside class="side"><div class="group"><span class="group-title">НАЧАЛО</span>
+<a href="index.html">Главная</a>
+<a href="guide.html">Быстрый старт</a>
+<a href="api-overview.html">Обзор api/</a>
+</div>
+<div class="group"><span class="group-title">СПРАВОЧНИК</span>
+<a href="core-rules.html">Главные правила (читать первыми)</a>
+<a href="core-structure.html">Структура мода</a>
+<a href="core-manifest.html">manifest.lua</a>
+<a href="core-sides.html">Что доступно на какой стороне</a>
+<a href="core-assets.html">Замена файлов</a>
+<a href="core-patches.html">Патчи скриптов игры</a>
+<a href="core-content.html">Новые нации и юниты</a>
+<a href="core-templates.html">Шаблоны</a>
+<a href="core-errors.html">Частые ошибки</a>
+</div>
+<div class="group"><span class="group-title">LUA API ДВИЖКА</span>
+<a href="core-log.html">log, mod, require, show</a>
+<a href="core-events.html">events</a>
+<a href="core-game.html">game</a>
+<a href="core-player.html">player, world</a>
+<a href="core-state.html">state и G</a>
+<a href="core-objects.html">objects и mem</a>
+<a href="core-units.html">units</a>
+<a href="core-buildings.html">buildings</a>
+<a href="core-balance.html">balance</a>
+<a href="core-misc.html">Прочие данные</a>
+<a href="core-net.html">net</a>
+<a href="core-input.html">input</a>
+<a href="core-web.html">web</a>
+<a href="core-ui.html">ui</a>
+<a href="core-screens.html">screens</a>
+<a href="core-gfx.html">gfx</a>
+<a href="core-savedata.html">savedata</a>
+<a href="core-native.html">native</a>
+</div>
+<div class="group"><span class="group-title">МОДУЛИ API</span>
+<a href="api-schema.html">schema</a>
+<a href="api-state.html">state</a>
+<a href="api-screens_data.html">screens_data</a>
+<a href="api-show.html">show</a>
+<a href="api-profile.html">profile</a>
+<a href="api-options.html">options</a>
+<a href="api-saves.html">saves</a>
+<a href="api-players.html">players</a>
+<a href="api-map.html">map</a>
+<a href="api-screens.html" class="active">screens</a>
+<a href="api-balance.html">balance</a>
+<a href="api-buildings.html">buildings</a>
+<a href="api-units.html">units</a>
+<a href="api-objects.html">objects</a>
+<a href="api-call.html">call</a>
+</div>
+<div class="group"><span class="group-title">ДАННЫЕ ИГРЫ</span>
+<a href="ref-state.html">Переменные и типы</a>
+<a href="ref-screens.html">Экраны и кнопки</a>
+<a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/GAME_API.md" target="_blank" rel="noopener">Нативы (GAME_API) ↗</a>
+</div></aside><main><article><h1>screens</h1>
+<p class="lead">экраны игры и их кнопки по именам.</p>
+<div class="meta"><span class="badge fill">api/15_screens.lua</span><span class="badge">8 функций</span><a class="badge" href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/api/15_screens.lua">GITHUB ↗</a></div>
+<h2 id="opisanie" data-t="Описание">Описание</h2>
+<p>Экран игры = два состояния GUI: Show&lt;Имя&gt; строит его, Event&lt;Имя&gt; обрабатывает нажатия. Кнопки различаются тэгом, имена тэгов взяты из скриптов игры (02_screens_data.lua, GAME_SCREENS.md).</p>
+<pre><code data-lang="lua">screens.list()                          --&gt; { "AIAssistant", "Campaign", "MainMenu", ... }
+screens.tags("MainMenu")                --&gt; { Campaign = 101, Settings = 104, Exit = 109, ... }
+screens.button("MainMenu", 104)         --&gt; "Settings"
+screens.open("Settings")                --  показать экран (как игра)
+screens.press("MainMenu", "Settings")   --  нажать кнопку экрана (как игрок)</code></pre>
+<p>Только в модах (клиент):</p>
+<pre><code data-lang="lua">screens.onButton("MainMenu", function(button, tag, element)
+    log.info("нажата", button)
+    -- return true  -- игра это нажатие НЕ обработает (заменили своим)
+end)
+screens.onAnyButton(function(screen, button, tag, element) ... end)   -- все экраны сразу
+screens.replace("Settings", function() web.open("settings") end)     -- вместо родного экрана</code></pre>
+<p>Замена экрана на свою страницу — одна строка screens.replace; кнопки страницы жмут родные обработчики через game.tag('EventMainMenu', 104) или game.api('screens.press', 'MainMenu', 'Settings').</p>
+<h2 id="funkcii" data-t="Функции">Функции</h2>
+<div class="tblwrap"><table class="fn"><thead><tr><th>ФУНКЦИЯ</th><th>ОПИСАНИЕ</th></tr></thead><tbody>
+<tr id="f-screens-list"><td><code>screens.list()</code></td><td>Возвращает: { "AIAssistant", "Campaign", "MainMenu", ... }<span class="ex"><code>screens.list()                          --&gt; { "AIAssistant", "Campaign", "MainMenu", ... }</code></span></td></tr>
+<tr id="f-screens-info"><td><code>screens.info(name)</code></td><td><span style="opacity:.55">—</span></td></tr>
+<tr id="f-screens-tags"><td><code>screens.tags(name)</code></td><td>Возвращает: { Campaign = 101, Settings = 104, Exit = 109, ... }<span class="ex"><code>screens.tags("MainMenu")                --&gt; { Campaign = 101, Settings = 104, Exit = 109, ... }</code></span></td></tr>
+<tr id="f-screens-button"><td><code>screens.button(name,<wbr> tag)</code></td><td>Имя кнопки по тэгу; у неизвестных — число строкой.<span class="ex"><code>screens.button("MainMenu", 104)         --&gt; "Settings"</code></span></td></tr>
+<tr id="f-screens-of"><td><code>screens.of(state)</code></td><td>Имя экрана по имени состояния: "EventMainMenu" / "ShowMainMenu" -&gt; "MainMenu".</td></tr>
+<tr id="f-screens-open"><td><code>screens.open(name)</code></td><td>показать экран (как игра)<span class="ex"><code>screens.open("Settings")                --  показать экран (как игра)</code></span></td></tr>
+<tr id="f-screens-press"><td><code>screens.press(name,<wbr> button)</code></td><td>нажать кнопку экрана (как игрок)<span class="ex"><code>screens.press("MainMenu", "Settings")   --  нажать кнопку экрана (как игрок)</code></span></td></tr>
+<tr id="f-screens-bind"><td><code>screens.bind(modUi)</code></td><td>Своя копия для мода: перехваты идут через ui мода и снимаются при его выгрузке. Зовёт модлоадер при создании окружения мода, самим вызывать не нужно.</td></tr>
+</tbody></table></div>
+<h2 id="istochnik" data-t="Исходник">Исходник</h2>
+<div class="acc"><div class="acc-head"><span>api/15_screens.lua — 120 строк</span><span>+</span></div><div class="acc-body"><pre><code data-lang="lua">-- screens — экраны игры и их кнопки по именам.
+--
+-- Экран игры = два состояния GUI: Show&lt;Имя&gt; строит его, Event&lt;Имя&gt; обрабатывает нажатия.
+-- Кнопки различаются тэгом, имена тэгов взяты из скриптов игры (02_screens_data.lua, GAME_SCREENS.md).
+--
+--   screens.list()                          --&gt; { "AIAssistant", "Campaign", "MainMenu", ... }
+--   screens.tags("MainMenu")                --&gt; { Campaign = 101, Settings = 104, Exit = 109, ... }
+--   screens.button("MainMenu", 104)         --&gt; "Settings"
+--   screens.open("Settings")                --  показать экран (как игра)
+--   screens.press("MainMenu", "Settings")   --  нажать кнопку экрана (как игрок)
+--
+-- Только в модах (клиент):
+--   screens.onButton("MainMenu", function(button, tag, element)
+--       log.info("нажата", button)
+--       -- return true  -- игра это нажатие НЕ обработает (заменили своим)
+--   end)
+--   screens.onAnyButton(function(screen, button, tag, element) ... end)   -- все экраны сразу
+--   screens.replace("Settings", function() web.open("settings") end)     -- вместо родного экрана
+--
+-- Замена экрана на свою страницу — одна строка screens.replace; кнопки страницы жмут
+-- родные обработчики через game.tag('EventMainMenu', 104) или game.api('screens.press', 'MainMenu', 'Settings').
+
+local DATA = GAME_SCREENS or error("screens: GAME_SCREENS is missing (api/02_screens_data.lua)")
+
+screens = {}
+
+local function info(name)
+    local s = DATA[name]
+    if not s then error("screens: unknown screen '" .. tostring(name) .. "' (see GAME_SCREENS.md)", 3) end
+    return s
+end
+
+local function tagOf(s, name, button)
+    if type(button) == "number" then return button end
+    local tag = s.tags[button]
+    if not tag then error("screens: screen '" .. name .. "' has no button '" .. tostring(button) .. "'", 3) end
+    return tag
+end
+
+function screens.list()
+    local out = {}
+    for name in pairs(DATA) do out[#out + 1] = name end
+    table.sort(out)
+    return out
+end
+
+function screens.info(name)
+    local s = info(name)
+    return { name = name, show = s.show, event = s.event, tags = s.tags }
+end
+
+function screens.tags(name) return info(name).tags end
+
+-- Имя кнопки по тэгу; у неизвестных — число строкой.
+function screens.button(name, tag)
+    for k, v in pairs(info(name).tags) do
+        if v == tag then return k end
+    end
+    return tostring(tag)
+end
+
+-- Имя экрана по имени состояния: "EventMainMenu" / "ShowMainMenu" -&gt; "MainMenu".
+function screens.of(state)
+    for name, s in pairs(DATA) do
+        if s.event == state or s.show == state then return name end
+    end
+end
+
+function screens.open(name)
+    local s = info(name)
+    if not s.show then error("screens.open: '" .. name .. "' has no Show state", 2) end
+    -- Со страницы (game.api) ui нет — там работают с правами сервера и зовут игру напрямую.
+    if ui then ui.exec(s.show) else game.exec("GUIExecuteState('" .. s.show .. "');") end
+end
+
+function screens.press(name, button)
+    local s = info(name)
+    if not s.event then error("screens.press: '" .. name .. "' has no Event state", 2) end
+    local tag = tagOf(s, name, button)
+    if ui then ui.sendTag(s.event, tag) else game.exec("_gui_SendTagToState('" .. s.event .. "', " .. tag .. ");") end
+end
+
+local function modOnly()
+    error("screens: onButton/onAnyButton/replace work only inside a mod (client.lua)", 3)
+end
+screens.onButton, screens.onAnyButton, screens.replace = modOnly, modOnly, modOnly
+
+-- Своя копия для мода: перехваты идут через ui мода и снимаются при его выгрузке.
+-- Зовёт модлоадер при создании окружения мода, самим вызывать не нужно.
+function screens.bind(modUi)
+    local own = setmetatable({}, { __index = screens })
+
+    function own.onButton(name, fn)
+        local s = info(name)
+        if not s.event then error("screens.onButton: '" .. name .. "' has no Event state", 2) end
+        modUi.hookState(s.event, function(element, press, tag)
+            if press ~= "c" then return end -- только щелчок: игра зовёт Event и на наведение
+            return fn(screens.button(name, tag), tag, element)
+        end)
+    end
+
+    function own.onAnyButton(fn)
+        for _, name in ipairs(screens.list()) do
+            if DATA[name].event then
+                own.onButton(name, function(button, tag, element)
+                    return fn(name, button, tag, element)
+                end)
+            end
+        end
+    end
+
+    function own.replace(name, fn)
+        local s = info(name)
+        if not s.show then error("screens.replace: '" .. name .. "' has no Show state", 2) end
+        modUi.screen(s.show, fn)
+    end
+
+    return own
+end
+</code></pre></div></div></article><div class="meta" style="margin-top:36px"><a class="badge" href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/api/15_screens.lua">РЕДАКТИРОВАТЬ НА GITHUB ↗</a></div><div class="pn"><a href="api-map.html"><small>← НАЗАД</small>map</a><a class="next" href="api-balance.html"><small>ДАЛЬШЕ →</small>balance</a></div></main><aside class="toc" id="toc"><b>НА СТРАНИЦЕ</b></aside></div>
+  <footer class="footer">
+    <div><a class="logo" href="index.html" style="display:inline-block">COSSACKS 3 MODLOADER</a><br><br>Документация API<br>Собрана из папки <code>api/</code> репозитория</div>
+    <div>ДОКУМЕНТЫ<br><a href="guide.html">Быстрый старт</a><a href="core-rules.html">Справочник</a><a href="api-overview.html">Обзор api/</a></div>
+    <div>ДАННЫЕ<br><a href="ref-state.html">Переменные игры</a><a href="ref-screens.html">Экраны</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/GAME_API.md">Нативы ↗</a></div>
+    <div>ПРОЕКТ<br><a href="https://github.com/OverlordDev/cossacks3-modloader">GitHub ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/issues">Issues ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/DOCUMENTATION.md">Устройство ↗</a></div>
+  </footer>
+</div>
+<script src="assets/search-index.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>

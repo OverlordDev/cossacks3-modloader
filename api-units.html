@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>units — Cossacks 3 Modloader</title>
+<meta name="description" content="юниты: выделение, состояние, очередь приказов.">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/style.css">
+<script>try{var t=localStorage.getItem('cs3-theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+</head>
+<body>
+<div class="page">
+  <header class="site-header">
+    <div class="hl">
+      <a class="logo" href="index.html">COSSACKS 3 MODLOADER</a>
+      <nav class="nav"><a href="guide.html">ГАЙД</a><a href="core-rules.html">СПРАВОЧНИК</a><a href="core-log.html">LUA API</a><a href="api-schema.html" class="active">МОДУЛИ</a><a href="ref-state.html">ДАННЫЕ</a></nav>
+    </div>
+    <div class="ha">
+      <button class="iconbtn menu-btn" id="menu" type="button" aria-label="Меню">☰</button>
+      <div class="search-wrap"><input class="search" id="q" placeholder="Поиск по API…" autocomplete="off" aria-label="Поиск"><span class="kbd">/</span><div class="results" id="results"></div></div>
+      <a class="btn black sm" href="https://github.com/OverlordDev/cossacks3-modloader" target="_blank" rel="noopener">GITHUB →</a>
+      <button class="iconbtn" id="theme" type="button" aria-label="Тема">☾</button>
+    </div>
+  </header>
+  <div class="layout"><aside class="side"><div class="group"><span class="group-title">НАЧАЛО</span>
+<a href="index.html">Главная</a>
+<a href="guide.html">Быстрый старт</a>
+<a href="api-overview.html">Обзор api/</a>
+</div>
+<div class="group"><span class="group-title">СПРАВОЧНИК</span>
+<a href="core-rules.html">Главные правила (читать первыми)</a>
+<a href="core-structure.html">Структура мода</a>
+<a href="core-manifest.html">manifest.lua</a>
+<a href="core-sides.html">Что доступно на какой стороне</a>
+<a href="core-assets.html">Замена файлов</a>
+<a href="core-patches.html">Патчи скриптов игры</a>
+<a href="core-content.html">Новые нации и юниты</a>
+<a href="core-templates.html">Шаблоны</a>
+<a href="core-errors.html">Частые ошибки</a>
+</div>
+<div class="group"><span class="group-title">LUA API ДВИЖКА</span>
+<a href="core-log.html">log, mod, require, show</a>
+<a href="core-events.html">events</a>
+<a href="core-game.html">game</a>
+<a href="core-player.html">player, world</a>
+<a href="core-state.html">state и G</a>
+<a href="core-objects.html">objects и mem</a>
+<a href="core-units.html">units</a>
+<a href="core-buildings.html">buildings</a>
+<a href="core-balance.html">balance</a>
+<a href="core-misc.html">Прочие данные</a>
+<a href="core-net.html">net</a>
+<a href="core-input.html">input</a>
+<a href="core-web.html">web</a>
+<a href="core-ui.html">ui</a>
+<a href="core-screens.html">screens</a>
+<a href="core-gfx.html">gfx</a>
+<a href="core-savedata.html">savedata</a>
+<a href="core-native.html">native</a>
+</div>
+<div class="group"><span class="group-title">МОДУЛИ API</span>
+<a href="api-schema.html">schema</a>
+<a href="api-state.html">state</a>
+<a href="api-screens_data.html">screens_data</a>
+<a href="api-show.html">show</a>
+<a href="api-profile.html">profile</a>
+<a href="api-options.html">options</a>
+<a href="api-saves.html">saves</a>
+<a href="api-players.html">players</a>
+<a href="api-map.html">map</a>
+<a href="api-screens.html">screens</a>
+<a href="api-balance.html">balance</a>
+<a href="api-buildings.html">buildings</a>
+<a href="api-units.html" class="active">units</a>
+<a href="api-objects.html">objects</a>
+<a href="api-call.html">call</a>
+</div>
+<div class="group"><span class="group-title">ДАННЫЕ ИГРЫ</span>
+<a href="ref-state.html">Переменные и типы</a>
+<a href="ref-screens.html">Экраны и кнопки</a>
+<a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/GAME_API.md" target="_blank" rel="noopener">Нативы (GAME_API) ↗</a>
+</div></aside><main><article><h1>units</h1>
+<p class="lead">юниты: выделение, состояние, очередь приказов.</p>
+<div class="meta"><span class="badge fill">api/19_units.lua</span><span class="badge">3 функций</span><a class="badge" href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/api/19_units.lua">GITHUB ↗</a></div>
+<h2 id="opisanie" data-t="Описание">Описание</h2>
+<pre><code data-lang="lua">units.selected()          --&gt; { handle, ... } — что выделил игрок (юниты и здания)
+units.info(handle)        --&gt; {handle, sid, player, hp, maxhp, x, z, dead} или nil
+units.orders(handle)      --&gt; { {type, target, x, z}, ... } — очередь приказов, [1] — текущий</code></pre>
+<p>type — имя из игры (_misc_GetUnitOrderTypeByIndex): move, attackobj, attackpoint, gainres, patrol, guard, build, repair, gotomine, produce, performupgrade ...</p>
+<h3>События приказов <small style="text-transform:none;letter-spacing:0;opacity:.7">(game.on / events.on)</small></h3>
+<pre><code data-lang="lua">events.on("player.order", function(event, order)
+    -- order = {kind, target, x, z, group}
+    --   kind: "move" | "attack" | "attackpoint" | "guard" | "build" | "enter" | "gather" | "patrol"
+    --   target — хендл цели (attack, guard, build, enter, gather), x/z — точка (move, attackpoint,
+    --   patrol), group — хендл группы (move: событие на каждую выделенную группу)
+    return true -- приказ не отдаётся
+end)
+
+events.on("unit.order", function(event, handle, type, target, x, z)
+    -- ЛЮБОЙ приказ любому юниту: игрока, ИИ, из сети, из скриптов (встроено в _unit_AddOrder)
+    -- type — как в units.orders: "move", "attackobj", "gainres", "build" ...
+    return true -- приказ не добавится. Отменять — только в shared-моде одинаково на всех машинах,
+end)           -- иначе партия разойдётся.</code></pre>
+<p>player.order приходит на машине игрока, который кликнул, до того как приказ ушёл в игру и в сеть: кто выполняет — units.selected().</p>
+<h2 id="funkcii" data-t="Функции">Функции</h2>
+<div class="tblwrap"><table class="fn"><thead><tr><th>ФУНКЦИЯ</th><th>ОПИСАНИЕ</th></tr></thead><tbody>
+<tr id="f-units-selected"><td><code>units.selected()</code></td><td>Возвращает: { handle, ... } — что выделил игрок (юниты и здания)<span class="ex"><code>units.selected()          --&gt; { handle, ... } — что выделил игрок (юниты и здания)</code></span></td></tr>
+<tr id="f-units-info"><td><code>units.info(handle)</code></td><td>Возвращает: {handle, sid, player, hp, maxhp, x, z, dead} или nil<span class="ex"><code>units.info(handle)        --&gt; {handle, sid, player, hp, maxhp, x, z, dead} или nil</code></span></td></tr>
+<tr id="f-units-orders"><td><code>units.orders(handle)</code></td><td>Возвращает: { {type, target, x, z}, ... } — очередь приказов, [1] — текущий<span class="ex"><code>units.orders(handle)      --&gt; { {type, target, x, z}, ... } — очередь приказов, [1] — текущий</code></span></td></tr>
+</tbody></table></div>
+<h2 id="istochnik" data-t="Исходник">Исходник</h2>
+<div class="acc"><div class="acc-head"><span>api/19_units.lua — 106 строк</span><span>+</span></div><div class="acc-body"><pre><code data-lang="lua">-- units — юниты: выделение, состояние, очередь приказов.
+--
+--   units.selected()          --&gt; { handle, ... } — что выделил игрок (юниты и здания)
+--   units.info(handle)        --&gt; {handle, sid, player, hp, maxhp, x, z, dead} или nil
+--   units.orders(handle)      --&gt; { {type, target, x, z}, ... } — очередь приказов, [1] — текущий
+--
+-- type — имя из игры (_misc_GetUnitOrderTypeByIndex): move, attackobj, attackpoint, gainres, patrol,
+-- guard, build, repair, gotomine, produce, performupgrade ...
+--
+-- СОБЫТИЯ ПРИКАЗОВ (game.on / events.on)
+--   events.on("player.order", function(event, order)
+--       -- order = {kind, target, x, z, group}
+--       --   kind: "move" | "attack" | "attackpoint" | "guard" | "build" | "enter" | "gather" | "patrol"
+--       --   target — хендл цели (attack, guard, build, enter, gather), x/z — точка (move, attackpoint,
+--       --   patrol), group — хендл группы (move: событие на каждую выделенную группу)
+--       return true -- приказ не отдаётся
+--   end)
+--
+--   events.on("unit.order", function(event, handle, type, target, x, z)
+--       -- ЛЮБОЙ приказ любому юниту: игрока, ИИ, из сети, из скриптов (встроено в _unit_AddOrder)
+--       -- type — как в units.orders: "move", "attackobj", "gainres", "build" ...
+--       return true -- приказ не добавится. Отменять — только в shared-моде одинаково на всех машинах,
+--   end)           -- иначе партия разойдётся.
+--
+-- player.order приходит на машине игрока, который кликнул, до того как приказ ушёл в игру и в сеть:
+-- кто выполняет — units.selected().
+
+units = {}
+
+local F, R = "\1", "\2"
+
+local function run(code)
+    if not game.exec then error("units: only server/shared scripts and pages can do this", 3) end
+    return game.exec(code) or ""
+end
+
+local function split(text, sep)
+    local out = {}
+    if text == "" then return out end
+    for piece in (text .. sep):gmatch("(.-)" .. sep) do out[#out + 1] = piece end
+    return out
+end
+
+local function num(v) return tonumber((tostring(v or ""):gsub(",", "."))) or 0 end
+
+local function checkHandle(h)
+    h = math.tointeger(tonumber(h))
+    if not h then error("units: handle must be a number", 3) end
+    return h
+end
+
+function units.selected()
+    local out = {}
+    for _, v in ipairs(split(run([[
+var s : String;
+var i : Integer;
+for i := 0 to gSelectedObjects.GetCount-1 do s := s + IntToStr(gSelectedObjects.Get(i)) + #1;
+ML_RET(s);]]), F)) do
+        if v ~= "" then out[#out + 1] = math.tointeger(tonumber(v)) end
+    end
+    return out
+end
+
+function units.info(handle)
+    local h = checkHandle(handle)
+    local f = split(run(string.format([[
+var h : Integer = %d;
+var pobj : Pointer = _unit_GetTObj(h);
+if pobj = nil then begin ML_RET(''); exit; end;
+var cid : Integer = TObj(pobj).cid;
+var id : Integer = TObj(pobj).id;
+var pl : Integer = TObj(pobj).pl;
+ML_RET(gObjProp[cid][id].sid + #1 + IntToStr(pl) + #1 + IntToStr(TObj(pobj).hp) + #1 +
+       IntToStr(gPlayer[pl].objbase[cid][id].maxhp) + #1 + FloatToStr(GetGameObjectPositionXByHandle(h)) + #1 +
+       FloatToStr(GetGameObjectPositionZByHandle(h)) + #1 + BoolToStr(TObj(pobj).bdead));]], h)), F)
+    if #f &lt; 7 then return nil end
+    return { handle = h, sid = f[1], player = num(f[2]), hp = num(f[3]), maxhp = num(f[4]),
+             x = num(f[5]), z = num(f[6]), dead = f[7] == "True" }
+end
+
+function units.orders(handle)
+    local h = checkHandle(handle)
+    local out = {}
+    for _, rec in ipairs(split(run(string.format([[
+var h : Integer = %d;
+var pobj : Pointer = _unit_GetTObj(h);
+if pobj = nil then begin ML_RET(''); exit; end;
+var s, t : String;
+var i : Integer;
+for i := 0 to 11 do
+if TObj(pobj).orders[i].itype &lt;&gt; gc_obj_order_type_none then
+begin
+   t := '';
+   _misc_GetUnitOrderTypeByIndex(TObj(pobj).orders[i].itype, t);
+   s := s + t + #1 + IntToStr(TObj(pobj).orders[i].info.trg) + #1 + FloatToStr(TObj(pobj).orders[i].info.x) + #1 +
+        FloatToStr(TObj(pobj).orders[i].info.y) + #2;
+end;
+ML_RET(s);]], h)), R)) do
+        local f = split(rec, F)
+        if #f &gt;= 4 then
+            out[#out + 1] = { type = f[1], target = math.tointeger(num(f[2])), x = num(f[3]), z = num(f[4]) }
+        end
+    end
+    return out
+end
+</code></pre></div></div></article><div class="meta" style="margin-top:36px"><a class="badge" href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/api/19_units.lua">РЕДАКТИРОВАТЬ НА GITHUB ↗</a></div><div class="pn"><a href="api-buildings.html"><small>← НАЗАД</small>buildings</a><a class="next" href="api-objects.html"><small>ДАЛЬШЕ →</small>objects</a></div></main><aside class="toc" id="toc"><b>НА СТРАНИЦЕ</b></aside></div>
+  <footer class="footer">
+    <div><a class="logo" href="index.html" style="display:inline-block">COSSACKS 3 MODLOADER</a><br><br>Документация API<br>Собрана из папки <code>api/</code> репозитория</div>
+    <div>ДОКУМЕНТЫ<br><a href="guide.html">Быстрый старт</a><a href="core-rules.html">Справочник</a><a href="api-overview.html">Обзор api/</a></div>
+    <div>ДАННЫЕ<br><a href="ref-state.html">Переменные игры</a><a href="ref-screens.html">Экраны</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/GAME_API.md">Нативы ↗</a></div>
+    <div>ПРОЕКТ<br><a href="https://github.com/OverlordDev/cossacks3-modloader">GitHub ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/issues">Issues ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/DOCUMENTATION.md">Устройство ↗</a></div>
+  </footer>
+</div>
+<script src="assets/search-index.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>

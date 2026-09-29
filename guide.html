@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Быстрый старт — Cossacks 3 Modloader</title>
+<meta name="description" content="Как сделать первый мод: структура, manifest.lua, события, главные функции.">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/style.css">
+<script>try{var t=localStorage.getItem('cs3-theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+</head>
+<body>
+<div class="page">
+  <header class="site-header">
+    <div class="hl">
+      <a class="logo" href="index.html">COSSACKS 3 MODLOADER</a>
+      <nav class="nav"><a href="guide.html" class="active">ГАЙД</a><a href="core-rules.html">СПРАВОЧНИК</a><a href="core-log.html">LUA API</a><a href="api-schema.html">МОДУЛИ</a><a href="ref-state.html">ДАННЫЕ</a></nav>
+    </div>
+    <div class="ha">
+      <button class="iconbtn menu-btn" id="menu" type="button" aria-label="Меню">☰</button>
+      <div class="search-wrap"><input class="search" id="q" placeholder="Поиск по API…" autocomplete="off" aria-label="Поиск"><span class="kbd">/</span><div class="results" id="results"></div></div>
+      <a class="btn black sm" href="https://github.com/OverlordDev/cossacks3-modloader" target="_blank" rel="noopener">GITHUB →</a>
+      <button class="iconbtn" id="theme" type="button" aria-label="Тема">☾</button>
+    </div>
+  </header>
+  <div class="layout"><aside class="side"><div class="group"><span class="group-title">НАЧАЛО</span>
+<a href="index.html">Главная</a>
+<a href="guide.html" class="active">Быстрый старт</a>
+<a href="api-overview.html">Обзор api/</a>
+</div>
+<div class="group"><span class="group-title">СПРАВОЧНИК</span>
+<a href="core-rules.html">Главные правила (читать первыми)</a>
+<a href="core-structure.html">Структура мода</a>
+<a href="core-manifest.html">manifest.lua</a>
+<a href="core-sides.html">Что доступно на какой стороне</a>
+<a href="core-assets.html">Замена файлов</a>
+<a href="core-patches.html">Патчи скриптов игры</a>
+<a href="core-content.html">Новые нации и юниты</a>
+<a href="core-templates.html">Шаблоны</a>
+<a href="core-errors.html">Частые ошибки</a>
+</div>
+<div class="group"><span class="group-title">LUA API ДВИЖКА</span>
+<a href="core-log.html">log, mod, require, show</a>
+<a href="core-events.html">events</a>
+<a href="core-game.html">game</a>
+<a href="core-player.html">player, world</a>
+<a href="core-state.html">state и G</a>
+<a href="core-objects.html">objects и mem</a>
+<a href="core-units.html">units</a>
+<a href="core-buildings.html">buildings</a>
+<a href="core-balance.html">balance</a>
+<a href="core-misc.html">Прочие данные</a>
+<a href="core-net.html">net</a>
+<a href="core-input.html">input</a>
+<a href="core-web.html">web</a>
+<a href="core-ui.html">ui</a>
+<a href="core-screens.html">screens</a>
+<a href="core-gfx.html">gfx</a>
+<a href="core-savedata.html">savedata</a>
+<a href="core-native.html">native</a>
+</div>
+<div class="group"><span class="group-title">МОДУЛИ API</span>
+<a href="api-schema.html">schema</a>
+<a href="api-state.html">state</a>
+<a href="api-screens_data.html">screens_data</a>
+<a href="api-show.html">show</a>
+<a href="api-profile.html">profile</a>
+<a href="api-options.html">options</a>
+<a href="api-saves.html">saves</a>
+<a href="api-players.html">players</a>
+<a href="api-map.html">map</a>
+<a href="api-screens.html">screens</a>
+<a href="api-balance.html">balance</a>
+<a href="api-buildings.html">buildings</a>
+<a href="api-units.html">units</a>
+<a href="api-objects.html">objects</a>
+<a href="api-call.html">call</a>
+</div>
+<div class="group"><span class="group-title">ДАННЫЕ ИГРЫ</span>
+<a href="ref-state.html">Переменные и типы</a>
+<a href="ref-screens.html">Экраны и кнопки</a>
+<a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/GAME_API.md" target="_blank" rel="noopener">Нативы (GAME_API) ↗</a>
+</div></aside><main><article><h1>Как делать моды для Cossacks 3 Modloader</h1>
+<p>Короткое руководство для команды. Полная документация — <code>DOCUMENTATION.md</code>, справочник API для нейросети — <code>AI_MODDING_REFERENCE.md</code>. Подробности по функциям — <code>api/README.md</code> и комментарии в начале каждого <code>api/*.lua</code>; переменные и типы игры — <code>GAME_STATE.md</code>; экраны и кнопки — <code>GAME_SCREENS.md</code>; нативные функции движка — <code>GAME_API.md</code>.</p>
+<h2 id="1-где-лежит-мод" data-t="1. Где лежит мод">1. Где лежит мод<a class="h-anchor" href="#1-где-лежит-мод">#</a></h2>
+<pre><code data-lang="lua">&lt;игра&gt;/modloader/mods/&lt;папка мода&gt;/
+    manifest.lua      обязательно — паспорт мода
+    client.lua        скрипт интерфейса (по желанию)
+    server.lua        скрипт правил (по желанию) — или shared.lua
+    web/              HTML-страницы (CEF): меню, HUD
+    assets/           замена файлов игры (текстуры, шейдеры, конфиги, скрипты целиком)
+    patches/          правки скриптов игры по кусочкам (*.patch)</code></pre>
+<p>Мод может быть только из данных — без Lua, с одними <code>assets/</code> или <code>patches/</code>.</p>
+<h2 id="2-manifestlua" data-t="2. manifest.lua">2. manifest.lua<a class="h-anchor" href="#2-manifestlua">#</a></h2>
+<pre><code data-lang="lua">return {
+    id = "my_mod",               -- латиница, цифры, _
+    name = "My Mod",
+    version = "1.0.0",
+    author = "...",
+    description = "...",
+    enabled = true,              -- false — лежит, но не грузится (переключается и в меню Insert)
+
+    client = "client.lua",       -- у каждого игрока: интерфейс, клавиши, чтение состояния
+    server = "server.lua",       -- только там, где решается игра (одиночка, хост)
+    -- shared = "shared.lua",    -- вместо server: выполняется у ВСЕХ одинаково (для правок мира)
+
+    files = { "utils.lua" },     -- модули для require("utils")
+
+    multiplayer = "required",    -- "required" — в сети должен быть у всех, "optional" — только интерфейс
+    priority = 0,                -- порядок: больше — грузится позже и перекрывает других (файлы, патчи)
+    requires = { "base_mod" },   -- без этих модов не загрузится (и грузится после них)
+}</code></pre>
+<p><strong>Какую сторону выбрать.</strong> Интерфейс и клавиши — <code>client</code>. Решения, которые принимает хост (дать ресурсы, наказать) — <code>server</code>. Всё, что меняет мир одинаково на всех машинах (баланс, статы, логика зданий) — <code>shared</code>: иначе в сети партия разойдётся.</p>
+<h2 id="3-события" data-t="3. События">3. События<a class="h-anchor" href="#3-события">#</a></h2>
+<pre><code data-lang="lua">events.on("unit.death", function(event, handle, basename) ... end)</code></pre>
+<div class="tblwrap"><table><thead><tr><th>событие</th><th>аргументы после имени</th><th>когда</th></tr></thead><tbody><tr><td><code>game.menu</code></td><td>—</td><td>главное меню</td></tr><tr><td><code>game.prepare</code></td><td>—</td><td>начало создания партии (настройки карты ещё можно менять)</td></tr><tr><td><code>game.start</code></td><td>—</td><td>партия загрузилась</td></tr><tr><td><code>game.tick</code></td><td>—</td><td>каждый такт партии</td></tr><tr><td><code>game.end</code></td><td>—</td><td>выход из партии</td></tr><tr><td><code>unit.spawn</code> / <code>unit.death</code> / <code>unit.destroy</code></td><td>handle, basename</td><td>юнит появился / погиб / исчез</td></tr><tr><td><code>building.spawn</code> / <code>.death</code> / <code>.destroy</code></td><td>handle, basename</td><td>то же для зданий</td></tr><tr><td><code>unit.damage</code></td><td>attacker, target, damage</td><td>любой урон (ближний бой, выстрел, взрыв, по площади)</td></tr><tr><td><code>unit.order</code></td><td>handle, type, target, x, z</td><td>любой приказ любому юниту (игрок, ИИ, сеть). <code>return true</code> — отменить</td></tr><tr><td><code>player.order</code></td><td>order = {kind, target, x, z, group}</td><td>игрок кликнул приказ. <code>return true</code> — отменить</td></tr><tr><td><code>net.connect</code> / <code>net.disconnect</code></td><td>payload</td><td>игрок в комнате</td></tr><tr><td><code>*</code></td><td>имя события, ...</td><td>все события подряд (отладка)</td></tr></tbody></table></div>
+<p>Отмена <code>unit.order</code> в сети — только в <code>shared</code>-моде одинаково на всех машинах. Проверить, что события работают, — мод <code>event_test</code> (F8 — отчёт).</p>
+<h2 id="4-главные-функции" data-t="4. Главные функции">4. Главные функции<a class="h-anchor" href="#4-главные-функции">#</a></h2>
+<div class="tblwrap"><table><thead><tr><th>что</th><th>как</th></tr></thead><tbody><tr><td>лог</td><td><code>log.info(...)</code>, <code>log.warn</code>, <code>log.error</code></td></tr><tr><td>клавиши</td><td><code>input.bind("F6", fn)</code>, <code>"Ctrl+LMB"</code></td></tr><tr><td>код игры</td><td><code>game.exec("pascal-код")</code> (server/shared), <code>game.eval("выражение")</code></td></tr><tr><td>переменные игры</td><td><code>state.read("gMap.players[0]")</code>, <code>state.set(путь, значение)</code></td></tr><tr><td>юниты</td><td><code>units.selected()</code>, <code>units.info(h)</code>, <code>units.orders(h)</code></td></tr><tr><td>быстро, тысячи объектов</td><td><code>objects.list()</code>, <code>objects.read(h)</code>, <code>objects.get(h, "orders[0].info.x")</code> — прямо из памяти</td></tr><tr><td>здания</td><td><code>buildings.info(h)</code>, <code>buildings.produce(h, sid, n)</code>, <code>buildings.build(sid, x, z)</code></td></tr><tr><td>баланс</td><td><code>balance.setHP("musketeer18", 200)</code>, <code>balance.setDamage(sid, урон)</code>, <code>balance.set(sid, поле, значение)</code></td></tr><tr><td>экраны</td><td><code>screens.open(имя)</code>, <code>screens.press(имя, кнопка)</code>, <code>ui.screen("MainMenu", fn)</code></td></tr><tr><td>страницы</td><td><code>web.open("web/menu.html")</code>, <code>web.passthrough(true)</code> (HUD), в JS — <code>game.api("buildings.info", h)</code></td></tr><tr><td>сеть</td><td><code>net.send("имя", данные)</code>, <code>net.on("имя", fn)</code>, <code>net.broadcast(...)</code></td></tr><tr><td>натив движка</td><td><code>native.GetCurrentMouseWorldCoord()</code> (список — <code>GAME_API.md</code>)</td></tr><tr><td>удобный вывод</td><td><code>show(таблица)</code> в консоли</td></tr><tr><td>данные в сейве</td><td><code>savedata.set(ключ, таблица)</code>, <code>savedata.get(ключ)</code>, событие <code>save.loaded</code></td></tr></tbody></table></div>
+<h2 id="5-замена-файлов-assets" data-t="5. Замена файлов — assets/">5. Замена файлов — assets/<a class="h-anchor" href="#5-замена-файлов-assets">#</a></h2>
+<p>Файл кладётся по тому же пути, что в игре:</p>
+<pre><code data-lang="lua">mods/my_mod/assets/data/shaders/tone/tone.frag   -&gt;  вместо  &lt;игра&gt;/data/shaders/tone/tone.frag</code></pre>
+<p>Работает для всего, что движок читает с диска: скрипты, текстуры, модели, шейдеры, конфиги. Файлы читаются на старте игры — после правки перезапусти игру (через Launcher). Если два мода заменяют один файл, побеждает мод с большим <code>priority</code> (при равном — позже по имени папки). Новые файлы, которых нет в игре, класть можно, но если игра сама перебирает папку (списки карт и т.п.), она их пока не увидит.</p>
+<h2 id="6-патчи-скриптов-patches" data-t="6. Патчи скриптов — patches/">6. Патчи скриптов — patches/<a class="h-anchor" href="#6-патчи-скриптов-patches">#</a></h2>
+<p>Замена файла целиком ломается при обновлении игры и конфликтует с другими модами. Патч правит только нужное место:</p>
+<pre><code data-lang="lua">mods/my_mod/patches/data/scripts/lib/unit.script.patch</code></pre>
+<pre><code data-lang="lua">@@ строки с @@ — комментарии
+
+@replace _unit_OrderMove          заменить функцию целиком (объявление ... end;)
+function _unit_OrderMove(...) : Pointer;
+begin
+   ...
+end;
+
+@begin _unit_AddOrder             вставить в начало функции (сразу после begin)
+@end _unit_AddOrder               вставить в конец (перед end;)
+@before _unit_AddOrder            вставить перед функцией — так добавляют новые функции
+@after _unit_AddOrder             вставить после функции
+@append                           в конец файла
+
+@find                             найти текст (точно, с отступами)...
+            var damage : Integer = indamage;
+@with                             ...и заменить (все вхождения)
+            var damage : Integer = indamage * 2;</code></pre>
+<ul><li>Патчей к одному файлу может быть много (от разных модов) — накладываются по порядку модов.</li><li>Если блок не нашёл место — в лог <code>[patch] ... block skipped</code>, остальные блоки работают.</li><li>Готовый файл лежит в <code>modloader/cache/&lt;путь&gt;</code> — смотри его, если что-то не компилируется.</li><li>Кодировка патча — UTF-8 или ANSI, русские комментарии можно.</li><li>Пример — <code>examples/mods/patch_example</code> (урон ×2).</li><li>Патч меняет правила — ставь <code>multiplayer = "required"</code>.</li></ul>
+<h2 id="6а-новые-нации-и-типы-юнитов-contentlua" data-t="6а. Новые нации и типы юнитов — content.lua">6а. Новые нации и типы юнитов — content.lua<a class="h-anchor" href="#6а-новые-нации-и-типы-юнитов-contentlua">#</a></h2>
+<p>Вместо ручных патчей — описание в <code>mods/&lt;мод&gt;/content.lua</code>; модлоадер сам правит скрипты, списки объектов, <code>.prop</code>, иконки и названия. Пример — <code>examples/mods/content_example</code>.</p>
+<pre><code data-lang="lua">nation {
+    sid = "zap",            -- 3 латинские буквы, новый
+    from = "ukr",           -- шаблон: юниты, здания, улучшения, ИИ — как у него
+    name = { ru = "Запорожская Сечь", en = "Zaporozhian Sich" },
+    remove = { "jannisary" },      -- юниты шаблона, которых у нации нет (не нанимаются, ИИ не заказывает)
+    resources = { gold = 500 },    -- прибавка к стартовым ресурсам (food wood stone gold iron coal)
+}
+
+unit {
+    sid = "serdiukvet",     -- новый sid
+    from = "serdiuk",       -- родитель: модель, анимации, иконка, характеристики, где нанимают
+    nations = { "ukr", "zap" },
+    cell = { 1, 1 },        -- клетка в панели найма (иначе — как у родителя)
+    base = { maxhp = 150, ["weapon[1].damage"] = 20 },   -- поля TObjBase
+    prop = { vision = 900 },                             -- поля TObjProp
+    name = { ru = "Сердюк-ветеран", en = "Veteran Serdiuk" },
+    -- actor = "мой_актёр", material = "мой_материал", animations = "serdiuk", icon = "icons.unit.serdiuk"
+}</code></pre>
+<ul><li>Шаблоном годится нация со зданиями: tat и lit в игре пустые.</li><li>Особые режимы старта (армия, пушки) работают для новой нации как для шаблона.</li><li>Нация получает номер 24, 25... (в игре их 24). Здания нации — копии зданий шаблона под своим sid (<code>zapcen</code>, <code>zapbar</code>...). Всё, что в скриптах игры проверяет нацию шаблона (<code>if (ukr)</code>), срабатывает и для новой. Отличия задаются патчами (<code>if (csid='zap')</code>) или новыми юнитами.</li><li>Новый юнит считается как родитель (все особенности родителя в <code>_unit_InitBase</code>), потом — <code>base</code>/<code>prop</code>. Нанимается там же, где родитель. Не наследуется то, что игра делает по имени родителя вне <code>_unit_InitBase</code> (офицерские построения, списки ИИ): это — патчами.</li><li>Названия (<code>name</code>, <code>description</code>) — по языку игры (<code>ru</code>, <code>uk</code>, <code>en</code>...); без них — название родителя.</li><li>Своя карта: <code>battle { sid = "poltava", from = "battle1", map = "maps/poltava.map", name = {...} }</code> — появится в «Исторических сражениях» (позиции игроков — от шаблона). Игра не сканирует папки с картами: список сражений — <code>game/var/battles.cfg</code>, его модлоадер и дополняет.</li><li><code>.content</code> в консоли — что описано; <code>[content]</code> в логе — что построено.</li><li>Меняет правила игры → <code>multiplayer = "required"</code>. Сохранения с новой нацией не открываются без мода.</li></ul>
+<h2 id="7-сеть" data-t="7. Сеть">7. Сеть<a class="h-anchor" href="#7-сеть">#</a></h2>
+<ul><li>Хост с модлоадером проверяет у входящих игроков моды <code>multiplayer = "required"</code> (у которых есть server/shared часть, assets или patches) и кикает тех, у кого их нет или они другие.</li><li>Клиентские моды (<code>optional</code>) не проверяются.</li><li>Встроенные правки модлоадера не должны менять контрольную сумму лобби (для правок библиотек ещё проверяется командой <code>.checksum</code>) — с модлоадером можно играть онлайн. Моды с патчами и заменой скриптов — меняют: играть можно только с теми, у кого они тоже стоят.</li></ul>
+<h2 id="8-отладка" data-t="8. Отладка">8. Отладка<a class="h-anchor" href="#8-отладка">#</a></h2>
+<ul><li><code>modloader/dev.txt</code> (пустой файл) — подробный лог и инструменты разработчика.</li><li>Лог всегда пишется в <code>modloader/modloader.log</code>; падения — <code>modloader/crashes/</code>.</li><li>F12 — DevTools страницы, страницы перезагружаются сами при сохранении файла (dev).</li><li>Консоль модлоадера (окно рядом с игрой): строка — код Pascal игры, <code>=</code> в начале — Lua (<code>=show(units.selected())</code>), <code>?</code> — вывести выражение, <code>/</code> — команда чата игры. Команды: <code>.help</code>, <code>.mods</code>, <code>.events</code>, <code>.assets</code> (замены и патчи), <code>.checksum</code>, <code>.modcheck</code>, <code>.find слово</code>, <code>.lua reload</code> — перезагрузить Lua-моды без перезапуска игры.</li><li>Мод <code>dev_tools</code>: ЛКМ — координаты точки, лог приказов.</li></ul></article><div class="meta" style="margin-top:36px"><a class="badge" href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/MODDING.md">РЕДАКТИРОВАТЬ НА GITHUB ↗</a></div><div class="pn"><a href="index.html"><small>← НАЗАД</small>Документация API</a><a class="next" href="api-overview.html"><small>ДАЛЬШЕ →</small>Обзор api</a></div></main><aside class="toc" id="toc"><b>НА СТРАНИЦЕ</b></aside></div>
+  <footer class="footer">
+    <div><a class="logo" href="index.html" style="display:inline-block">COSSACKS 3 MODLOADER</a><br><br>Документация API<br>Собрана из папки <code>api/</code> репозитория</div>
+    <div>ДОКУМЕНТЫ<br><a href="guide.html">Быстрый старт</a><a href="core-rules.html">Справочник</a><a href="api-overview.html">Обзор api/</a></div>
+    <div>ДАННЫЕ<br><a href="ref-state.html">Переменные игры</a><a href="ref-screens.html">Экраны</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/GAME_API.md">Нативы ↗</a></div>
+    <div>ПРОЕКТ<br><a href="https://github.com/OverlordDev/cossacks3-modloader">GitHub ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/issues">Issues ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/DOCUMENTATION.md">Устройство ↗</a></div>
+  </footer>
+</div>
+<script src="assets/search-index.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>

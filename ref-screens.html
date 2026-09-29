@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Экраны игры — Cossacks 3 Modloader</title>
+<meta name="description" content="Экраны интерфейса игры, их состояния и тэги кнопок.">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/style.css">
+<script>try{var t=localStorage.getItem('cs3-theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+</head>
+<body>
+<div class="page">
+  <header class="site-header">
+    <div class="hl">
+      <a class="logo" href="index.html">COSSACKS 3 MODLOADER</a>
+      <nav class="nav"><a href="guide.html">ГАЙД</a><a href="core-rules.html">СПРАВОЧНИК</a><a href="core-log.html">LUA API</a><a href="api-schema.html">МОДУЛИ</a><a href="ref-state.html" class="active">ДАННЫЕ</a></nav>
+    </div>
+    <div class="ha">
+      <button class="iconbtn menu-btn" id="menu" type="button" aria-label="Меню">☰</button>
+      <div class="search-wrap"><input class="search" id="q" placeholder="Поиск по API…" autocomplete="off" aria-label="Поиск"><span class="kbd">/</span><div class="results" id="results"></div></div>
+      <a class="btn black sm" href="https://github.com/OverlordDev/cossacks3-modloader" target="_blank" rel="noopener">GITHUB →</a>
+      <button class="iconbtn" id="theme" type="button" aria-label="Тема">☾</button>
+    </div>
+  </header>
+  <div class="layout"><aside class="side"><div class="group"><span class="group-title">НАЧАЛО</span>
+<a href="index.html">Главная</a>
+<a href="guide.html">Быстрый старт</a>
+<a href="api-overview.html">Обзор api/</a>
+</div>
+<div class="group"><span class="group-title">СПРАВОЧНИК</span>
+<a href="core-rules.html">Главные правила (читать первыми)</a>
+<a href="core-structure.html">Структура мода</a>
+<a href="core-manifest.html">manifest.lua</a>
+<a href="core-sides.html">Что доступно на какой стороне</a>
+<a href="core-assets.html">Замена файлов</a>
+<a href="core-patches.html">Патчи скриптов игры</a>
+<a href="core-content.html">Новые нации и юниты</a>
+<a href="core-templates.html">Шаблоны</a>
+<a href="core-errors.html">Частые ошибки</a>
+</div>
+<div class="group"><span class="group-title">LUA API ДВИЖКА</span>
+<a href="core-log.html">log, mod, require, show</a>
+<a href="core-events.html">events</a>
+<a href="core-game.html">game</a>
+<a href="core-player.html">player, world</a>
+<a href="core-state.html">state и G</a>
+<a href="core-objects.html">objects и mem</a>
+<a href="core-units.html">units</a>
+<a href="core-buildings.html">buildings</a>
+<a href="core-balance.html">balance</a>
+<a href="core-misc.html">Прочие данные</a>
+<a href="core-net.html">net</a>
+<a href="core-input.html">input</a>
+<a href="core-web.html">web</a>
+<a href="core-ui.html">ui</a>
+<a href="core-screens.html">screens</a>
+<a href="core-gfx.html">gfx</a>
+<a href="core-savedata.html">savedata</a>
+<a href="core-native.html">native</a>
+</div>
+<div class="group"><span class="group-title">МОДУЛИ API</span>
+<a href="api-schema.html">schema</a>
+<a href="api-state.html">state</a>
+<a href="api-screens_data.html">screens_data</a>
+<a href="api-show.html">show</a>
+<a href="api-profile.html">profile</a>
+<a href="api-options.html">options</a>
+<a href="api-saves.html">saves</a>
+<a href="api-players.html">players</a>
+<a href="api-map.html">map</a>
+<a href="api-screens.html">screens</a>
+<a href="api-balance.html">balance</a>
+<a href="api-buildings.html">buildings</a>
+<a href="api-units.html">units</a>
+<a href="api-objects.html">objects</a>
+<a href="api-call.html">call</a>
+</div>
+<div class="group"><span class="group-title">ДАННЫЕ ИГРЫ</span>
+<a href="ref-state.html">Переменные и типы</a>
+<a href="ref-screens.html" class="active">Экраны и кнопки</a>
+<a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/GAME_API.md" target="_blank" rel="noopener">Нативы (GAME_API) ↗</a>
+</div></aside><main><article><h1>Экраны игры</h1>
+<p>Сгенерировано <code>tools/gen_screens.py</code> из <code>data/gui/menu.inc</code>. Не править руками.</p>
+<p>Экран = <code>Show&lt;Имя&gt;</code> (строит) + <code>Event&lt;Имя&gt;</code> (кнопки). Работа с ними — <code>screens.*</code> (api/15_screens.lua).</p>
+<p>Тэги Show/Hide/Close (8001–8003) есть у всех экранов с Event-состоянием.</p>
+<h2 id="aiassistant" data-t="AIAssistant">AIAssistant<a class="h-anchor" href="#aiassistant">#</a></h2>
+<p><code>ShowAIAssistant</code> / <code>EventAIAssistant</code></p>
+<div class="tblwrap"><table><thead><tr><th>кнопка</th><th>тэг</th></tr></thead><tbody><tr><td>TurnAdviser</td><td>100</td></tr><tr><td>Expand</td><td>101</td></tr><tr><td>Unexpand</td><td>102</td></tr><tr><td>HideAssistant</td><td>103</td></tr><tr><td>ShowAssistant</td><td>104</td></tr></tbody></table></div>
+<h2 id="aiassistantadvices" data-t="AIAssistantAdvices">AIAssistantAdvices<a class="h-anchor" href="#aiassistantadvices">#</a></h2>
+<p><code>ShowAIAssistantAdvices</code> / <code>EventAIAssistantAdvices</code></p>
+<div class="tblwrap"><table><thead><tr><th>кнопка</th><th>тэг</th></tr></thead><tbody><tr><td>Trade</td><td>103</td></tr><tr><td>Squad</td><td>104</td></tr><tr><td>Unit</td><td>1000</td></tr><tr><td>Upgrade</td><td>2000</td></tr></tbody></table></div>
+<h2 id="aiassistantsettings" data-t="AIAssistantSettings">AIAssistantSettings<a class="h-anchor" href="#aiassistantsettings">#</a></h2>
+<p><code>ShowAIAssistantSettings</code> / <code>EventAIAssistantSettings</code></p>
+<div class="tblwrap"><table><thead><tr><th>кнопка</th><th>тэг</th></tr></thead><tbody><tr><td>CheckBoxEconomy</td><td>101</td></tr><tr><td>CheckBoxConstruct</td><td>102</td></tr><tr><td>CheckBoxUpgrades</td><td>103</td></tr><tr><td>CheckBoxShowUnaffordable</td><td>104</td></tr><tr><td>CheckBoxQuartermeister</td><td>105</td></tr><tr><td>CheckBoxSetGuards</td><td>106</td></tr><tr><td>CheckBoxHireOfficers</td><td>107</td></tr><tr><td>CheckBoxShowSquads</td><td>108</td></tr><tr><td>BtnManageEconomy</td><td>201</td></tr></tbody></table></div>
+<h2 id="aiassistantsettingsadvanced" data-t="AIAssistantSettingsAdvanced">AIAssistantSettingsAdvanced<a class="h-anchor" href="#aiassistantsettingsadvanced">#</a></h2>
+<p><code>ShowAIAssistantSettingsAdvanced</code> / <code>EventAIAssistantSettingsAdvanced</code></p>
+<h2 id="aidebug" data-t="AIDebug">AIDebug<a class="h-anchor" href="#aidebug">#</a></h2>
+<p><code>ShowAIDebug</code> / <code>—</code></p>
+<h2 id="announcement" data-t="Announcement">Announcement<a class="h-anchor" href="#announcement">#</a></h2>
+<p><code>ShowAnnouncement</code> / <code>EventAnnouncement</code></p>
+<div class="tblwrap"><table><thead><tr><th>кнопка</th><th>тэг</th></tr></thead><tbody><tr><td>DontShow</td><td>102</td></tr></tbody></table></div>
+<h2 id="campaign" data-t="Campaign">Campaign<a class="h-anchor" href="#campaign">#</a></h2>
+<p><code>ShowCampaign</code> / <code>EventCampaign</code></p>
+<div class="tblwrap"><table><thead><tr><th>кнопка</th><th>тэг</th></tr></thead><tbody><tr><td>Select</td><td>101</td></tr><tr><td>Back</td><td>102</td></tr></tbody></table></div>
+<h2 id="chatconsole" data-t="ChatConsole">ChatConsole<a class="h-anchor" href="#chatconsole">#</a></h2>
+<p><code>ShowChatConsole</code> / <code>EventChatConsole</code></p>
+<h2 id="clans" data-t="Clans">Clans<a class="h-anchor" href="#clans">#</a></h2>
+<p><code>—</code> / <code>EventClans</code></p>
+<div class="tblwrap"><table><thead><tr><th>кнопка</th><th>тэг</th></tr></thead><tbody><tr><td>CreateRoom</td><td>102</td></tr><tr><td>JoinRoom</td><td>103</td></tr><tr><td>LeaveRoom</td><td>104</td></tr><tr><td>CloseRoom</td><td>106</td></tr><tr><td>SwitchToRoom</td><td>107</td></tr><tr><td>Ranking</td><td>108</td></tr><tr><td>Profile</td><td>109</td></tr><tr><td>ToSimple</td><td>110</td></tr><tr><td>ToAdvanced</td><td>111</td></tr><tr><td>AutoSearch</td><td>112</td></tr><tr><td>StopAutoSearch</td><td>113</td></tr><tr><td>AutoSearchSettings</td><td>114</td></tr><tr><td>AutoSearchApprove</td><td>115</td></tr><tr><td>AutoSearchCancel</td><td>116</td></tr><tr><td>AutoSearchJoin</td><td>117</td></tr><tr><td>ToRooms</td><td>118</td></tr><tr><td>NotTraining</td><td>119</td></tr><tr><td>ChangeProfile</td><td>120</td></tr><tr><td>CreateHistoricalRoom</td><td>121</td></tr><tr><td>CreateCustomRoom</td><td>122</td></tr><tr><td>OpenTournamentWindow</td><td>123</td></tr><tr><td>CloseTournamentWindow</td><td>124</td></tr></tbody></table></div>
+<h2 id="connectstatemessage" data-t="ConnectStateMessage">ConnectStateMessage<a class="h-anchor" href="#connectstatemessage">#</a></h2>
+<p><code>ShowConnectStateMessage</code> / <code>EventConnectStateMessage</code></p>
+<div class="tblwrap"><table><thead><tr><th>кнопка</th><th>тэг</th></tr></thead><tbody><tr><td>Disconnect</td><td>102</td></tr><tr><td>ModsSyncApprove</td><td>110</td></tr></tbody></table></div>
+<h2 id="createjoinroom" data-t="CreateJoinRoom">CreateJoinRoom<a class="h-anchor" href="#createjoinroom">#</a></h2>
+<p><code>ShowCreateJoinRoom</code> / <code>EventCreateJoinRoom</code></p>
+<div class="tblwrap"><table><thead><tr><th>кнопка</th><th>тэг</th></tr></thead><tbody><tr><td>Create</td><td>101</td></tr><tr><td>Join</td><td>102</td></tr><tr><td>AddPass</td><td>103</td></tr><tr><td>RatingRoom</td><td>104</td></tr><tr><td>CreateBattle</td><td>105</td></tr></tbody></table></div>
+<h2 id="credits" data-t="Credits">Credits<a class="h-anchor" href="#credits">#</a></h2>
+<p><code>ShowCredits</code> / <code>EventCredits</code></p>
+<div class="tblwrap"><table><thead><tr><th>кнопка</th><th>тэг</th></tr></thead><tbody><tr><td>CreateRoom</td><td>102</td></tr><tr><td>JoinRoom</td><td>103</td></tr><tr><td>LeaveRoom</td><td>104</td></tr><tr><td>CloseRoom</td><td>106</td></tr><tr><td>SwitchToRoom</td><td>107</td></tr><tr><td>Ranking</td><td>108</td></tr><tr><td>Profile</td><td>109</td></tr><tr><td>ToSimple</td><td>110</td></tr><tr><td>ToAdvanced</td><td>111</td></tr><tr><td>AutoSearch</td><td>112</td></tr><tr><td>StopAutoSearch</td><td>113</td></tr><tr><td>AutoSearchSettings</td><td>114</td></tr><tr><td>AutoSearchApprove</td><td>115</td></tr><tr><td>AutoSearchCancel</td><td>116</td></tr><tr><td>AutoSearchJoin</td><td>117</td></tr><tr><td>ToRooms</td><td>118</td></tr><tr><td>NotTraining</td><td>119</td></tr><tr><td>ChangeProfile</td><td>120</td></tr><tr><td>CreateHistoricalRoom</td><td>121</td></tr><tr><td>CreateCustomRoom</td><td>122</td></tr><tr><td>OpenTournamentWindow</td><td>123</td></tr><tr><td>CloseTournamentWindow</td><td>124</td></tr></tbody></table></div>
+<h2 id="customgame" data-t="CustomGame">CustomGame<a class="h-anchor" href="#customgame">#</a></h2>
+<p><code>ShowCustomGame</code> / <code>EventCustomGame</code></p>
+<div class="tblwrap"><table><thead><tr><th>кнопка</th><th>тэг</th></tr></thead><tbody><tr><td>BackToMainMenu</td><td>101</td></tr><tr><td>SwitchToShell</td><td>102</td></tr><tr><td>StartGame</td><td>103</td></tr><tr><td>CloseRoom</td><td>104</td></tr><tr><td>LeaveRoom</td><td>105</td></tr><tr><td>ReadyGame</td><td>106</td></tr><tr><td>StartAutoSearch</td><td>107</td></tr><tr><td>StopAutoSearch</td><td>108</td></tr><tr><td>BaseTagChangeColor</td><td>200</td></tr><tr><td>Kick</td><td>1000</td></tr></tbody></table></div>
+<h2 id="debug" data-t="Debug">Debug<a class="h-anchor" href="#debug">#</a></h2>
+<p><code>ShowDebug</code> / <code>—</code></p>
+<h2 id="debuganimations" data-t="DebugAnimations">DebugAnimations<a class="h-anchor" href="#debuganimations">#</a></h2>
+<p><code>ShowDebugAnimations</code> / <code>EventDebugAnimations</code></p>
+<div class="tblwrap"><table><thead><tr><th>кнопка</th><th>тэг</th></tr></thead><tbody><tr><td>PlayAnim</td><td>200</td></tr><tr><td>PlayAnimOnce</td><td>201</td></tr><tr><td>ChangeState</td><td>202</td></tr></tbody></table></div>
+<h2 id="editorcontrol" data-t="EditorControl">EditorControl<a class="h-anchor" href="#editorcontrol">#</a></h2>
+<p><code>ShowEditorControl</code> / <code>EventEditorControl</code></p>
+<div class="tblwrap"><table><thead><tr><th>кнопка</th><th>тэг</th></tr></thead><tbody><tr><td>RollUp</td><td>100</td></tr><tr><td>RollDown</td><td>101</td></tr></tbody></table></div>
+<h2 id="editorinfo" data-t="EditorInfo">EditorInfo<a class="h-anchor" href="#editorinfo">#</a></h2>
+<p><code>ShowEditorInfo</code> / <code>—</code></p>
+<h2 id="endgame" data-t="EndGame">EndGame<a class="h-anchor" href="#endgame">#</a></h2>
+<p><code>ShowEndGame</code> / <code>EventEndGame</code></p>
+<div class="tblwrap"><table><thead><tr><th>кнопка</th><th>тэг</th></tr></thead><tbody><tr><td>Campaign</td><td>101</td></tr><tr><td>ExitToMainMenuApprove</td><td>106</td></tr></tbody></table></div>
+<h2 id="endgamestatistics" data-t="EndGameStatistics">EndGameStatistics<a class="h-anchor" href="#endgamestatistics">#</a></h2>
+<p><code>ShowEndGameStatistics</code> / <code>EventEndGameStatistics</code></p>
+<div class="tblwrap"><table><thead><tr><th>кнопка</th><th>тэг</th></tr></thead><tbody><tr><td>BackToGame</td><td>101</td></tr><tr><td>Replay</td><td>102</td></tr><tr><td>SaveReplay</td><td>103</td></tr><tr><td>ExitToMenu</td><td>104</td></tr><tr><td>Prev</td><td>105</td></tr><tr><td>Next</td><td>106</td></tr></tbody></table></div>
+<h2 id="hud" data-t="HUD">HUD<a class="h-anchor" href="#hud">#</a></h2>
+<p><code>ShowHUD</code> / <code>EventHUD</code></p>
+<h2 id="historicalbattle" data-t="HistoricalBattle">HistoricalBattle<a class="h-anchor" href="#historicalbattle">#</a></h2>
+<p><code>ShowHistoricalBattle</code> / <code>EventHistoricalBattle</code></p>
+<div class="tblwrap"><table><thead><tr><th>кнопка</th><th>тэг</th></tr></thead><tbody><tr><td>BackToMainMenu</td><td>101</td></tr><tr><td>SwitchToShell</td><td>102</td></tr><tr><td>StartGame</td><td>103</td></tr><tr><td>CloseRoom</td><td>104</td></tr><tr><td>LeaveRoom</td><td>105</td></tr><tr><td>ReadyGame</td><td>106</td></tr><tr><td>StartAutoSearch</td><td>107</td></tr><tr><td>StopAutoSearch</td><td>108</td></tr><tr><td>GoPickPositions</td><td>109</td></tr><tr><td>BaseTagChangeColor</td><td>200</td></tr><tr><td>ChangePosition</td><td>501</td></tr><tr><td>ChangeTeam</td><td>502</td></tr><tr><td>Kick</td><td>1000</td></tr></tbody></table></div>
+<h2 id="internetshell" data-t="InternetShell">InternetShell<a class="h-anchor" href="#internetshell">#</a></h2>
+<p><code>ShowInternetShell</code> / <code>EventInternetShell</code></p>
+<div class="tblwrap"><table><thead><tr><th>кнопка</th><th>тэг</th></tr></thead><tbody><tr><td>CreateRoom</td><td>102</td></tr><tr><td>JoinRoom</td><td>103</td></tr><tr><td>LeaveRoom</td><td>104</td></tr><tr><td>CloseRoom</td><td>106</td></tr><tr><td>SwitchToRoom</td><td>107</td></tr><tr><td>Ranking</td><td>108</td></tr><tr><td>Profile</td><td>109</td></tr><tr><td>ToSimple</td><td>110</td></tr><tr><td>ToAdvanced</td><td>111</td></tr><tr><td>AutoSearch</td><td>112</td></tr><tr><td>StopAutoSearch</td><td>113</td></tr><tr><td>AutoSearchSettings</td><td>114</td></tr><tr><td>AutoSearchApprove</td><td>115</td></tr><tr><td>AutoSearchCancel</td><td>116</td></tr><tr><td>AutoSearchJoin</td><td>117</td></tr><tr><td>ToRooms</td><td>118</td></tr><tr><td>NotTraining</td><td>119</td></tr><tr><td>ChangeProfile</td><td>120</td></tr><tr><td>CreateHistoricalRoom</td><td>121</td></tr><tr><td>CreateCustomRoom</td><td>122</td></tr><tr><td>OpenTournamentWindow</td><td>123</td></tr><tr><td>CloseTournamentWindow</td><td>124</td></tr><tr><td>OpenTopPanel</td><td>125</td></tr><tr><td>CloseTopPanel</td><td>126</td></tr></tbody></table></div>
+<h2 id="loadgame" data-t="LoadGame">LoadGame<a class="h-anchor" href="#loadgame">#</a></h2>
+<p><code>ShowLoadGame</code> / <code>EventLoadGame</code></p>
+<div class="tblwrap"><table><thead><tr><th>кнопка</th><th>тэг</th></tr></thead><tbody><tr><td>Save</td><td>101</td></tr><tr><td>Load</td><td>102</td></tr><tr><td>Delete</td><td>103</td></tr><tr><td>SaveReplay</td><td>104</td></tr><tr><td>LoadReplay</td><td>105</td></tr><tr><td>SwitchToReplay</td><td>106</td></tr><tr><td>SwitchToSaves</td><td>107</td></tr><tr><td>SaveApproved</td><td>501</td></tr><tr><td>LoadApproved</td><td>502</td></tr><tr><td>DeleteApproved</td><td>503</td></tr></tbody></table></div>
+<h2 id="mainmenu" data-t="MainMenu">MainMenu<a class="h-anchor" href="#mainmenu">#</a></h2>
+<p><code>ShowMainMenu</code> / <code>EventMainMenu</code></p>
+<div class="tblwrap"><table><thead><tr><th>кнопка</th><th>тэг</th></tr></thead><tbody><tr><td>UnitsStats</td><td>100</td></tr><tr><td>Campaign</td><td>101</td></tr><tr><td>RandomMap</td><td>102</td></tr><tr><td>Multiplayer</td><td>103</td></tr><tr><td>Settings</td><td>104</td></tr><tr><td>LoadGame</td><td>105</td></tr><tr><td>LoadReplay</td><td>106</td></tr><tr><td>Editor</td><td>107</td></tr><tr><td>ModManager</td><td>108</td></tr><tr><td>Exit</td><td>109</td></tr><tr><td>Tutorial</td><td>110</td></tr><tr><td>Credits</td><td>111</td></tr></tbody></table></div>
+<h2 id="menu" data-t="Menu">Menu<a class="h-anchor" href="#menu">#</a></h2>
+<p><code>ShowMenu</code> / <code>EventMenu</code></p>
+<div class="tblwrap"><table><thead><tr><th>кнопка</th><th>тэг</th></tr></thead><tbody><tr><td>Continue</td><td>101</td></tr><tr><td>Settings</td><td>102</td></tr><tr><td>SaveGame</td><td>103</td></tr><tr><td>LoadGame</td><td>104</td></tr><tr><td>ExitToMainMenu</td><td>105</td></tr><tr><td>ExitToMainMenuApprove</td><td>106</td></tr><tr><td>Surrender</td><td>107</td></tr><tr><td>SurrenderApprove</td><td>108</td></tr><tr><td>Statistics</td><td>109</td></tr><tr><td>SaveReplay</td><td>110</td></tr><tr><td>TradeResources</td><td>111</td></tr><tr><td>MainMenuApproved</td><td>510</td></tr><tr><td>SurrenderApproved</td><td>511</td></tr></tbody></table></div>
+<h2 id="minimap" data-t="Minimap">Minimap<a class="h-anchor" href="#minimap">#</a></h2>
+<p><code>—</code> / <code>EventMinimap</code></p>
+<h2 id="missions" data-t="Missions">Missions<a class="h-anchor" href="#missions">#</a></h2>
+<p><code>ShowMissions</code> / <code>EventMissions</code></p>
+<h2 id="modalmessage" data-t="ModalMessage">ModalMessage<a class="h-anchor" href="#modalmessage">#</a></h2>
+<p><code>ShowModalMessage</code> / <code>EventModalMessage</code></p>
+<div class="tblwrap"><table><thead><tr><th>кнопка</th><th>тэг</th></tr></thead><tbody><tr><td>Disconnect</td><td>102</td></tr><tr><td>ExitToMainMenuApprove</td><td>106</td></tr><tr><td>SurrenderApprove</td><td>108</td></tr><tr><td>ResolutionApprove</td><td>401</td></tr><tr><td>ResolutionRevert</td><td>402</td></tr><tr><td>SaveApproved</td><td>501</td></tr><tr><td>LoadApproved</td><td>502</td></tr><tr><td>DeleteApproved</td><td>503</td></tr><tr><td>MainMenuApproved</td><td>510</td></tr><tr><td>SurrenderApproved</td><td>511</td></tr></tbody></table></div>
+<h2 id="multiplayerchat" data-t="MultiplayerChat">MultiplayerChat<a class="h-anchor" href="#multiplayerchat">#</a></h2>
+<p><code>ShowMultiplayerChat</code> / <code>EventMultiplayerChat</code></p>
+<div class="tblwrap"><table><thead><tr><th>кнопка</th><th>тэг</th></tr></thead><tbody><tr><td>CreateRoom</td><td>102</td></tr><tr><td>JoinRoom</td><td>103</td></tr><tr><td>LeaveRoom</td><td>104</td></tr><tr><td>StartRoom</td><td>105</td></tr><tr><td>CloseRoom</td><td>106</td></tr><tr><td>SwitchToRoom</td><td>107</td></tr><tr><td>CleanRecipient</td><td>108</td></tr><tr><td>ShowFriendsChannel</td><td>109</td></tr></tbody></table></div>
+<h2 id="multiplayerlogin" data-t="MultiplayerLogin">MultiplayerLogin<a class="h-anchor" href="#multiplayerlogin">#</a></h2>
+<p><code>ShowMultiplayerLogin</code> / <code>EventMultiplayerLogin</code></p>
+<div class="tblwrap"><table><thead><tr><th>кнопка</th><th>тэг</th></tr></thead><tbody><tr><td>Register</td><td>102</td></tr><tr><td>Login</td><td>103</td></tr><tr><td>CheckEmail</td><td>104</td></tr><tr><td>Forgot</td><td>105</td></tr><tr><td>ChangeProfile</td><td>106</td></tr></tbody></table></div>
+<h2 id="news" data-t="News">News<a class="h-anchor" href="#news">#</a></h2>
+<p><code>ShowNews</code> / <code>EventNews</code></p>
+<div class="tblwrap"><table><thead><tr><th>кнопка</th><th>тэг</th></tr></thead><tbody><tr><td>Prev</td><td>100</td></tr><tr><td>Next</td><td>101</td></tr><tr><td>ButtonOpenURL</td><td>102</td></tr><tr><td>HideEventPanel</td><td>103</td></tr><tr><td>ShowEventPanel</td><td>104</td></tr><tr><td>OpenVK</td><td>105</td></tr><tr><td>OpenFB</td><td>106</td></tr><tr><td>OpenSteam</td><td>107</td></tr><tr><td>OpenUrl</td><td>200</td></tr></tbody></table></div>
+<h2 id="pause" data-t="Pause">Pause<a class="h-anchor" href="#pause">#</a></h2>
+<p><code>ShowPause</code> / <code>—</code></p>
+<h2 id="profile" data-t="Profile">Profile<a class="h-anchor" href="#profile">#</a></h2>
+<p><code>ShowProfile</code> / <code>EventProfile</code></p>
+<div class="tblwrap"><table><thead><tr><th>кнопка</th><th>тэг</th></tr></thead><tbody><tr><td>Accept</td><td>90</td></tr><tr><td>SelectCreate</td><td>101</td></tr><tr><td>Delete</td><td>102</td></tr></tbody></table></div>
+<h2 id="querywindow" data-t="QueryWindow">QueryWindow<a class="h-anchor" href="#querywindow">#</a></h2>
+<p><code>ShowQueryWindow</code> / <code>EventQueryWindow</code></p>
+<h2 id="rallypoints" data-t="RallyPoints">RallyPoints<a class="h-anchor" href="#rallypoints">#</a></h2>
+<p><code>ShowRallyPoints</code> / <code>—</code></p>
+<h2 id="resourcepanel" data-t="ResourcePanel">ResourcePanel<a class="h-anchor" href="#resourcepanel">#</a></h2>
+<p><code>ShowResourcePanel</code> / <code>EventResourcePanel</code></p>
+<div class="tblwrap"><table><thead><tr><th>кнопка</th><th>тэг</th></tr></thead><tbody><tr><td>MenuShow</td><td>100</td></tr><tr><td>MenuClose</td><td>101</td></tr><tr><td>IdlePeasants</td><td>110</td></tr><tr><td>IdleMines</td><td>111</td></tr><tr><td>ShowHideObjectives</td><td>112</td></tr></tbody></table></div>
+<h2 id="scenarioeditor" data-t="ScenarioEditor">ScenarioEditor<a class="h-anchor" href="#scenarioeditor">#</a></h2>
+<p><code>ShowScenarioEditor</code> / <code>EventScenarioEditor</code></p>
+<div class="tblwrap"><table><thead><tr><th>кнопка</th><th>тэг</th></tr></thead><tbody><tr><td>NewTrigger</td><td>200</td></tr><tr><td>EditTrigger</td><td>201</td></tr><tr><td>DeleteTrigger</td><td>202</td></tr><tr><td>NewCondition</td><td>203</td></tr><tr><td>NewAction</td><td>204</td></tr><tr><td>DeleteCondition</td><td>205</td></tr><tr><td>DeleteAction</td><td>206</td></tr><tr><td>EditCondition</td><td>207</td></tr><tr><td>EditAction</td><td>208</td></tr><tr><td>MoveUp</td><td>209</td></tr><tr><td>MoveDown</td><td>210</td></tr><tr><td>Enable</td><td>211</td></tr><tr><td>Disable</td><td>212</td></tr><tr><td>Execute</td><td>213</td></tr><tr><td>CopyAction</td><td>214</td></tr><tr><td>PasteAction</td><td>215</td></tr><tr><td>CopyCondition</td><td>216</td></tr><tr><td>PasteCondition</td><td>217</td></tr><tr><td>EnableAction</td><td>218</td></tr><tr><td>DisableAction</td><td>219</td></tr><tr><td>EnableCondition</td><td>220</td></tr><tr><td>DisableCondition</td><td>221</td></tr><tr><td>CopyTrigger</td><td>222</td></tr><tr><td>PasteTrigger</td><td>223</td></tr><tr><td>BaseHelperType</td><td>300</td></tr></tbody></table></div>
+<h2 id="scenariohelper" data-t="ScenarioHelper">ScenarioHelper<a class="h-anchor" href="#scenariohelper">#</a></h2>
+<p><code>ShowScenarioHelper</code> / <code>EventScenarioHelper</code></p>
+<div class="tblwrap"><table><thead><tr><th>кнопка</th><th>тэг</th></tr></thead><tbody><tr><td>Apply</td><td>101</td></tr><tr><td>Cancel</td><td>102</td></tr><tr><td>Preview</td><td>103</td></tr><tr><td>GroupClear</td><td>110</td></tr><tr><td>GroupAddSel</td><td>111</td></tr><tr><td>GroupRemoveSel</td><td>112</td></tr><tr><td>GroupSetSel</td><td>113</td></tr><tr><td>GroupSelectGroupUnits</td><td>114</td></tr></tbody></table></div>
+<h2 id="scenariotriggereditor" data-t="ScenarioTriggerEditor">ScenarioTriggerEditor<a class="h-anchor" href="#scenariotriggereditor">#</a></h2>
+<p><code>ShowScenarioTriggerEditor</code> / <code>EventScenarioTriggerEditor</code></p>
+<div class="tblwrap"><table><thead><tr><th>кнопка</th><th>тэг</th></tr></thead><tbody><tr><td>Apply</td><td>101</td></tr><tr><td>Cancel</td><td>102</td></tr></tbody></table></div>
+<h2 id="scenarioui" data-t="ScenarioUI">ScenarioUI<a class="h-anchor" href="#scenarioui">#</a></h2>
+<p><code>ShowScenarioUI</code> / <code>EventScenarioUI</code></p>
+<div class="tblwrap"><table><thead><tr><th>кнопка</th><th>тэг</th></tr></thead><tbody><tr><td>GroupClear</td><td>110</td></tr><tr><td>GroupAddSel</td><td>111</td></tr><tr><td>GroupRemoveSel</td><td>112</td></tr><tr><td>GroupSetSel</td><td>113</td></tr><tr><td>GroupSelectGroupUnits</td><td>114</td></tr><tr><td>NewTrigger</td><td>200</td></tr><tr><td>BaseHelperType</td><td>300</td></tr></tbody></table></div>
+<h2 id="settings" data-t="Settings">Settings<a class="h-anchor" href="#settings">#</a></h2>
+<p><code>ShowSettings</code> / <code>EventSettings</code></p>
+<div class="tblwrap"><table><thead><tr><th>кнопка</th><th>тэг</th></tr></thead><tbody><tr><td>Accept</td><td>90</td></tr><tr><td>Cancel</td><td>91</td></tr><tr><td>Default</td><td>92</td></tr><tr><td>Profile</td><td>101</td></tr><tr><td>TabVideo</td><td>102</td></tr><tr><td>TabSound</td><td>103</td></tr><tr><td>TabControl</td><td>104</td></tr><tr><td>TabKeyBinding</td><td>105</td></tr><tr><td>CheckboxShadows</td><td>110</td></tr><tr><td>CheckboxAntialiasing</td><td>111</td></tr><tr><td>CheckboxVSync</td><td>112</td></tr><tr><td>CheckboxFreeZoom</td><td>113</td></tr><tr><td>CheckboxClampingMouse</td><td>113</td></tr><tr><td>TabHotkeys</td><td>114</td></tr><tr><td>CheckboxSSAO</td><td>114</td></tr><tr><td>ConstantHotkeys</td><td>115</td></tr><tr><td>CheckboxFXAO</td><td>115</td></tr><tr><td>CustomizableHotkeys</td><td>116</td></tr><tr><td>CheckboxMute</td><td>120</td></tr></tbody></table></div>
+<h2 id="statistics" data-t="Statistics">Statistics<a class="h-anchor" href="#statistics">#</a></h2>
+<p><code>ShowStatistics</code> / <code>—</code></p>
+<h2 id="tournamentswindow" data-t="TournamentsWindow">TournamentsWindow<a class="h-anchor" href="#tournamentswindow">#</a></h2>
+<p><code>ShowTournamentsWindow</code> / <code>EventTournamentsWindow</code></p>
+<div class="tblwrap"><table><thead><tr><th>кнопка</th><th>тэг</th></tr></thead><tbody><tr><td>EvaluateTournaments</td><td>100</td></tr><tr><td>EvaluateStreams</td><td>101</td></tr><tr><td>ButtonOpenURL</td><td>102</td></tr><tr><td>HideEventPanel</td><td>103</td></tr><tr><td>ShowEventPanel</td><td>104</td></tr><tr><td>OpenVK</td><td>105</td></tr><tr><td>OpenFB</td><td>106</td></tr><tr><td>OpenSteam</td><td>107</td></tr></tbody></table></div>
+<h2 id="traderesources" data-t="TradeResources">TradeResources<a class="h-anchor" href="#traderesources">#</a></h2>
+<p><code>ShowTradeResources</code> / <code>EventTradeResources</code></p>
+<div class="tblwrap"><table><thead><tr><th>кнопка</th><th>тэг</th></tr></thead><tbody><tr><td>Sell</td><td>100</td></tr><tr><td>Numbers</td><td>110</td></tr><tr><td>Accept</td><td>120</td></tr><tr><td>Clear</td><td>130</td></tr><tr><td>Exit</td><td>140</td></tr><tr><td>Players</td><td>1000</td></tr><tr><td>PlayersButton</td><td>10000</td></tr></tbody></table></div>
+<h2 id="unitcontrol" data-t="UnitControl">UnitControl<a class="h-anchor" href="#unitcontrol">#</a></h2>
+<p><code>ShowUnitControl</code> / <code>EventUnitControl</code></p>
+<div class="tblwrap"><table><thead><tr><th>кнопка</th><th>тэг</th></tr></thead><tbody><tr><td>Rally</td><td>50</td></tr><tr><td>IdlePeasants</td><td>60</td></tr><tr><td>IdleMines</td><td>61</td></tr><tr><td>Unit</td><td>100</td></tr><tr><td>Upgrade</td><td>200</td></tr><tr><td>ControlHoldPosition</td><td>300</td></tr><tr><td>ControlCancelHoldPosition</td><td>301</td></tr><tr><td>ControlGoWithAttack</td><td>302</td></tr><tr><td>ControlEnableAttack</td><td>303</td></tr><tr><td>ControlDisableAttack</td><td>304</td></tr><tr><td>ControlPatrol</td><td>305</td></tr><tr><td>ControlGuard</td><td>306</td></tr><tr><td>ControlCancelGuard</td><td>307</td></tr><tr><td>ControlSquadFill</td><td>310</td></tr><tr><td>ControlSquadDisband</td><td>311</td></tr><tr><td>ControlSquadFormLine</td><td>312</td></tr><tr><td>ControlSquadFormColumn</td><td>313</td></tr><tr><td>ControlSquadFormSquare</td><td>314</td></tr><tr><td>ControlSquadGroups</td><td>315</td></tr><tr><td>ControlArtilleryPreparation</td><td>316</td></tr><tr><td>ControlSquadFormationUnit</td><td>317</td></tr><tr><td>ControlOpenGate</td><td>318</td></tr><tr><td>ControlCloseGate</td><td>319</td></tr><tr><td>ControlOfficerDecreaseSize</td><td>320</td></tr><tr><td>ControlOfficerIncreaseSize</td><td>321</td></tr><tr><td>ControlUnloadAll</td><td>322</td></tr><tr><td>MarketAccept</td><td>430</td></tr><tr><td>MarketClear</td><td>440</td></tr></tbody></table></div>
+<h2 id="unitsstats" data-t="UnitsStats">UnitsStats<a class="h-anchor" href="#unitsstats">#</a></h2>
+<p><code>ShowUnitsStats</code> / <code>EventUnitsStats</code></p>
+<div class="tblwrap"><table><thead><tr><th>кнопка</th><th>тэг</th></tr></thead><tbody><tr><td>BackToGame</td><td>101</td></tr><tr><td>Replay</td><td>102</td></tr><tr><td>SaveReplay</td><td>103</td></tr><tr><td>ExitToMenu</td><td>104</td></tr><tr><td>Prev</td><td>105</td></tr><tr><td>Next</td><td>106</td></tr></tbody></table></div></article><div class="meta" style="margin-top:36px"><a class="badge" href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/GAME_SCREENS.md">РЕДАКТИРОВАТЬ НА GITHUB ↗</a></div><div class="pn"><a href="ref-state.html"><small>← НАЗАД</small>Состояние игры</a></div></main><aside></aside></div>
+  <footer class="footer">
+    <div><a class="logo" href="index.html" style="display:inline-block">COSSACKS 3 MODLOADER</a><br><br>Документация API<br>Собрана из папки <code>api/</code> репозитория</div>
+    <div>ДОКУМЕНТЫ<br><a href="guide.html">Быстрый старт</a><a href="core-rules.html">Справочник</a><a href="api-overview.html">Обзор api/</a></div>
+    <div>ДАННЫЕ<br><a href="ref-state.html">Переменные игры</a><a href="ref-screens.html">Экраны</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/GAME_API.md">Нативы ↗</a></div>
+    <div>ПРОЕКТ<br><a href="https://github.com/OverlordDev/cossacks3-modloader">GitHub ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/issues">Issues ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/DOCUMENTATION.md">Устройство ↗</a></div>
+  </footer>
+</div>
+<script src="assets/search-index.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>
