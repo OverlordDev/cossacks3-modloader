@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "CrashHandler.h"
 #include "Loader.h"
+#include "MemMap.h"
 #include "ModCheck.h"
 #include "Assets.h"
 #include "Checksum.h"
@@ -134,6 +135,7 @@ DWORD WINAPI Loader::MainThread(LPVOID param)
         }
         Console::PollInput();
         FrameStats::Update();
+        MemMap::Poll();
         if (scriptParts) // до установки трогать состояния игры нечем и незачем
         {
             Events::Update();

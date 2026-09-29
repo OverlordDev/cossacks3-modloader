@@ -222,7 +222,9 @@
     <ClInclude Include="core/Assets.h" />
     <ClInclude Include="core/Content.h" />
     <ClInclude Include="core/ModelConvert.h" />
+    <ClInclude Include="core/MemMap.h" />
     <ClInclude Include="core/ModelDecimate.h" />
+    <ClInclude Include="core/TextureShrink.h" />
     <ClInclude Include="core/ScriptPatch.h" />
 
     <None Include="core/FunctionsTable.inc" />
@@ -276,7 +278,9 @@
     <ClCompile Include="core/Assets.cpp" />
     <ClCompile Include="core/Content.cpp" />
     <ClCompile Include="core/ModelConvert.cpp" />
+    <ClCompile Include="core/MemMap.cpp" />
     <ClCompile Include="core/ModelDecimate.cpp" />
+    <ClCompile Include="core/TextureShrink.cpp" />
     <ClCompile Include="core/ScriptPatch.cpp" />
 
     <ClCompile Include="core/GameApi.cpp" />

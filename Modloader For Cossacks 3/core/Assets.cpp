@@ -6,6 +6,7 @@
 #include "ScriptPatch.h"
 #include "Content.h"
 #include "ModelDecimate.h"
+#include "TextureShrink.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -323,6 +324,73 @@ namespace
         return false;
     }
 
+    // ---------- режим экономии памяти: срез верхних мипов больших текстур ----------
+    // modloader/lod.txt: "textures = 1024" — максимальная сторона (пиксели) у текстур зданий, окружения и декалей
+    // местности; больше — срезаем верхние мип-уровни (TextureShrink), -3/4 памяти на уровень. Юниты, интерфейс и
+    // плитки земли не трогаем: юниты и так 512, интерфейс живёт в пикселях экрана, землю видно крупно.
+    // Режем лениво — когда движок открывает файл (в MapPath), результат кладём в modloader/cache/tex/.
+    constexpr int kTexVersion = 1;
+    unsigned g_texMax = 0;           // 0 — выключено
+    std::set<std::string> g_texDone; // уже разобранные ключи: второй раз файл не читаем
+    int g_texShrunk = 0, g_texCached = 0;
+    long long g_texSavedBytes = 0;
+
+    bool ShrinkableTexture(const std::string& key)
+    {
+        if (key.size() < 5 || key.compare(key.size() - 4, 4, ".dds") != 0)
+            return false;
+        for (const char* dir : { "data\\materials\\buildings\\", "data\\materials\\env\\", "data\\terrain\\decals\\" })
+            if (key.rfind(dir, 0) == 0)
+                return true;
+        return false;
+    }
+
+    // Под g_mutex. Если текстура больше лимита — кладёт в g_map срезанную копию.
+    void MaybeShrinkTexture(const std::string& key)
+    {
+        if (!g_texMax || !ShrinkableTexture(key) || !g_texDone.insert(key).second)
+            return;
+        std::string source = (fs::path(g_gameDir) / key).string();
+        if (auto it = g_map.find(key); it != g_map.end())
+            source = it->second.get(); // текстура из мода (assets/) важнее файла игры
+        std::error_code ec;
+        fs::path out = fs::path(g_gameDir) / L"modloader" / L"cache" / L"tex" /
+                       (L"v" + std::to_wstring(kTexVersion) + L"_" + std::to_wstring(g_texMax)) / key;
+        if (fs::exists(out, ec) && fs::last_write_time(out, ec) >= fs::last_write_time(fs::path(source), ec))
+        {
+            g_map.insert_or_assign(key, GameApi::DelphiString(out.string()));
+            ++g_texCached;
+            return;
+        }
+        // Сначала только заголовок: большинство текстур и так меньше лимита.
+        std::string head(128, '\0');
+        {
+            std::ifstream in(fs::path(source), std::ios::binary);
+            if (!in || !in.read(head.data(), 128))
+                return;
+        }
+        unsigned side = 0;
+        if (!TextureShrink::TopSide(head, &side) || side <= g_texMax)
+            return;
+        std::string data, shrunk;
+        int dropped = 0;
+        if (!ReadAll(source, &data) || TextureShrink::Shrink(data, g_texMax, &shrunk, &dropped) != TextureShrink::Result::Shrunk)
+            return;
+        fs::create_directories(out.parent_path(), ec);
+        std::ofstream o(out, std::ios::binary | std::ios::trunc);
+        o.write(shrunk.data(), static_cast<std::streamsize>(shrunk.size()));
+        if (!o)
+        {
+            LOG_ERROR("[textures] не записать %s", out.string().c_str());
+            return;
+        }
+        o.close();
+        g_map.insert_or_assign(key, GameApi::DelphiString(out.string()));
+        ++g_texShrunk;
+        g_texSavedBytes += static_cast<long long>(data.size()) - static_cast<long long>(shrunk.size());
+        LOG_DEV("[textures] %s: -%d уровн., %.1f -> %.1f МБ", key.c_str(), dropped, data.size() / 1048576.0, shrunk.size() / 1048576.0);
+    }
+
     // Вызывается из перехватов: вернуть путь мода или исходный, если подмены нет.
     const char* __cdecl MapPath(const char* path)
     {
@@ -331,6 +399,7 @@ namespace
             return path;
         std::string key = Normalize(path, g_gameDirKey);
         std::lock_guard lock(g_mutex);
+        MaybeShrinkTexture(key);
         if (Console::Dev() && IsScript(key) && key.find(".inc") == std::string::npos && g_seen.insert(key).second)
             LOG_DEV("[files] engine reads %s", key.c_str());
         if (g_pending.count(key))
@@ -469,6 +538,21 @@ namespace
         return 100;
     }
 
+    unsigned ReadTextureMax()
+    {
+        std::ifstream in(fs::path(g_gameDir) / L"modloader" / L"lod.txt");
+        std::string line;
+        while (std::getline(in, line))
+        {
+            size_t eq = line.find('=');
+            if (eq == std::string::npos || line.find("textures") == std::string::npos || line.find('#') < eq)
+                continue;
+            int px = atoi(line.c_str() + eq + 1);
+            return px >= 128 ? static_cast<unsigned>(std::min(px, 8192)) : 0;
+        }
+        return 0;
+    }
+
     void RemoveLod()
     {
         for (const auto& [key, prev] : g_lodPrev)
@@ -554,6 +638,9 @@ bool Assets::Install()
         g_pending.insert(key);
     Scan();
     GenerateContent();
+    g_texMax = ReadTextureMax();
+    if (g_texMax)
+        LOG_INFO("[textures] режим экономии памяти: текстуры зданий/окружения/декалей не больше %u px", g_texMax);
     GenerateLod();
     ScanWorkshop();
     // Перехваты нужны всегда: встроенные правки скриптов (события модлоадера) собираются при чтении.
@@ -612,6 +699,17 @@ int Assets::LodPercent()
     return g_lodPct;
 }
 
+std::string Assets::TextureStatus()
+{
+    std::lock_guard lock(g_mutex);
+    if (!g_texMax)
+        return "textures: выключено (в modloader/lod.txt: textures = 1024)";
+    char buf[200];
+    snprintf(buf, sizeof buf, "textures: не больше %u px; срезано %d (сэкономлено на диске-кеше %.0f МБ на файлах этого запуска), из кеша %d",
+             g_texMax, g_texShrunk, g_texSavedBytes / 1048576.0, g_texCached);
+    return buf;
+}
+
 void Assets::SetLod(int percent)
 {
     percent = std::clamp(percent, 10, 100);
@@ -624,6 +722,8 @@ void Assets::SetLod(int percent)
     out << "# units = процент треугольников у моделей юнитов (10..100, 100 = выключено).\n"
         << "# В игре меняется командой .lod <процент>; файл пишется ею же.\n"
         << "units = " << percent << "\n";
+    if (g_texMax)
+        out << "textures = " << g_texMax << "\n";
 }
 
 const std::vector<Assets::Override>& Assets::List()

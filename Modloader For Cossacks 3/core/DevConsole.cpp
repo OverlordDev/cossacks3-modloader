@@ -13,6 +13,7 @@
 #include "GameApi.h"
 #include "Profiler.h"
 #include "LuaHost.h"
+#include "MemMap.h"
 #include "ScriptRunner.h"
 #include "Text.h"
 
@@ -183,6 +184,7 @@ namespace
             "  .checksum           хеш скриптов для лобби: движка, чистый (без модлоадера) и сохранённый игрой\n"
             "  =<lua>              выполнить Lua:  =player().gold   =native.GetBuildVersion()\n"
             "  .lod [процент]      доля треугольников у юнитов (10..100): без числа — текущая, с числом — сменить на ходу\n"
+            "  .mem                адресное пространство процесса: сколько занято/свободно (для \"out of memory\")\n"
             "  .content            нации и типы юнитов из content.lua модов\n"
             "  .content reload     перечитать content.lua (увидит следующая партия)\n"
             "  .mods               Lua-моды (modloader/mods/*/manifest.lua) и их статус\n"
@@ -286,10 +288,15 @@ namespace
             }
             else if (cmd == "assets")
                 Assets::Print();
+            else if (cmd == "mem")
+                MemMap::Print();
             else if (cmd == "lod")
             {
                 if (arg.empty())
+                {
                     Console::Print("lod: units = %d%% (10..100; .lod <процент> — сменить на ходу)", Assets::LodPercent());
+                    Console::Print("%s", Assets::TextureStatus().c_str());
+                }
                 else
                 {
                     int pct = atoi(arg.c_str());
