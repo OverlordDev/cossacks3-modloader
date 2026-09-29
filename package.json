@@ -22,8 +22,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/OverlordDev/cossacks3-modloader.git",
-    "directory": "vscode-extension"
+    "url": "https://github.com/OverlordDev/cossacks3-modloader.git"
   },
   "extensionDependencies": [
     "sumneko.lua"
