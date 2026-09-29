@@ -70,6 +70,7 @@ namespace
     std::atomic<bool> g_passthrough = false; // режим HUD: прозрачные места пропускают ввод в игру
     std::atomic<bool> g_textFocus = false;   // на странице активно поле ввода (клавиатура — ей)
     std::atomic<bool> g_keyboard = false;    // страница сама попросила клавиатуру (game.keyboard)
+    bool g_typedChar = false;                // букву уже отправили сами — WM_CHAR вдогонку пропустить
     int g_frameWidth = 0, g_frameHeight = 0;
     bool g_frameDirty = false;
 
@@ -1132,12 +1133,58 @@ bool WebUi::OnWndProc(HWND window, UINT msg, WPARAM wp, LPARAM lp)
         key.is_system_key = (msg == WM_SYSKEYDOWN || msg == WM_SYSKEYUP || msg == WM_SYSCHAR);
         key.modifiers = Modifiers();
         if (msg == WM_CHAR || msg == WM_SYSCHAR)
+        {
+            // Букву мы уже сделали сами (см. ниже) — эта пришла вдогонку, второй
+            // раз печатать её не надо.
+            if (g_typedChar)
+            {
+                g_typedChar = false;
+                return true;
+            }
             key.type = KEYEVENT_CHAR;
+        }
         else if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN)
             key.type = KEYEVENT_RAWKEYDOWN;
         else
             key.type = KEYEVENT_KEYUP;
         host->SendKeyEvent(key);
+
+        // Букву для страницы делаем сами.
+        //
+        // ЗАЧЕМ. До нас доходит WM_KEYDOWN, а WM_CHAR — нет: в логе игры видно
+        // "3s: 7 key(s), 0 char(s)". Обычно WM_CHAR рождает TranslateMessage в
+        // цикле сообщений, но игра написана на Delphi, и её TApplication
+        // разбирает клавиши своим путём (IsKeyMsg), мимо оконной процедуры.
+        // Поэтому в поле на странице не появлялось ни буквы, хотя нажатия
+        // до неё доходили и даже отбирались у игры.
+        //
+        // ToUnicodeEx переводит нажатие в символ по ТЕКУЩЕЙ раскладке, так что
+        // русская и английская работают одинаково и разбирать их самим не надо.
+        if (key.type == KEYEVENT_RAWKEYDOWN)
+        {
+            BYTE state[256] = {};
+            if (GetKeyboardState(state))
+            {
+                wchar_t chars[8] = {};
+                UINT scan = (static_cast<UINT>(lp) >> 16) & 0xFF;
+                int n = ToUnicodeEx(static_cast<UINT>(wp), scan, state, chars,
+                                    static_cast<int>(std::size(chars)), 0, GetKeyboardLayout(0));
+                for (int i = 0; i < n; ++i)
+                {
+                    // Управляющие символы страница получает как клавиши, а не
+                    // как текст; исключения — табуляция, ввод и забой.
+                    if (chars[i] < 0x20 && chars[i] != 0x09 && chars[i] != 0x0D && chars[i] != 0x08)
+                        continue;
+                    CefKeyEvent ch = key;
+                    ch.type = KEYEVENT_CHAR;
+                    ch.windows_key_code = chars[i];
+                    ch.character = chars[i];
+                    ch.unmodified_character = chars[i];
+                    host->SendKeyEvent(ch);
+                    g_typedChar = true;
+                }
+            }
+        }
         return true;
     }
 
