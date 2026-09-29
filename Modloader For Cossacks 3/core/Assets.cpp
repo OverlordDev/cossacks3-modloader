@@ -40,6 +40,7 @@ namespace
     std::set<std::string> g_pending;         // ещё не собранные (патчи или встроенные правки)
     std::map<std::string, std::string> g_workshop; // путь в игре -> файл из включённого мода Steam
     std::set<std::string> g_seen;            // dev-лог: какие скрипты движок читал
+    std::set<std::string> g_contentKeys;     // что добавил content.lua — чтобы можно было пересобрать
     std::recursive_mutex g_mutex;
     std::string g_gameDir;
 
@@ -413,11 +414,13 @@ namespace
         {
             g_patches[p.key].push_back({ p.mod, "", p.text });
             g_pending.insert(p.key);
+            g_contentKeys.insert(p.key);
         }
         for (const Content::Link& l : r.links) // файлы мода по новому пути в игре (карты сражений)
         {
             g_map.insert_or_assign(l.key, GameApi::DelphiString(l.source));
             g_list.push_back({ l.mod + " (content)", l.key, l.source });
+            g_contentKeys.insert(l.key);
         }
         fs::path dir = fs::path(g_gameDir) / L"modloader" / L"cache" / L"generated";
         for (const Content::File& f : r.files)
@@ -458,6 +461,35 @@ bool Assets::Install()
         LOG_INFO("[patch] %d game file(s) will be patched by mods", static_cast<int>(g_patches.size()));
     ok &= Content::InstallLocale();
     return ok;
+}
+
+int Assets::ReloadContent()
+{
+    std::lock_guard lock(g_mutex);
+
+    // Правки content.lua отличаются от патчей из patches/ тем, что пришли
+    // текстом, а не файлом мода. Снимаем только их — чужие патчи не трогаем.
+    for (auto it = g_patches.begin(); it != g_patches.end();)
+    {
+        auto& sources = it->second;
+        std::erase_if(sources, [](const PatchSource& p) { return p.file.empty() && !p.text.empty(); });
+        it = sources.empty() ? g_patches.erase(it) : std::next(it);
+    }
+    // Файлы и ссылки, которые content положил раньше: без этого исчезнувший из
+    // content.lua юнит остался бы в игре до перезапуска.
+    for (const std::string& key : g_contentKeys)
+    {
+        g_map.erase(key);
+        std::erase_if(g_list, [&](const Assets::Override& o) { return o.game == key; });
+        g_pending.insert(key); // пересобрать при следующем чтении
+    }
+    size_t before = g_contentKeys.size();
+    g_contentKeys.clear();
+
+    GenerateContent();
+    LOG_INFO("[content] пересобрано: было %d файл(ов), стало %d",
+             static_cast<int>(before), static_cast<int>(g_contentKeys.size()));
+    return static_cast<int>(g_contentKeys.size());
 }
 
 bool Assets::Built(const std::string& key)

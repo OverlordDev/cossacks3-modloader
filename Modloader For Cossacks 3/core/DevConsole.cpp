@@ -183,6 +183,7 @@ namespace
             "  .checksum           хеш скриптов для лобби: движка, чистый (без модлоадера) и сохранённый игрой\n"
             "  =<lua>              выполнить Lua:  =player().gold   =native.GetBuildVersion()\n"
             "  .content            нации и типы юнитов из content.lua модов\n"
+            "  .content reload     перечитать content.lua (увидит следующая партия)\n"
             "  .mods               Lua-моды (modloader/mods/*/manifest.lua) и их статус\n"
             "  .lua reload         перезагрузить все Lua-моды\n"
             "  .natives            количество нативов\n"
@@ -268,7 +269,20 @@ namespace
             else if (cmd == "mods")
                 LuaHost::PrintMods();
             else if (cmd == "content")
-                Content::Print();
+            {
+                if (arg == "reload")
+                {
+                    // Правка юнита или нации больше не требует перезапуска игры:
+                    // это был последний рестарт, оставшийся в цикле разработки —
+                    // моды и страницы перечитываются на ходу давно.
+                    int files = Assets::ReloadContent();
+                    Console::Print("content: перечитан, затронуто файлов игры: %d. "
+                                   "Изменения увидит СЛЕДУЮЩАЯ партия — текущая построена "
+                                   "по старым описаниям.", files);
+                }
+                else
+                    Content::Print();
+            }
             else if (cmd == "assets")
                 Assets::Print();
             else if (cmd == "crashtest")
