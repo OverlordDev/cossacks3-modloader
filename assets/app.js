@@ -25,11 +25,11 @@
   if (menuBtn && side) menuBtn.addEventListener('click', function () { side.classList.toggle('open'); });
 
   // ---- подсветка кода (Lua / JS / Pascal / patch — грубо, но достаточно)
-  var KW = /^(and|break|do|else|elseif|end|false|for|function|goto|if|in|local|nil|not|or|repeat|return|then|true|until|while|var|begin|const|const|await|async|let|new|null|undefined|typeof|class|switch|case|default|try|catch|finally|throw|import|export|from|of|this)$/;
+  var KW = /^(and|break|do|else|elseif|end|false|for|function|goto|if|in|local|nil|not|or|repeat|return|then|true|until|while|var|begin|const|const|await|async|let|new|null|undefined|typeof|class|switch|case|default|try|catch|finally|throw|import|export|from|of|this|procedure|shl|shr|xor|div|mod|Result|downto)$/;
   function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
   function highlight(src, lang) {
     if (lang === 'html' || lang === 'text' || lang === 'json') return esc(src);
-    var out = '', i = 0, n = src.length, lua = lang !== 'js' && lang !== 'javascript';
+    var out = '', i = 0, n = src.length, lua = lang !== 'js' && lang !== 'javascript' && lang !== 'pascal' && lang !== 'patch';
     while (i < n) {
       var c = src[i], rest = src.slice(i, i + 2);
       if ((lua && rest === '--') || (!lua && rest === '//')) {

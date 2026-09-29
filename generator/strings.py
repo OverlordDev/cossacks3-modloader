@@ -116,6 +116,10 @@ STR = {
         "dev.guide": "БЫСТРЫЙ СТАРТ →",
         "dev.overview": "ОБЗОР API →",
         "dev.events": "СОБЫТИЯ →",
+        "why.title": "Почему не .script",
+        "why.label": "Почему не .script",
+        "why.summary": "Как выглядит оригинальный моддинг на .script и как то же самое делается на Lua, HTML и патчах.",
+        "dev.why": "ПОЧЕМУ НЕ .SCRIPT →",
     },
     "en": {
         "lang": "en",
@@ -228,6 +232,10 @@ STR = {
         "dev.guide": "QUICK START →",
         "dev.overview": "API OVERVIEW →",
         "dev.events": "EVENTS →",
+        "why.title": "Why not .script",
+        "why.label": "Why not .script",
+        "why.summary": "What original .script modding looks like and how the same things are done with Lua, HTML and patches.",
+        "dev.why": "WHY NOT .SCRIPT →",
     },
 }
 

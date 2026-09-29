@@ -27,6 +27,7 @@
 <a href="index.html">Главная</a>
 <a href="guide.html">Быстрый старт</a>
 <a href="api-overview.html" class="active">Обзор api/</a>
+<a href="why.html">Почему не .script</a>
 </div>
 <div class="group"><span class="group-title">СПРАВОЧНИК</span>
 <a href="core-rules.html">Главные правила (читать первыми)</a>
@@ -119,7 +120,7 @@ G.gProfile.sndmaster = 0.5</code></pre>
 <pre><code data-lang="bash">python tools/gen_game_api.py "C:/Program Files (x86)/Steam/steamapps/common/Cossacks 3"</code></pre>
 <p>Пересоздаёт <code>00_schema.lua</code> и <code>GAME_STATE.md</code> из скриптов игры.</p>
 <h2 id="чего-пока-нет" data-t="Чего пока нет">Чего пока нет<a class="h-anchor" href="#чего-пока-нет">#</a></h2>
-<ul><li><strong>Кампании</strong> — список и описания живут в отдельных файлах кампаний, не в глобальных переменных; нужен разбор <code>data/gui/menu.inc/showcampaign.inc</code>.</li><li><strong>Лобби и комнаты</strong> — сетевые данные, обновляются по событиям; нужен разбор <code>showinternetshell.inc</code> и событий <code>OnLanEvent</code>.</li><li><strong>Юниты</strong> — статы типов есть (<code>balance</code>), события жизни — <code>unit.spawn/death/destroy</code>, <code>building.*</code>. Нет: урона, приказов, данных конкретного юнита (TObj).</li></ul></article><div class="meta" style="margin-top:36px"><a class="badge" href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/api/README.md">РЕДАКТИРОВАТЬ НА GITHUB ↗</a></div><div class="pn"><a href="guide.html"><small>← НАЗАД</small>Быстрый старт</a><a class="next" href="core-rules.html"><small>ДАЛЬШЕ →</small>Главные правила (читать первыми)</a></div></main><aside class="toc" id="toc"><b>НА СТРАНИЦЕ</b></aside></div>
+<ul><li><strong>Кампании</strong> — список и описания живут в отдельных файлах кампаний, не в глобальных переменных; нужен разбор <code>data/gui/menu.inc/showcampaign.inc</code>.</li><li><strong>Лобби и комнаты</strong> — сетевые данные, обновляются по событиям; нужен разбор <code>showinternetshell.inc</code> и событий <code>OnLanEvent</code>.</li><li><strong>Юниты</strong> — статы типов есть (<code>balance</code>), события жизни — <code>unit.spawn/death/destroy</code>, <code>building.*</code>. Нет: урона, приказов, данных конкретного юнита (TObj).</li></ul></article><div class="meta" style="margin-top:36px"><a class="badge" href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/api/README.md">РЕДАКТИРОВАТЬ НА GITHUB ↗</a></div><div class="pn"><a href="guide.html"><small>← НАЗАД</small>Быстрый старт</a><a class="next" href="why.html"><small>ДАЛЬШЕ →</small>Почему не .script</a></div></main><aside class="toc" id="toc"><b>НА СТРАНИЦЕ</b></aside></div>
   <footer class="footer">
     <div><b>COSSACKS 3 MODLOADER</b><br>Документация API<br>Собрана из папки <code>api/</code> репозитория</div>
     <div>ДОКУМЕНТЫ<br><a href="guide.html">Быстрый старт</a><a href="core-rules.html">Справочник</a><a href="api-overview.html">Обзор api/</a></div>

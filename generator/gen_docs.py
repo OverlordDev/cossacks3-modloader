@@ -475,6 +475,11 @@ def build():
     add_page("api-overview", S("overview.title"), S("overview.label"), "start", body, "api/README.md", md.headings,
              S("overview.summary"))
 
+    md = Md(link_map, "")
+    why_text = read(HERE / "content" / ("why.%s.md" % LANG))
+    add_page("why", S("why.title"), S("why.label"), "start", md.render(why_text), "generator/content/why.%s.md" % LANG,
+             md.headings, S("why.summary"))
+
     # ---- СПРАВОЧНИК ЯДРА (AI_MODDING_REFERENCE.md)
     ref = source_text("AI_MODDING_REFERENCE.md")
     collect_reference_examples(ref)
@@ -688,8 +693,8 @@ def home_page(stats, cards, code, fn_names):
 <section class="devzone" id="dev">
   <h2 class="dev-title">%(t_dev)s</h2>
   <p class="dev-p">%(dev_p)s</p>
-  <div class="cta"><a class="btn black" href="guide.html">%(d_guide)s</a><a class="btn" href="api-overview.html">%(d_overview)s</a>
-  <a class="btn" href="core-events.html">%(d_events)s</a></div>
+  <div class="cta"><a class="btn black" href="guide.html">%(d_guide)s</a><a class="btn" href="why.html">%(d_why)s</a>
+  <a class="btn" href="api-overview.html">%(d_overview)s</a></div>
 </section>
 <div class="stats">
   <div class="stat rv"><div class="cnt" data-count="%(modules)d">0</div><small>%(s_modules)s</small></div>
@@ -706,7 +711,7 @@ def home_page(stats, cards, code, fn_names):
 <div class="rv">%(faq)s</div>
 """ % {"h1": S("hero.h1"), "p": S("hero.p"), "cta1": S("hero.cta1"), "cta2": S("hero.cta2"), "t_feat": S("feat.title"),
        "feat": feat_html, "t_dev": S("dev.title"), "dev_p": S("dev.p"), "d_guide": S("dev.guide"),
-       "d_overview": S("dev.overview"), "d_events": S("dev.events"), "modules": stats["modules"],
+       "d_overview": S("dev.overview"), "d_why": S("dev.why"), "modules": stats["modules"],
        "functions": stats["functions"], "natives": stats["natives"], "screens": stats["screens"],
        "s_modules": S("stat.modules"), "s_funcs": S("stat.funcs"), "s_natives": S("stat.natives"),
        "s_screens": S("stat.screens"), "marquee": marquee, "tabs": tabs, "panes": panes, "cards": card_html,
@@ -777,7 +782,7 @@ def render_page(idx, p):
     desc = p["summary"] or S("default_desc")
     edit = ""
     if p["src"]:
-        edit = '<div class="meta" style="margin-top:36px"><a class="badge" href="%s%s">%s</a></div>' % (BLOB, p["src"], S("edit"))
+        edit = '<div class="meta" style="margin-top:36px"><a class="badge" href="%s%s">%s</a></div>' % ((REPO + "/blob/docs-site/") if p["src"].startswith("generator/") else BLOB, p["src"], S("edit"))
     body = p["body"]
     if not p.get("home"):
         body = '<article>%s</article>%s%s' % (body, edit, prev_next(idx))

@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Почему не .script — Cossacks 3 Modloader</title>
+<meta name="description" content="Как выглядит оригинальный моддинг на .script и как то же самое делается на Lua, HTML и патчах.">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/style.css">
+<script>try{var t=localStorage.getItem('cs3-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light')}catch(e){}window.CS3_I18N={"none": "Ничего не найдено"};</script>
+</head>
+<body>
+<div class="page">
+  <header class="site-header">
+    <div class="hl">
+      <nav class="nav"><a href="index.html">ГЛАВНАЯ</a><a href="guide.html" class="active">ГАЙД</a><a href="core-rules.html">СПРАВОЧНИК</a><a href="core-log.html">LUA API</a><a href="api-schema.html">МОДУЛИ</a><a href="ref-state.html">ДАННЫЕ</a></nav>
+    </div>
+    <div class="ha">
+      <button class="iconbtn menu-btn" id="menu" type="button" aria-label="Меню">☰</button>
+      <div class="search-wrap"><input class="search" id="q" placeholder="Поиск по API…" autocomplete="off" aria-label="Поиск"><span class="kbd">/</span><div class="results" id="results"></div></div>
+      <a class="btn sm" href="en/why.html" title="English version" hreflang="en">EN</a>
+      <a class="btn black sm" href="https://github.com/OverlordDev/cossacks3-modloader" target="_blank" rel="noopener">GITHUB →</a>
+      <button class="iconbtn" id="theme" type="button" aria-label="Тема">☀</button>
+    </div>
+  </header>
+  <div class="layout"><aside class="side"><div class="group"><span class="group-title">НАЧАЛО</span>
+<a href="index.html">Главная</a>
+<a href="guide.html">Быстрый старт</a>
+<a href="api-overview.html">Обзор api/</a>
+<a href="why.html" class="active">Почему не .script</a>
+</div>
+<div class="group"><span class="group-title">СПРАВОЧНИК</span>
+<a href="core-rules.html">Главные правила (читать первыми)</a>
+<a href="core-structure.html">Структура мода</a>
+<a href="core-manifest.html">manifest.lua</a>
+<a href="core-sides.html">Что доступно на какой стороне</a>
+<a href="core-assets.html">Замена файлов</a>
+<a href="core-patches.html">Патчи скриптов игры</a>
+<a href="core-content.html">Новые нации и юниты</a>
+<a href="core-templates.html">Шаблоны</a>
+<a href="core-errors.html">Частые ошибки</a>
+</div>
+<div class="group"><span class="group-title">LUA API ДВИЖКА</span>
+<a href="core-log.html">log, mod, require, show</a>
+<a href="core-events.html">events</a>
+<a href="core-game.html">game</a>
+<a href="core-player.html">player, world</a>
+<a href="core-state.html">state и G</a>
+<a href="core-objects.html">objects и mem</a>
+<a href="core-units.html">units</a>
+<a href="core-buildings.html">buildings</a>
+<a href="core-balance.html">balance</a>
+<a href="core-misc.html">Прочие данные</a>
+<a href="core-net.html">net</a>
+<a href="core-input.html">input</a>
+<a href="core-web.html">web</a>
+<a href="core-ui.html">ui</a>
+<a href="core-screens.html">screens</a>
+<a href="core-gfx.html">gfx</a>
+<a href="core-savedata.html">savedata</a>
+<a href="core-native.html">native</a>
+</div>
+<div class="group"><span class="group-title">МОДУЛИ API</span>
+<a href="api-schema.html">schema</a>
+<a href="api-state.html">state</a>
+<a href="api-screens_data.html">screens_data</a>
+<a href="api-show.html">show</a>
+<a href="api-profile.html">profile</a>
+<a href="api-options.html">options</a>
+<a href="api-saves.html">saves</a>
+<a href="api-players.html">players</a>
+<a href="api-map.html">map</a>
+<a href="api-screens.html">screens</a>
+<a href="api-balance.html">balance</a>
+<a href="api-buildings.html">buildings</a>
+<a href="api-units.html">units</a>
+<a href="api-objects.html">objects</a>
+<a href="api-call.html">call</a>
+</div>
+<div class="group"><span class="group-title">ДАННЫЕ ИГРЫ</span>
+<a href="ref-state.html">Переменные и типы</a>
+<a href="ref-screens.html">Экраны и кнопки</a>
+<a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/GAME_API.md" target="_blank" rel="noopener">Нативы (GAME_API) ↗</a>
+</div></aside><main><article><h1>Почему не <code>.script</code></h1>
+<p>Моды к Cossacks 3 «из коробки» пишутся на <code>.script</code> — Pascal-подобном языке. Ниже — как это выглядит и как то же самое делается через Modloader.</p>
+<h2 id="как-выглядит-оригинал" data-t="Как выглядит оригинал">Как выглядит оригинал<a class="h-anchor" href="#как-выглядит-оригинал">#</a></h2>
+<p>Это кусок настоящего <code>player.script</code> из игры: процедура, которая делает двух игроков союзниками. Всего одна из 72 функций в файле на 3 544 строки.</p>
+<pre><code data-lang="pascal">procedure _player_MakeAlly(plInd1, plInd2 : Integer);
+begin
+   if (plInd1 &lt;&gt; plInd2) and (plInd1 &gt;= 0) and (plInd1 &lt; gc_MaxPlayerCount) and (plInd2 &gt;= 0) and (plInd2 &lt; gc_MaxPlayerCount) then
+   begin
+      var team1 : Integer = gPlayer[plInd1].team;
+      var team2 : Integer = gPlayer[plInd2].team;
+      if team1 &lt;&gt; team2 then
+      begin
+         var i : Integer;
+         var enMask : Integer;
+         for i := 0 to gc_MaxPlayerCount-1 do
+         begin
+            if (gPlayer[i].team = team1) or (gPlayer[i].team = team2) then
+            gPlayer[i].team := team1
+            else
+            enMask := enMask or (1 shl i);
+         end;
+
+         for i := 0 to gc_MaxPlayerCount-1 do
+         if gPlayer[i].team = team1 then
+         gPlayer[i].enemyPlMask := enMask;
+
+         var pEnemyInfo : Pointer = _misc_GetTeamEnemyInfo(team2);
+         if pEnemyInfo &lt;&gt; nil then
+         TEnemyInfo(pEnemyInfo).Reset;</code></pre>
+<p>Что здесь пугает новичка:</p>
+<ul><li>имена вроде <code>plInd1</code> и <code>enMask</code>, битовые маски (<code>1 shl i</code>);</li><li>ручные циклы по слотам игроков и внутренние структуры игры (<code>TEnemyInfo(pEnemyInfo).Reset</code>);</li><li>чтобы поправить одну строку, в мод приходится класть копию файла целиком, все 3 544 строки. Такая замена ломается при обновлении игры и конфликтует с другими модами.</li></ul>
+<p><em>Фрагмент <code>player.script</code> принадлежит GSC Game World и приведён как иллюстрация.</em></p>
+<h2 id="то-же-самое-у-нас" data-t="То же самое у нас">То же самое у нас<a class="h-anchor" href="#то-же-самое-у-нас">#</a></h2>
+<h3 id="1-поправить-одно-место-в-скрипте-игры" data-t="1. Поправить одно место в скрипте игры">1. Поправить одно место в скрипте игры<a class="h-anchor" href="#1-поправить-одно-место-в-скрипте-игры">#</a></h3>
+<p>Патч правит только нужные строки, файл игры не меняется. Это пример «весь урон ×2» из <code>examples/mods/patch_example</code>:</p>
+<pre><code data-lang="patch">@before _misc_DoDamage
+function ML_DamageMultiplier : Integer;
+begin
+   Result := 2;
+end;
+
+@find
+            var damage : Integer = indamage;
+@with
+            var damage : Integer = indamage * ML_DamageMultiplier;</code></pre>
+<p>Это всё ещё Pascal, но вместо копии на тысячи строк — десяток. Патчи разных модов на один файл накладываются друг на друга.</p>
+<h3 id="2-поменять-баланс-обычный-lua" data-t="2. Поменять баланс: обычный Lua">2. Поменять баланс: обычный Lua<a class="h-anchor" href="#2-поменять-баланс-обычный-lua">#</a></h3>
+<p>Мушкетёрам 200 здоровья, урон 40, подешевле. Никакого Pascal:</p>
+<pre><code data-lang="lua">events.on("game.start", function()
+    balance.setHP("musketeer18", 200)
+    balance.setDamage("musketeer18", 40, 1)     -- оружие 1 — выстрел
+    balance.set("musketeer18", "price[3]", 30)  -- цена в золоте
+end)</code></pre>
+<p>Поправил файл и набрал <code>.lua reload</code> в консоли модлоадера: результат в игре без перезапуска.</p>
+<h3 id="3-сделать-интерфейс-html-вместо-скриптов-gui" data-t="3. Сделать интерфейс: HTML вместо скриптов GUI">3. Сделать интерфейс: HTML вместо скриптов GUI<a class="h-anchor" href="#3-сделать-интерфейс-html-вместо-скриптов-gui">#</a></h3>
+<p>Интерфейс — обычная веб-страница (CEF). Данные берёт из игры одной строкой:</p>
+<pre><code data-lang="html">&lt;div id="box" style="position:absolute;right:16px;bottom:16px;background:rgba(0,0,0,.7);color:#fc6;padding:8px"&gt;&lt;/div&gt;
+&lt;script&gt;
+  setInterval(async () =&gt; {
+    const h = await game.api('buildings.selected');
+    document.getElementById('box').textContent = h ? 'Здание #' + h : '';
+  }, 500);
+&lt;/script&gt;</code></pre>
+<p>Дизайнер, который ни разу не видел <code>.script</code>, справится с этим сразу: HTML, CSS, JS. Готовая панель найма и улучшений на такой странице — <code>examples/mods/hud_example</code>.</p>
+<h3 id="4-свои-модели-перетащить-glb" data-t="4. Свои модели: перетащить .glb">4. Свои модели: перетащить <code>.glb</code><a class="h-anchor" href="#4-свои-модели-перетащить-glb">#</a></h3>
+<p>Кидаешь <code>.glb</code>, модлоадер сам распаковывает его в игру. Для 3D-художника это привычный формат: нарисовал в Blender, экспортировал, положил.</p>
+<blockquote><strong>Статус.</strong> Сейчас работает со статическими объектами. Анимации в разработке.</blockquote>
+<h2 id="итого" data-t="Итого">Итого<a class="h-anchor" href="#итого">#</a></h2>
+<div class="tblwrap"><table><thead><tr><th></th><th>Оригинал</th><th>Modloader</th></tr></thead><tbody><tr><td>Язык</td><td>Pascal-подобный <code>.script</code></td><td>Lua 5.4</td></tr><tr><td>Правка скриптов игры</td><td>копия файла целиком</td><td>патч на несколько строк</td></tr><tr><td>Интерфейс</td><td>скрипты состояний GUI</td><td>HTML / CSS / JS (CEF)</td></tr></tbody></table></div></article><div class="meta" style="margin-top:36px"><a class="badge" href="https://github.com/OverlordDev/cossacks3-modloader/blob/docs-site/generator/content/why.ru.md">РЕДАКТИРОВАТЬ НА GITHUB ↗</a></div><div class="pn"><a href="api-overview.html"><small>← НАЗАД</small>Обзор api</a><a class="next" href="core-rules.html"><small>ДАЛЬШЕ →</small>Главные правила (читать первыми)</a></div></main><aside class="toc" id="toc"><b>НА СТРАНИЦЕ</b></aside></div>
+  <footer class="footer">
+    <div><b>COSSACKS 3 MODLOADER</b><br>Документация API<br>Собрана из папки <code>api/</code> репозитория</div>
+    <div>ДОКУМЕНТЫ<br><a href="guide.html">Быстрый старт</a><a href="core-rules.html">Справочник</a><a href="api-overview.html">Обзор api/</a></div>
+    <div>ДАННЫЕ<br><a href="ref-state.html">Переменные игры</a><a href="ref-screens.html">Экраны</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/GAME_API.md">Нативы ↗</a></div>
+    <div>ПРОЕКТ<br><a href="https://github.com/OverlordDev/cossacks3-modloader">GitHub ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/issues">Issues ↗</a><a href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/DOCUMENTATION.md">Устройство ↗</a></div>
+  </footer>
+</div>
+<script src="assets/search-index.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>

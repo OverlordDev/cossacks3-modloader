@@ -27,6 +27,7 @@
 <a href="index.html">Home</a>
 <a href="guide.html">Quick start</a>
 <a href="api-overview.html" class="active">api/ overview</a>
+<a href="why.html">Why not .script</a>
 </div>
 <div class="group"><span class="group-title">REFERENCE</span>
 <a href="core-rules.html">Main rules (read first)</a>
@@ -119,7 +120,7 @@ G.gProfile.sndmaster = 0.5</code></pre>
 <pre><code data-lang="bash">python tools/gen_game_api.py "C:/Program Files (x86)/Steam/steamapps/common/Cossacks 3"</code></pre>
 <p>Regenerates <code>00_schema.lua</code> and <code>GAME_STATE.md</code> from the game scripts.</p>
 <h2 id="what-is-not-there-yet" data-t="What is not there yet">What is not there yet<a class="h-anchor" href="#what-is-not-there-yet">#</a></h2>
-<ul><li><strong>Campaigns</strong> — the list and descriptions live in separate campaign files, not in global variables; parsing <code>data/gui/menu.inc/showcampaign.inc</code> is needed.</li><li><strong>Lobbies and rooms</strong> — network data, updated by events; parsing <code>showinternetshell.inc</code> and the <code>OnLanEvent</code> events is needed.</li><li><strong>Units</strong> — type stats exist (<code>balance</code>), life events — <code>unit.spawn/death/destroy</code>, <code>building.*</code>. Missing: damage, orders, data of a specific unit (TObj).</li></ul></article><div class="meta" style="margin-top:36px"><a class="badge" href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/api/README.md">EDIT ON GITHUB ↗</a></div><div class="pn"><a href="guide.html"><small>← BACK</small>Quick start</a><a class="next" href="core-rules.html"><small>NEXT →</small>Main rules (read first)</a></div></main><aside class="toc" id="toc"><b>ON THIS PAGE</b></aside></div>
+<ul><li><strong>Campaigns</strong> — the list and descriptions live in separate campaign files, not in global variables; parsing <code>data/gui/menu.inc/showcampaign.inc</code> is needed.</li><li><strong>Lobbies and rooms</strong> — network data, updated by events; parsing <code>showinternetshell.inc</code> and the <code>OnLanEvent</code> events is needed.</li><li><strong>Units</strong> — type stats exist (<code>balance</code>), life events — <code>unit.spawn/death/destroy</code>, <code>building.*</code>. Missing: damage, orders, data of a specific unit (TObj).</li></ul></article><div class="meta" style="margin-top:36px"><a class="badge" href="https://github.com/OverlordDev/cossacks3-modloader/blob/master/api/README.md">EDIT ON GITHUB ↗</a></div><div class="pn"><a href="guide.html"><small>← BACK</small>Quick start</a><a class="next" href="why.html"><small>NEXT →</small>Why not .script</a></div></main><aside class="toc" id="toc"><b>ON THIS PAGE</b></aside></div>
   <footer class="footer">
     <div><b>COSSACKS 3 MODLOADER</b><br>API documentation<br>Built from the repository's <code>api/</code> folder</div>
     <div>DOCUMENTS<br><a href="guide.html">Quick start</a><a href="core-rules.html">Reference</a><a href="api-overview.html">api/ overview</a></div>
