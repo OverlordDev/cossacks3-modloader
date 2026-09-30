@@ -1,0 +1,6 @@
+AAF
+4
+"walk",0,23,morph
+"idle",24,71,morph
+"attack0",72,99,morph
+"death",100,129,morph
