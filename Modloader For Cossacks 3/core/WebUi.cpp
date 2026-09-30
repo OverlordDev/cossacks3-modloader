@@ -69,6 +69,8 @@ namespace
     std::vector<uint8_t> g_pixels;
     std::atomic<bool> g_passthrough = false; // режим HUD: прозрачные места пропускают ввод в игру
     std::atomic<bool> g_textFocus = false;   // на странице активно поле ввода (клавиатура — ей)
+    std::atomic<bool> g_keyboard = false;    // страница сама попросила клавиатуру (game.keyboard)
+    bool g_typedChar = false;                // букву уже отправили сами — WM_CHAR вдогонку пропустить
     int g_frameWidth = 0, g_frameHeight = 0;
     bool g_frameDirty = false;
 
@@ -109,7 +111,13 @@ function toLua(v) {
     return '[' + eq + '[' + String.fromCharCode(10) + v + ']' + eq + ']';
   }
   if (Array.isArray(v)) return '{' + v.map(toLua).join(', ') + '}';
-  return '{' + Object.entries(v).map(([k, x]) => '[' + toLua(k) + '] = ' + toLua(x)).join(', ') + '}';
+  // Ключ таблицы. Обычное имя пишем как есть: name = ..., иначе в скобках.
+  // Скобки ОБЯЗАТЕЛЬНО с пробелами: строки идут длинными скобками, и без
+  // пробела получалось '[' + '[[key]]' + ']' = '[[[key]]]' — Lua читает начало
+  // как длинную строку и спотыкается о лишнюю ']'. Из-за этого ЛЮБАЯ таблица
+  // со строковыми ключами, отправленная страницей в game.api, не компилировалась.
+  return '{' + Object.entries(v).map(([k, x]) =>
+    (/^[A-Za-z_]\w*$/.test(k) ? k : '[ ' + toLua(k) + ' ]') + ' = ' + toLua(x)).join(', ') + '}';
 }
 
 window.game = {
@@ -137,6 +145,12 @@ window.game = {
   },
   // Имена файлов в папке рядом со страницей: game.files('../LoadScreen')
   async files(folder) { return JSON.parse(await this.send('files ' + folder)); },
+  // Забрать клавиатуру себе или вернуть её игре: game.keyboard(true).
+  // В режиме HUD клавиши по умолчанию идут в игру, иначе с открытой панелью
+  // нельзя было бы играть. Страница включает захват, когда её поле в фокусе:
+  //   addEventListener('focusin',  e => { if (e.target.matches('input,textarea,select')) game.keyboard(true); });
+  //   addEventListener('focusout', () => game.keyboard(false));
+  keyboard(on) { return this.send('keyboard ' + (on ? '1' : '0')); },
   // Убрать страницу с экрана и вернуть управление игре.
   close() { return this.send('close'); },
 };
@@ -252,6 +266,22 @@ window.game = {
             else if (cmd == "close")
             {
                 WebUi::RequestClose(); // страница сама убирает себя с экрана
+            }
+            else if (cmd == "keyboard")
+            {
+                // Страница берёт клавиатуру себе (или отдаёт обратно игре).
+                //
+                // В режиме HUD (web.passthrough) клавиши по умолчанию уходят в
+                // игру: иначе нельзя было бы играть с открытой панелью. Раньше
+                // исключением было только автоопределение поля ввода через
+                // OnVirtualKeyboardRequested — оно задумано для сенсорных
+                // экранов и при офскрин-отрисовке срабатывает не всегда. Из-за
+                // этого в поле на странице попросту не удавалось напечатать.
+                //
+                // Сама страница знает это наверняка: у неё есть focusin и
+                // focusout своих полей. Поэтому решение за ней, а не за
+                // догадками движка.
+                WebUi::SetKeyboard(arg != "0" && arg != "false");
             }
             else if (cmd == "log")
             {
@@ -391,6 +421,15 @@ window.game = {
         void OnAfterCreated(CefRefPtr<CefBrowser> browser) override
         {
             g_browser = browser;
+            // ВНУТРЕННИЙ фокус браузера — не оконный. Без него страница,
+            // отрисованная офскрин, считает, что её никто не смотрит: клик по
+            // полю ввода не делает его активным, а клавиши, посланные через
+            // SendKeyEvent, уходят в никуда. Именно поэтому в поле на панели
+            // не удавалось напечатать ни буквы.
+            //
+            // Оконный фокус при этом остаётся у игры: невидимое родительское
+            // окно браузера возвращает его игре сразу (см. ParentProc).
+            browser->GetHost()->SetFocus(true);
             LOG_INFO("[web] browser ready");
         }
 
@@ -767,6 +806,16 @@ void WebUi::RequestEval(const std::string& javascript)
     g_pendingEval.push_back(javascript);
 }
 
+void WebUi::SetKeyboard(bool on)
+{
+    g_keyboard = on;
+}
+
+bool WebUi::Keyboard()
+{
+    return g_keyboard.load();
+}
+
 void WebUi::SetPassthrough(bool on)
 {
     g_passthrough = on;
@@ -801,6 +850,7 @@ namespace
 void WebUi::RequestClose()
 {
     g_passthrough = false;
+    g_keyboard = false;   // закрыли страницу — клавиатура снова у игры
     std::lock_guard lock(g_cmdMutex);
     g_pendingClose = true;
 }
@@ -876,6 +926,23 @@ void WebUi::OnFrame(HWND window)
 
     if (!IsWindow(window))
         return;
+
+    // Весь CEF обязан жить в одном потоке (g_cefThread — где отработал StartCef):
+    // CreateBrowser/LoadURL/Reload/CloseBrowser/JS-вызовы с чужого потока — UB
+    // внутри libcef. Во время загрузки карты кадры transiently идут с чужого
+    // потока — их пропускаем (держим последний кадр), работу продолжает свой.
+    if (current != g_cefThread)
+    {
+        static DWORD lastWarn = 0; // 4 байта: чтение/запись атомарны на x86
+        DWORD now = GetTickCount();
+        if (now - lastWarn > 5000)
+        {
+            lastWarn = now;
+            LOG_WARN("[web] frame on foreign thread %lu (cef lives on %lu) — CEF calls skipped",
+                     current, g_cefThread);
+        }
+        return;
+    }
 
     if (!g_browser && open) // вкладку закрывали, а CEF остался поднятым — открываем заново
     {
@@ -994,7 +1061,9 @@ bool WebUi::OnWndProc(HWND window, UINT msg, WPARAM wp, LPARAM lp)
         bool mouseMsg = (msg >= WM_MOUSEFIRST && msg <= WM_MOUSELAST) || msg == WM_SETCURSOR;
         bool keyMsg = msg == WM_KEYDOWN || msg == WM_KEYUP || msg == WM_CHAR || msg == WM_SYSKEYDOWN ||
                       msg == WM_SYSKEYUP || msg == WM_SYSCHAR;
-        if (keyMsg && !g_textFocus)
+        // Клавиши отдаём странице, если она их попросила (game.keyboard) либо
+        // CEF сам сообщил про поле ввода. Иначе они принадлежат игре.
+        if (keyMsg && !g_textFocus && !g_keyboard)
             return false;
         if (mouseMsg)
         {
@@ -1064,12 +1133,58 @@ bool WebUi::OnWndProc(HWND window, UINT msg, WPARAM wp, LPARAM lp)
         key.is_system_key = (msg == WM_SYSKEYDOWN || msg == WM_SYSKEYUP || msg == WM_SYSCHAR);
         key.modifiers = Modifiers();
         if (msg == WM_CHAR || msg == WM_SYSCHAR)
+        {
+            // Букву мы уже сделали сами (см. ниже) — эта пришла вдогонку, второй
+            // раз печатать её не надо.
+            if (g_typedChar)
+            {
+                g_typedChar = false;
+                return true;
+            }
             key.type = KEYEVENT_CHAR;
+        }
         else if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN)
             key.type = KEYEVENT_RAWKEYDOWN;
         else
             key.type = KEYEVENT_KEYUP;
         host->SendKeyEvent(key);
+
+        // Букву для страницы делаем сами.
+        //
+        // ЗАЧЕМ. До нас доходит WM_KEYDOWN, а WM_CHAR — нет: в логе игры видно
+        // "3s: 7 key(s), 0 char(s)". Обычно WM_CHAR рождает TranslateMessage в
+        // цикле сообщений, но игра написана на Delphi, и её TApplication
+        // разбирает клавиши своим путём (IsKeyMsg), мимо оконной процедуры.
+        // Поэтому в поле на странице не появлялось ни буквы, хотя нажатия
+        // до неё доходили и даже отбирались у игры.
+        //
+        // ToUnicodeEx переводит нажатие в символ по ТЕКУЩЕЙ раскладке, так что
+        // русская и английская работают одинаково и разбирать их самим не надо.
+        if (key.type == KEYEVENT_RAWKEYDOWN)
+        {
+            BYTE state[256] = {};
+            if (GetKeyboardState(state))
+            {
+                wchar_t chars[8] = {};
+                UINT scan = (static_cast<UINT>(lp) >> 16) & 0xFF;
+                int n = ToUnicodeEx(static_cast<UINT>(wp), scan, state, chars,
+                                    static_cast<int>(std::size(chars)), 0, GetKeyboardLayout(0));
+                for (int i = 0; i < n; ++i)
+                {
+                    // Управляющие символы страница получает как клавиши, а не
+                    // как текст; исключения — табуляция, ввод и забой.
+                    if (chars[i] < 0x20 && chars[i] != 0x09 && chars[i] != 0x0D && chars[i] != 0x08)
+                        continue;
+                    CefKeyEvent ch = key;
+                    ch.type = KEYEVENT_CHAR;
+                    ch.windows_key_code = chars[i];
+                    ch.character = chars[i];
+                    ch.unmodified_character = chars[i];
+                    host->SendKeyEvent(ch);
+                    g_typedChar = true;
+                }
+            }
+        }
         return true;
     }
 

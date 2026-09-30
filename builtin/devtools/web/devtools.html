@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Инспектор</title>
+<!--
+  Панель разработчика мода.
+
+  Почему почти весь код здесь, а не в client.lua: странице доступны
+  game.api('модуль.функция', ...) и game.lua(...), то есть весь api модлоадера.
+  Мод нужен только ради горячей клавиши и потока событий (события живут в Lua).
+
+  Панель занимает полосу справа, остальное прозрачно и пропускает мышь в игру
+  (web.passthrough в client.lua) — значит можно выделять юнитов, не закрывая её.
+-->
+<style>
+  :root {
+    --bg: #11151c;  --bg2: #171d26;  --line: #2a3442;
+    --fg: #d7dee8;  --dim: #7d8a9c;  --acc: #6fb3ff;  --warn: #ffb454;  --err: #ff6b6b;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+  body { font: 12px/1.45 Consolas, "Cascadia Mono", monospace; color: var(--fg); }
+
+  /* Полоса справа: слева от неё игра видна и кликабельна. */
+  #panel {
+    position: fixed; top: 0; right: 0; width: 420px; height: 100%;
+    background: rgba(17, 21, 28, .94); border-left: 1px solid var(--line);
+    display: flex; flex-direction: column;
+  }
+  header {
+    padding: 8px 10px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; gap: 8px;
+  }
+  header b { color: var(--acc); font-weight: 600; }
+  header .hint { color: var(--dim); margin-left: auto; }
+
+  nav { display: flex; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
+  /* Вкладок семь на 420 пикселей: в одну строку не влезают, поэтому по четыре
+     в ряд и мельче основного текста. */
+  nav button {
+    flex: 1 0 25%; padding: 7px 2px; background: none; border: 0; border-bottom: 2px solid transparent;
+    color: var(--dim); font: inherit; font-size: 11px; line-height: 1.2; cursor: pointer;
+    white-space: nowrap;
+  }
+  nav button.on { color: var(--fg); border-bottom-color: var(--acc); background: var(--bg2); }
+
+  main { flex: 1; overflow: auto; padding: 8px 10px; }
+  section { display: none; }
+  section.on { display: block; }
+
+  .empty { color: var(--dim); padding: 14px 2px; }
+  .card { background: var(--bg2); border: 1px solid var(--line); border-radius: 4px;
+          padding: 7px 8px; margin-bottom: 8px; }
+  .card h3 { margin: 0 0 6px; font-size: 12px; color: var(--acc); font-weight: 600; }
+  .card h3 span { color: var(--dim); font-weight: 400; }
+
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 1px 0; vertical-align: top; }
+  td.k { color: var(--dim); width: 45%; padding-right: 6px; word-break: break-all; }
+  td.v { word-break: break-all; }
+  td.v input { width: 100%; background: #0d1117; color: var(--fg); border: 1px solid var(--line);
+                border-radius: 3px; font: inherit; padding: 1px 4px; }
+  td.v input:focus { outline: none; border-color: var(--acc); }
+
+  .row { display: flex; gap: 6px; align-items: center; margin: 3px 0; }
+  .row .name { flex: 1; }
+  button.act { background: #223047; color: var(--fg); border: 1px solid var(--line);
+               border-radius: 3px; padding: 2px 8px; font: inherit; cursor: pointer; }
+  button.act:hover { border-color: var(--acc); }
+
+  #replIn { width: 100%; background: #0d1117; color: var(--fg); border: 1px solid var(--line);
+            border-radius: 3px; font: inherit; padding: 4px 6px; }
+  #replOut div { white-space: pre-wrap; word-break: break-all; padding: 2px 0;
+                 border-bottom: 1px solid #1d242e; }
+  .q { color: var(--acc); }
+  .err { color: var(--err); }
+  .ev { display: flex; gap: 6px; }
+  .ev .t { color: var(--dim); }
+  .ev .n { color: var(--warn); min-width: 120px; }
+
+  /* Пока печатают, клавиши не доходят до игры — это надо видеть, иначе
+     непонятно, почему перестали работать горячие клавиши. */
+  header .kb { display: none; color: var(--warn); }
+  body.typing header .kb { display: inline; }
+  body.typing #panel { border-left-color: var(--warn); }
+
+  /* Строка с полями ввода над списком (поиск, фильтр, кнопки профайлера). */
+  .bar { display: flex; gap: 6px; margin-bottom: 8px; }
+  .bar input { flex: 1; min-width: 0; background: #0d1117; color: var(--fg);
+               border: 1px solid var(--line); border-radius: 3px; font: inherit; padding: 3px 6px; }
+  .bar input:focus { outline: none; border-color: var(--acc); }
+  .bar input.num { flex: 0 0 58px; }
+  .bar select { background: #0d1117; color: var(--fg); border: 1px solid var(--line);
+                border-radius: 3px; font: inherit; padding: 3px 4px; flex: 1; min-width: 0; }
+  .note { color: var(--dim); margin-bottom: 8px; }
+
+  /* Найденное и дерево состояния: строки одинаковой высоты, кликабельные. */
+  .hit { display: flex; gap: 6px; padding: 2px 3px; border-radius: 3px; cursor: pointer; }
+  .hit:hover { background: var(--bg2); }
+  .hit .sid { color: var(--acc); flex: 1; word-break: break-all; }
+  .hit .n { color: var(--warn); }
+  .hit .at { color: var(--dim); }
+
+  .node { padding: 1px 0 1px 12px; border-left: 1px solid #1d242e; }
+  .node > .self { display: flex; gap: 6px; align-items: baseline; }
+  .node .name { color: var(--fg); cursor: pointer; }
+  .node .name.leaf { cursor: default; color: var(--dim); }
+  .node .type { color: var(--dim); }
+  .node .val { margin-left: auto; word-break: break-all; }
+  .node .val input { width: 110px; background: #0d1117; color: var(--fg);
+                     border: 1px solid var(--line); border-radius: 3px; font: inherit; padding: 0 4px; }
+  #treeOut > .node { border-left: 0; padding-left: 0; }
+
+  pre { margin: 0; white-space: pre-wrap; word-break: break-all; font: inherit; }
+</style>
+</head>
+<body>
+<div id="panel">
+  <header><b>Инспектор</b><span id="where"></span><span class="kb">клавиши у панели · Esc — игре</span><span class="hint">Ctrl+I — закрыть</span></header>
+  <nav>
+    <button data-tab="sel" class="on">Выделение</button>
+    <button data-tab="find">Поиск</button>
+    <button data-tab="tree">Состояние</button>
+    <button data-tab="world">Мир</button>
+    <button data-tab="repl">Lua</button>
+    <button data-tab="ev">События</button>
+    <button data-tab="prof">Профайлер</button>
+  </nav>
+  <main>
+    <section id="sel" class="on"><div class="empty">Выдели что-нибудь в игре.</div></section>
+
+    <!-- Поиск: что вообще есть на карте и как оно называется. Пустой запрос
+         даёт перепись по типам — с неё обычно и начинается мод. -->
+    <section id="find">
+      <div class="bar">
+        <input id="findType" placeholder="тип (peasant, mill18) — пусто: перепись" spellcheck="false">
+        <input id="findPlayer" class="num" placeholder="игрок">
+        <button class="act" id="findGo">Найти</button>
+      </div>
+      <div id="findOut"><div class="empty">Нажми «Найти»: без типа покажет, что есть на карте.</div></div>
+    </section>
+
+    <!-- Состояние: те же пути, которыми пользуются моды (state.get/state.set). -->
+    <section id="tree">
+      <div class="bar">
+        <input id="treeFilter" placeholder="фильтр по имени: gPlayer, gMap…" spellcheck="false">
+      </div>
+      <div id="treeOut"></div>
+    </section>
+
+    <!-- Мир: правка карты на ходу. Инструмент применяется в точке под курсором
+         по Ctrl+B — то есть мышь остаётся в игре, а панель только выбирает кисть. -->
+    <section id="world">
+      <div class="bar">
+        <select id="wTool">
+          <option value="raise">поднять</option>
+          <option value="lower">опустить</option>
+          <option value="smooth">сгладить</option>
+          <option value="plateau">плато</option>
+          <option value="random">шум</option>
+          <option value="tile">текстура</option>
+          <option value="cliff">скала</option>
+          <option value="water">вода (река/озеро)</option>
+          <option value="land">вернуть сушу</option>
+        </select>
+        <input id="wSize" class="num" value="8" title="радиус кисти в мировых единицах">
+        <input id="wDelta" class="num" value="1" title="сила: высота или уровень">
+      </div>
+      <div class="bar">
+        <input id="wTile" placeholder="тайл для «текстуры»: grass, sand…" spellcheck="false">
+        <button class="act" id="wApply">Здесь</button>
+      </div>
+      <div class="note">Ctrl+B — применить кисть в точке под курсором, не закрывая панель.
+        «Здесь» делает то же одним нажатием. Каждый мазок печатается вызовом api —
+        копируйте в мод как есть.<br>
+        <b>«Вода» делает сразу три вещи:</b> роет яму, ставит зеркало и красит
+        проходимость тегом water — без последнего получается просто текстура,
+        по которой не плавают и на которой не строят порт. «Вернуть сушу»
+        снимает только тег.</div>
+      <div id="wOut" class="empty">Мазков пока не было.</div>
+      <div id="wWater"></div>
+    </section>
+
+    <section id="repl">
+      <input id="replIn" placeholder="Lua: выражение или оператор, Enter — выполнить" spellcheck="false">
+      <div id="replOut"></div>
+    </section>
+    <section id="ev"><div class="empty">Событий пока не было.</div></section>
+
+    <!-- Профайлер: считает вызовы game.exec и state.* — то есть обращения к
+         игре, самое дорогое, что делает мод. -->
+    <section id="prof">
+      <div class="bar">
+        <button class="act" id="profToggle">Включить</button>
+        <button class="act" id="profReset">Сбросить</button>
+      </div>
+      <div id="profNote" class="note">Меряет обращения к игре: game.exec, state.get/read/list.
+        Мод, сохранивший функцию к себе (local exec = game.exec), в замер не попадёт.</div>
+      <pre id="profOut" class="empty">Профайлер выключен.</pre>
+      <div class="note" style="margin-top:10px">Обращения к игре по модам — считаются
+        всегда, включать ничего не нужно. «состояний» — сколько НОВЫХ текстов скрипта
+        мод отправил движку: они живут до конца партии, снять их нечем.</div>
+      <div id="costOut" class="empty">Пока никто к игре не обращался.</div>
+    </section>
+  </main>
+</div>
+
+<script>
+// ── Мостик к модлоадеру ────────────────────────────────────────────────────
+// window.game появляется не сразу после загрузки страницы — ждём.
+function ready() {
+  return new Promise(res => {
+    (function wait() { window.game ? res() : setTimeout(wait, 30); })();
+  });
+}
+// Любая ошибка Lua прилетает исключением. Показывать её надо, а не глотать:
+// «пусто» и «сломалось» — разные вещи.
+async function api(fn, ...args) {
+  try { return { ok: true, value: await game.api(fn, ...args) }; }
+  catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+}
+
+// ── Клавиатура ─────────────────────────────────────────────────────────────
+// Панель прозрачна и пропускает ввод в игру (web.passthrough), иначе с ней
+// нельзя было бы играть. Но тогда и буквы уходят в игру — в поле «тайл» или в
+// консоль Lua не напечатать ни слова.
+//
+// Кто должен решать, чьи сейчас клавиши: страница, а не движок. Ей точно
+// известно, стоит ли курсор в её поле, — это focusin и focusout. Раньше это
+// пытался угадать CEF (OnVirtualKeyboardRequested, задумано для сенсорных
+// экранов) и при офскрин-отрисовке угадывал не всегда.
+const TYPING = 'input, textarea, select';
+let grabbed = false;
+
+function grabKeyboard(on) {
+  if (on === grabbed) return;
+  grabbed = on;
+  document.body.classList.toggle('typing', on);
+  game.keyboard(on);
+}
+document.addEventListener('focusin', e => grabKeyboard(!!e.target.closest(TYPING)));
+document.addEventListener('focusout', () => setTimeout(() => {
+  // focusout приходит раньше, чем focusin следующего поля: если отпустить
+  // клавиатуру сразу, переход между полями будет ронять ввод.
+  grabKeyboard(!!(document.activeElement && document.activeElement.closest(TYPING)));
+}, 0));
+// Escape — выйти из поля и вернуть клавиши игре, не трогая мышь.
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && grabbed) { e.preventDefault(); document.activeElement.blur(); }
+});
+// Страницу закрывают и по Ctrl+I, и мимо нас — клавиатуру надо вернуть в любом случае.
+window.addEventListener('blur', () => grabKeyboard(false));
+window.addEventListener('pagehide', () => grabKeyboard(false));
+
+// ── Вкладки ────────────────────────────────────────────────────────────────
+// Некоторым вкладкам нужно что-то подгрузить, и делать это до первого открытия
+// незачем: список корней состояния — сотни строк, а открывают вкладку не всегда.
+const onOpen = {};
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('section').forEach(s => s.classList.toggle('on', s.id === b.dataset.tab));
+  const first = onOpen[b.dataset.tab];
+  if (first) { delete onOpen[b.dataset.tab]; first(); }
+});
+
+// ── Вкладка «Выделение» ────────────────────────────────────────────────────
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+
+// Поле объекта: показываем значение и даём его поправить.
+// Пишем через state.set по пути obj(<хендл>).<поле> — тот же путь, которым
+// пользуются моды, так что увиденное здесь применимо как есть.
+function fieldRow(handle, key, value) {
+  const editable = ['number', 'boolean', 'string'].includes(typeof value);
+  if (!editable) return `<tr><td class="k">${esc(key)}</td><td class="v">${esc(JSON.stringify(value))}</td></tr>`;
+  return `<tr><td class="k">${esc(key)}</td><td class="v">` +
+         `<input data-h="${handle}" data-k="${esc(key)}" value="${esc(value)}"></td></tr>`;
+}
+
+async function applyField(input) {
+  const path = `obj(${input.dataset.h}).${input.dataset.k}`;
+  let v = input.value;
+  if (v === 'true' || v === 'false') v = (v === 'true');
+  else if (v !== '' && !isNaN(Number(v))) v = Number(v);
+  const r = await api('state.set', path, v);
+  input.style.borderColor = r.ok ? '' : 'var(--err)';
+  if (!r.ok) say(`state.set('${path}'): ${r.error}`, true);
+}
+
+// Что рисуем на один выделенный объект.
+async function card(handle) {
+  const info = await api('units.info', handle);
+  const obj  = await api('state.read', `obj(${handle})`, 1);
+  const o = obj.ok && obj.value || {};
+  const i = info.ok && info.value || {};
+  const sid = i.sid || o.sid || '?';
+
+  let html = `<div class="card"><h3>${esc(sid)} <span>хендл ${handle}</span></h3>`;
+
+  // Поля объекта — по алфавиту, чтобы не прыгали между обновлениями.
+  const keys = Object.keys(o).filter(k => typeof o[k] !== 'object').sort();
+  if (keys.length) {
+    html += '<table>' + keys.map(k => fieldRow(handle, k, o[k])).join('') + '</table>';
+  } else if (!obj.ok) {
+    html += `<div class="err">state.read: ${esc(obj.error)}</div>`;
+  }
+
+  // Если это здание — что оно умеет производить и что исследовать.
+  // Ровно тот случай, ради которого инспектор и нужен: заменяя худ на CEF, надо
+  // знать, чем вызывается найм и чем — улучшение.
+  //
+  // Формы данных — из buildings.info:
+  //   produce[i]  = { sid, id, available, price, buildtime, x, y }
+  //   upgrades[i] = { sid, index, available, enabled, level, kind, value, price, time }
+  //   queue[i]    = { kind: "unit"|"upgrade", sid, amount, progress }
+  const b = await api('buildings.info', handle);
+  if (b.ok && b.value) {
+    const v = b.value;
+    html += section('Производит', v.produce, it =>
+      button('produce', handle, it.sid, 'в очередь') , 'buildings.produce(h, sid, 1)');
+    html += section('Улучшения', v.upgrades, it =>
+      button('upgrade', handle, it.sid, 'исследовать'), 'buildings.upgrade(h, sid)');
+
+    if (v.queue && v.queue.length) {
+      html += '<h3 style="margin-top:8px">Очередь</h3>';
+      html += v.queue.map(q => {
+        const pct = Math.round((q.progress || 0) * 100);
+        return `<div class="row"><span class="name">${esc(q.sid)}` +
+               `<span style="color:var(--dim)"> ${esc(q.kind)}${q.amount > 1 ? ' x' + q.amount : ''}` +
+               `${pct ? ', ' + pct + '%' : ''}</span></span>` +
+               button(q.kind === 'upgrade' ? 'cancelUpgrade' : 'cancel', handle, q.sid, 'отменить') +
+               '</div>';
+      }).join('');
+    }
+  }
+  return html + '</div>';
+}
+
+// Цена — таблица с именами ресурсов (buildings.lua отдаёт именно так).
+// Нули не показываем: строка "еда 100, золото 50" читается, "0/0/100/50/0/0" — нет.
+function priceText(p) {
+  if (!p) return '';
+  const parts = [];
+  for (const [k, ru] of [['food','еда'],['wood','дерево'],['stone','камень'],
+                         ['gold','золото'],['iron','железо'],['coal','уголь']]) {
+    if (p[k]) parts.push(ru + ' ' + p[k]);
+  }
+  return parts.join(', ');
+}
+
+function button(fn, handle, sid, label) {
+  return `<button class="act" data-fn="${fn}" data-h="${handle}" data-sid="${esc(sid)}">${label}</button>`;
+}
+
+// Один список (найм или улучшения) с ценой, доступностью и кнопкой.
+function section(title, list, makeButton, call) {
+  if (!list || !list.length) return '';
+  let html = `<h3 style="margin-top:8px">${title}</h3>`;
+  html += list.map(it => {
+    const price = priceText(it.price);
+    const lvl = it.level ? ` ур.${it.level}` : '';
+    const dim = it.available === false ? ' style="opacity:.5"' : '';
+    return `<div class="row"${dim}><span class="name">${esc(it.sid)}${lvl}` +
+           (price ? `<span style="color:var(--dim)"> — ${esc(price)}</span>` : '') +
+           (it.available === false ? '<span style="color:var(--warn)"> недоступно</span>' : '') +
+           `</span>${makeButton(it)}</div>`;
+  }).join('');
+  return html + `<div style="color:var(--dim);margin-top:2px">${esc(call)}</div>`;
+}
+
+let lastKey = '';
+async function refreshSelection() {
+  const sel = await api('units.selected');
+  const box = document.getElementById('sel');
+  if (!sel.ok) { box.innerHTML = `<div class="err">units.selected: ${esc(sel.error)}</div>`; return; }
+  const handles = (sel.value || []).slice(0, 8);   // больше восьми читать незачем
+  const key = handles.join(',');
+  if (key === lastKey) return;                     // выделение не менялось — не дёргаем игру
+  lastKey = key;
+  if (!handles.length) { box.innerHTML = '<div class="empty">Выдели что-нибудь в игре.</div>'; return; }
+  box.innerHTML = (await Promise.all(handles.map(card))).join('');
+  box.querySelectorAll('input').forEach(inp => inp.onchange = () => applyField(inp));
+  box.querySelectorAll('[data-fn]').forEach(btn => btn.onclick = async () => {
+    const h = Number(btn.dataset.h), sid = btn.dataset.sid, fn = btn.dataset.fn;
+    // produce/cancel принимают количество, upgrade/cancelUpgrade — нет.
+    const args = (fn === 'produce' || fn === 'cancel') ? [h, sid, 1] : [h, sid];
+    const r = await api('buildings.' + fn, ...args);
+    // Пишем ВЫЗОВ целиком: панель заодно показывает, как это сделать из мода.
+    const shown = `buildings.${fn}(${args.map(a => typeof a === 'string' ? `"${a}"` : a).join(', ')})`;
+    say(r.ok ? `${shown} → ${JSON.stringify(r.value)}` : `${shown}: ${r.error}`, !r.ok);
+    lastKey = '';   // перерисовать: очередь изменилась
+  });
+}
+
+// ── Вкладка «Lua» ──────────────────────────────────────────────────────────
+const out = document.getElementById('replOut');
+function say(text, bad) {
+  const d = document.createElement('div');
+  if (bad) d.className = 'err';
+  d.textContent = text;
+  out.prepend(d);
+  while (out.children.length > 60) out.lastChild.remove();
+}
+const input = document.getElementById('replIn');
+input.addEventListener('keydown', async e => {
+  if (e.key !== 'Enter' || !input.value.trim()) return;
+  const code = input.value;
+  input.value = '';
+  say('> ' + code);
+  try { say(String(await game.lua(code))); }
+  catch (err) { say(String(err && err.message || err), true); }
+});
+
+// ── Вкладка «События» ──────────────────────────────────────────────────────
+// Сюда их шлёт client.lua (web.eval): события живут в Lua мода, странице их
+// самой не видно.
+window.devtoolsEvents = function (list) {
+  const box = document.getElementById('ev');
+  if (!list.length) { box.innerHTML = '<div class="empty">Событий пока не было.</div>'; return; }
+  box.innerHTML = list.slice().reverse().map(e =>
+    `<div class="ev"><span class="t">${esc(e.t)}</span><span class="n">${esc(e.name)}</span>` +
+    `<span>${esc(e.args)}</span></div>`).join('');
+};
+
+// ── Вкладка «Поиск» ────────────────────────────────────────────────────────
+// Первый вопрос при написании мода — «а как ЭТО называется в игре». Пустой
+// запрос отвечает на него переписью: какие типы есть на карте и сколько их.
+// Дальше тот же тип подставляется в запрос и показывает сами объекты.
+const findOut = document.getElementById('findOut');
+const findType = document.getElementById('findType');
+const findPlayer = document.getElementById('findPlayer');
+
+function opts() {
+  const o = {};
+  const t = findType.value.trim();
+  const p = findPlayer.value.trim();
+  if (t) o.sid = t;
+  if (p !== '' && !isNaN(Number(p))) o.player = Number(p);
+  return o;
+}
+
+// Показываем ВЫЗОВ, которым это же делается из мода: панель заодно учит api.
+function callText(fn, arg) {
+  const parts = Object.entries(arg).map(([k, v]) =>
+    `${k} = ${typeof v === 'string' ? `"${v}"` : v}`);
+  return `${fn}({ ${parts.join(', ')} })`;
+}
+
+async function runFind() {
+  const o = opts();
+  findOut.innerHTML = '<div class="empty">Ищу…</div>';
+  const shown = callText('query.scan', o);
+  const r = await api('query.scan', o);
+  say(r.ok ? shown : `${shown}: ${r.error}`, !r.ok);
+  if (!r.ok) { findOut.innerHTML = `<div class="err">${esc(r.error)}</div>`; return; }
+
+  const recs = r.value || [];
+  if (!recs.length) { findOut.innerHTML = '<div class="empty">Ничего не нашлось.</div>'; return; }
+
+  if (!o.sid) {                       // перепись: группируем по типу
+    const byType = new Map();
+    for (const rec of recs) {
+      const sid = rec.sid || '(без имени)';
+      byType.set(sid, (byType.get(sid) || 0) + 1);
+    }
+    const rows = [...byType.entries()].sort((a, b) => b[1] - a[1]);
+    findOut.innerHTML = `<div class="note">${recs.length} объектов, ${rows.length} типов. ` +
+      `Нажми на тип — покажет сами объекты.</div>` +
+      rows.map(([sid, n]) =>
+        `<div class="hit" data-sid="${esc(sid)}"><span class="sid">${esc(sid)}</span>` +
+        `<span class="n">${n}</span></div>`).join('');
+    findOut.querySelectorAll('.hit').forEach(el => el.onclick = () => {
+      findType.value = el.dataset.sid;
+      runFind();
+    });
+    return;
+  }
+
+  // Конкретный тип: сами объекты, по клику камера прыгает к объекту.
+  const list = recs.slice(0, 60);
+  findOut.innerHTML = `<div class="note">${recs.length} шт` +
+    `${recs.length > list.length ? `, показаны первые ${list.length}` : ''}. ` +
+    `Нажми — камера прыгнет туда.</div>` +
+    list.map(rec =>
+      `<div class="hit" data-x="${rec.x}" data-z="${rec.z}">` +
+      `<span class="sid">#${rec.handle}</span>` +
+      `<span class="n">игрок ${rec.player}</span>` +
+      `<span class="at">${Math.round(rec.x)}, ${Math.round(rec.z)}` +
+      `${rec.hp != null ? ` · ${rec.hp} hp` : ''}</span></div>`).join('');
+  findOut.querySelectorAll('.hit').forEach(el => el.onclick = async () => {
+    const x = Number(el.dataset.x), z = Number(el.dataset.z);
+    const c = await api('camera.position', x, z);
+    say(c.ok ? `camera.position(${Math.round(x)}, ${Math.round(z)})`
+             : `camera.position: ${c.error}`, !c.ok);
+  });
+}
+document.getElementById('findGo').onclick = runFind;
+findType.addEventListener('keydown', e => { if (e.key === 'Enter') runFind(); });
+findPlayer.addEventListener('keydown', e => { if (e.key === 'Enter') runFind(); });
+
+// ── Вкладка «Состояние» ────────────────────────────────────────────────────
+// Дерево переменных игры теми же путями, которыми пользуются моды: то, что
+// видно здесь, слово в слово годится для state.get/state.set в коде.
+//
+// Раскрытие ленивое: состояние игры огромно (сотни корней), читать его целиком
+// нельзя. Строение узла берётся из схемы (state.fields — игру не трогает), а
+// значения записи — ОДНИМ вызовом state.read(path, 1).
+const treeOut = document.getElementById('treeOut');
+const treeFilter = document.getElementById('treeFilter');
+let globals = null;
+
+const MAX_ITEMS = 64;   // сколько элементов массива показывать: длиннее не читается глазами
+
+function valueCell(path, value) {
+  if (value === undefined) return '';
+  if (['number', 'boolean', 'string'].includes(typeof value))
+    return `<span class="val"><input data-path="${esc(path)}" value="${esc(value)}"></span>`;
+  return `<span class="val">${esc(JSON.stringify(value))}</span>`;
+}
+
+async function writeState(input) {
+  let v = input.value;
+  if (v === 'true' || v === 'false') v = (v === 'true');
+  else if (v !== '' && !isNaN(Number(v))) v = Number(v);
+  const r = await api('state.set', input.dataset.path, v);
+  const shown = `state.set("${input.dataset.path}", ${typeof v === 'string' ? `"${v}"` : v})`;
+  say(r.ok ? shown : `${shown}: ${r.error}`, !r.ok);
+  input.style.borderColor = r.ok ? '' : 'var(--err)';
+}
+
+// Один узел дерева. expandable — можно ли раскрыть; value — уже известное значение.
+function nodeHtml(path, label, type, expandable, value) {
+  return `<div class="node" data-path="${esc(path)}" data-type="${esc(type)}">` +
+         `<div class="self"><span class="name${expandable ? '' : ' leaf'}">` +
+         `${expandable ? '▸ ' : ''}${esc(label)}</span>` +
+         `<span class="type">${esc(type)}</span>${valueCell(path, value)}</div>` +
+         `<div class="kids"></div></div>`;
+}
+
+function wire(box) {
+  box.querySelectorAll(':scope > .node > .self > .name').forEach(el => {
+    if (el.classList.contains('leaf')) return;
+    el.onclick = () => toggle(el.closest('.node'));
+  });
+  box.querySelectorAll(':scope > .node > .self input').forEach(inp => inp.onchange = () => writeState(inp));
+}
+
+async function toggle(node) {
+  const kids = node.querySelector(':scope > .kids');
+  const name = node.querySelector(':scope > .self > .name');
+  if (kids.innerHTML) {                       // уже раскрыт — свернуть
+    kids.innerHTML = '';
+    name.textContent = '▸ ' + name.textContent.slice(2);
+    return;
+  }
+  name.textContent = '▾ ' + name.textContent.slice(2);
+  kids.innerHTML = '<div class="empty">…</div>';
+
+  const path = node.dataset.path;
+  const f = await api('state.fields', path);
+  if (!f.ok) { kids.innerHTML = `<div class="err">${esc(f.error)}</div>`; return; }
+  const info = f.value;
+
+  if (info.array) {
+    const to = Math.min(info.to, info.from + MAX_ITEMS - 1);
+    let html = '';
+    for (let i = info.from; i <= to; i++)
+      html += nodeHtml(`${path}[${i}]`, `[${i}]`, info.of, true);
+    if (to < info.to)
+      html += `<div class="note">…и ещё ${info.to - to}: смотрите по индексу через Lua</div>`;
+    kids.innerHTML = html;
+    wire(kids);
+    return;
+  }
+
+  // Запись: строение из схемы, значения простых полей — одним вызовом.
+  const read = await api('state.read', path, 1);
+  const values = read.ok ? (read.value || {}) : {};
+  if (!read.ok) say(`state.read("${path}", 1): ${read.error}`, true);
+  kids.innerHTML = info.map(fld => {
+    const child = `${path}.${fld.name}`;
+    const simple = ['int', 'float', 'bool', 'string'].includes(fld.type);
+    return nodeHtml(child, fld.name, fld.type, !simple, simple ? values[fld.name] : undefined);
+  }).join('') || '<div class="empty">Внутри ничего нет.</div>';
+  wire(kids);
+}
+
+async function showGlobals() {
+  if (!globals) {
+    const r = await api('state.globals');
+    if (!r.ok) { treeOut.innerHTML = `<div class="err">${esc(r.error)}</div>`; return; }
+    globals = r.value || [];
+  }
+  const needle = treeFilter.value.trim().toLowerCase();
+  const list = globals.filter(g => !needle || g.name.toLowerCase().includes(needle));
+  if (!list.length) { treeOut.innerHTML = '<div class="empty">Ничего не подходит.</div>'; return; }
+  const shown = list.slice(0, 200);
+  treeOut.innerHTML = shown.map(g =>
+    nodeHtml(g.name, g.name, g.type, true)).join('') +
+    (shown.length < list.length ? `<div class="note">…и ещё ${list.length - shown.length}: уточните фильтр</div>` : '');
+  wire(treeOut);
+}
+treeFilter.addEventListener('input', showGlobals);
+onOpen.tree = showGlobals;
+
+// ── Вкладка «Мир» ──────────────────────────────────────────────────────────
+// Правка карты на ходу: рельеф, текстуры, скалы, вода.
+//
+// Мышь остаётся в игре (панель прозрачна и пропускает клики), поэтому кисть
+// применяется горячей клавишей: client.lua ловит Ctrl+B и зовёт devtoolsBrush.
+const wOut = document.getElementById('wOut');
+
+// game.api отдаёт странице ТОЛЬКО ПЕРВОЕ значение (LuaHost::EvalJson зовёт код
+// с одним результатом). world.cursor() возвращает три — x, высоту и z, — поэтому
+// идём через game.lua и заворачиваем в таблицу: тогда придёт массив целиком.
+async function cursor() {
+  try {
+    const p = JSON.parse(await game.lua('{ world.cursor() }'));
+    return Array.isArray(p) && p.length >= 3 ? p : null;
+  } catch (e) { say('world.cursor: ' + (e && e.message || e), true); return null; }
+}
+
+// Вызов ровно в том виде, в каком его пишут в моде: { tile = "grass", size = 3 },
+// а не JSON. Панель печатает каждый мазок, и напечатанное должно копироваться
+// в код без правки — иначе это не подсказка, а ещё одна вещь, которую надо знать.
+function luaValue(v) {
+  if (typeof v === 'string') return `"${v}"`;
+  if (v && typeof v === 'object')
+    return '{ ' + Object.entries(v).map(([k, x]) => `${k} = ${luaValue(x)}`).join(', ') + ' }';
+  return String(v);
+}
+function luaCall(fn, args) {
+  return `${fn}(${args.map(luaValue).join(', ')})`;
+}
+
+function stroke(text, bad) {
+  const d = document.createElement('div');
+  if (bad) d.className = 'err';
+  d.textContent = text;
+  if (wOut.classList.contains('empty')) { wOut.classList.remove('empty'); wOut.innerHTML = ''; }
+  wOut.prepend(d);
+  while (wOut.children.length > 40) wOut.lastChild.remove();
+  say(text, bad);          // и в общий журнал: там видно вперемешку с остальным
+}
+
+async function applyBrush() {
+  const p = await cursor();
+  if (!p) return;
+  const [x, , z] = p;
+  const tool = document.getElementById('wTool').value;
+  const size = Number(document.getElementById('wSize').value) || 1;
+  const delta = Number(document.getElementById('wDelta').value) || 1;
+  const tile = document.getElementById('wTile').value.trim();
+
+  // Высотные кисти работают в КЛЕТКАХ, paint — в мировых координатах.
+  // Перевод делает api (terrain.cell), чтобы формула жила в одном месте.
+  // Все кисти берут МИРОВЫЕ координаты — те же, что вернул world.cursor().
+  // Переводить их в клетки не надо: клетки нужны только тайловой сетке
+  // (terrain.tile/setTile). В первой версии панель переводила, и мазок уходил
+  // за край карты — отсюда и «ничего не происходит».
+  let fn, args;
+  if (['raise', 'lower', 'smooth', 'plateau', 'random'].includes(tool)) {
+    const opts = tool === 'smooth' || tool === 'plateau'
+      ? { radius: size } : { delta, radius: size };
+    fn = 'terrain.' + tool;
+    args = [x, z, opts];
+  } else if (tool === 'tile') {
+    if (!tile) { stroke('впишите имя тайла — например grass', true); return; }
+    fn = 'terrain.paint';
+    args = [x, z, { tile, radius: size }];
+  } else if (tool === 'cliff') {
+    fn = 'terrain.paint';
+    args = [x, z, { cliff: 1, apply: 1, level: delta, radius: size }];
+  } else if (tool === 'water') {
+    // Настоящая вода — это ТРИ вещи сразу, и terrain.water делает их вместе:
+    // яма (иначе зеркало под землёй), зеркало (иначе воды не видно) и тег
+    // проходимости (иначе по ней не плавают и порт не поставить — именно на
+    // это ты и наткнулся: получалась просто текстура).
+    fn = 'terrain.water';
+    args = [x, z, { radius: size, depth: Math.abs(delta) * 3, level: -Math.abs(delta) }];
+  } else {
+    // Вернуть сушу: снять тег воды с круга. Яму и зеркало убирают отдельно —
+    // рельеф кистью «поднять», водоём кнопкой «убрать» в списке ниже.
+    fn = 'terrain.setCollision';
+    args = [x, z, 'none', { radius: size }];
+  }
+  const shown = luaCall(fn, args);
+
+  const r = await api(fn, ...args);
+  if (!r.ok) { stroke(`${shown}: ${r.error}`, true); return; }
+  stroke(shown);
+  // Рельеф и картинка расходятся, пока не пересчитать: делаем это сами, иначе
+  // мазок «не виден» и выглядит как будто кисть не сработала.
+  const u = await api('terrain.update');
+  if (!u.ok) stroke('terrain.update: ' + u.error, true);
+  refreshWater();
+}
+
+document.getElementById('wApply').onclick = applyBrush;
+// Сюда стучится client.lua по Ctrl+B.
+window.devtoolsBrush = applyBrush;
+
+// Список водоёмов: их правят не кистью, а по одному, поэтому показываем отдельно.
+async function refreshWater() {
+  const box = document.getElementById('wWater');
+  const r = await api('water.list');
+  if (!r.ok) { box.innerHTML = ''; return; }   // вне партии — молчим, это не ошибка
+  const all = r.value || [];
+  if (!all.length) { box.innerHTML = '<div class="note">Водоёмов на карте нет.</div>'; return; }
+  // Вода на картах игры собрана из сотен полей 2x2 — весь список читать
+  // невозможно, поэтому показываем последние: свои правки в конце.
+  const list = all.slice(-30).reverse();
+  box.innerHTML = `<div class="note">Водоёмов: ${all.length}` +
+    `${all.length > list.length ? `, показаны последние ${list.length}` : ''}.</div>` +
+    list.map(f =>
+    `<div class="hit" data-i="${f.index}"><span class="sid">${esc(f.name)}</span>` +
+    `<span class="at">${Math.round(f.x1)},${Math.round(f.z1)} … ` +
+    `${Math.round(f.x2)},${Math.round(f.z2)} · уровень ${f.level}</span>` +
+    `<button class="act" data-del="${f.index}">убрать</button></div>`).join('');
+  box.querySelectorAll('[data-del]').forEach(b => b.onclick = async (e) => {
+    e.stopPropagation();
+    const i = Number(b.dataset.del);
+    const r2 = await api('water.remove', i);
+    stroke(r2.ok ? `water.remove(${i})` : `water.remove(${i}): ${r2.error}`, !r2.ok);
+    refreshWater();
+  });
+}
+onOpen.world = refreshWater;
+
+// ── Вкладка «Профайлер» ────────────────────────────────────────────────────
+// Считает обращения к игре — game.exec и state.get/read/list. Именно они стоят
+// дорого: каждое — компиляция и исполнение куска Pascal внутри движка.
+const profOut = document.getElementById('profOut');
+const profToggle = document.getElementById('profToggle');
+let profiling = false, profTimer = 0;
+
+async function profReport() {
+  const r = await api('profiler.report');
+  profOut.textContent = r.ok ? r.value : r.error;
+  profOut.className = r.ok ? '' : 'err';
+}
+
+profToggle.onclick = async () => {
+  const fn = profiling ? 'profiler.stop' : 'profiler.start';
+  const r = await api(fn);
+  say(r.ok ? fn + '()' : `${fn}(): ${r.error}`, !r.ok);
+  if (!r.ok) return;
+  profiling = !profiling;
+  profToggle.textContent = profiling ? 'Выключить' : 'Включить';
+  clearInterval(profTimer);
+  if (profiling) {
+    profReport(); refreshCost();
+    profTimer = setInterval(() => { profReport(); refreshCost(); }, 1000);
+  } else {
+    profOut.textContent = 'Профайлер выключен. Собранное осталось — «Сбросить» очистит.';
+  }
+};
+
+// Расход по модам: считается в модлоадере всегда, включать не нужно.
+async function refreshCost() {
+  const r = await api('mods.cost');
+  const box = document.getElementById('costOut');
+  if (!r.ok) { box.innerHTML = `<div class="err">${esc(r.error)}</div>`; return; }
+  const rows = r.value || [];
+  if (!rows.length) { box.className = 'empty'; box.textContent = 'Пока никто к игре не обращался.'; return; }
+  box.className = '';
+  box.innerHTML = '<table><tr><td class="k">кто</td><td class="v">вызовов · мс · состояний</td></tr>' +
+    rows.map(c => `<tr><td class="k">${esc(c.who)}</td><td class="v">` +
+      `${c.calls} · ${c.ms.toFixed(1)} · ${c.states}</td></tr>`).join('') + '</table>';
+}
+onOpen.prof = refreshCost;
+
+document.getElementById('profReset').onclick = async () => {
+  const r = await api('profiler.reset');
+  const c = await api('mods.costReset');
+  say(r.ok ? 'profiler.reset() + mods.costReset()' : `profiler.reset(): ${r.error}`, !r.ok);
+  if (!c.ok) say('mods.costReset: ' + c.error, true);
+  if (profiling) profReport();
+  refreshCost();
+};
+
+// ── Пуск ───────────────────────────────────────────────────────────────────
+ready().then(async () => {
+  const g = await api('game.isInGame');
+  document.getElementById('where').textContent = (g.ok && g.value) ? '' : '— вне партии';
+  setInterval(refreshSelection, 400);   // выделение меняется мышью, опрашиваем
+  refreshSelection();
+});
+</script>
+</body>
+</html>

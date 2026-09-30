@@ -13,6 +13,7 @@
 #include "GameApi.h"
 #include "Profiler.h"
 #include "LuaHost.h"
+#include "MemMap.h"
 #include "ScriptRunner.h"
 #include "Text.h"
 
@@ -182,7 +183,10 @@ namespace
             "  .events             счётчики событий\n"
             "  .checksum           хеш скриптов для лобби: движка, чистый (без модлоадера) и сохранённый игрой\n"
             "  =<lua>              выполнить Lua:  =player().gold   =native.GetBuildVersion()\n"
+            "  .lod [процент]      доля треугольников у юнитов (10..100): без числа — текущая, с числом — сменить на ходу\n"
+            "  .mem                адресное пространство процесса: сколько занято/свободно (для \"out of memory\")\n"
             "  .content            нации и типы юнитов из content.lua модов\n"
+            "  .content reload     перечитать content.lua (увидит следующая партия)\n"
             "  .mods               Lua-моды (modloader/mods/*/manifest.lua) и их статус\n"
             "  .lua reload         перезагрузить все Lua-моды\n"
             "  .natives            количество нативов\n"
@@ -268,9 +272,42 @@ namespace
             else if (cmd == "mods")
                 LuaHost::PrintMods();
             else if (cmd == "content")
-                Content::Print();
+            {
+                if (arg == "reload")
+                {
+                    // Правка юнита или нации больше не требует перезапуска игры:
+                    // это был последний рестарт, оставшийся в цикле разработки —
+                    // моды и страницы перечитываются на ходу давно.
+                    int files = Assets::ReloadContent();
+                    Console::Print("content: перечитан, затронуто файлов игры: %d. "
+                                   "Изменения увидит СЛЕДУЮЩАЯ партия — текущая построена "
+                                   "по старым описаниям.", files);
+                }
+                else
+                    Content::Print();
+            }
             else if (cmd == "assets")
                 Assets::Print();
+            else if (cmd == "mem")
+                MemMap::Print();
+            else if (cmd == "lod")
+            {
+                if (arg.empty())
+                {
+                    Console::Print("lod: units = %d%% (10..100; .lod <процент> — сменить на ходу)", Assets::LodPercent());
+                    Console::Print("%s", Assets::TextureStatus().c_str());
+                }
+                else
+                {
+                    int pct = atoi(arg.c_str());
+                    // Подмена путей и перезагрузка библиотеки — в потоке игры: движок в это время не должен читать файлы.
+                    ScriptRunner::RunOnGameThread([pct] {
+                        Assets::SetLod(pct);
+                        RunCode("ResourceLODActorLibraryFullReload;");
+                        Console::Print("lod: units = %d%%, библиотека моделей перечитывается", Assets::LodPercent());
+                    });
+                }
+            }
             else if (cmd == "crashtest")
             {
                 CrashHandler::Scope scope("консоль: .crashtest " + arg);

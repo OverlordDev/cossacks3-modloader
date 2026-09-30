@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "CrashHandler.h"
 #include "Loader.h"
+#include "MemMap.h"
 #include "ModCheck.h"
 #include "Assets.h"
 #include "Checksum.h"
@@ -134,6 +135,7 @@ DWORD WINAPI Loader::MainThread(LPVOID param)
         }
         Console::PollInput();
         FrameStats::Update();
+        MemMap::Poll();
         if (scriptParts) // до установки трогать состояния игры нечем и незачем
         {
             Events::Update();
@@ -160,7 +162,11 @@ DWORD WINAPI Loader::MainThread(LPVOID param)
     Overlay::Shutdown(); // до Hooks::Shutdown: освобождение идёт в хуке SwapBuffers
     ScriptRunner::Uninstall();
     Hooks::Shutdown();
-    Sleep(200); // даём потокам выйти из наших detour-функций
+    // Ждём выхода потоков из наших detour (счётчик Hooks::InFlight во всех хуках)
+    // вместо слепого Sleep(200): иначе возможен use-after-free при SwapBuffers,
+    // WndProc, файловых хуках и событиях уже после FreeLibrary.
+    if (!Hooks::WaitForZero(5000))
+        LOG_WARN("Unload: detour calls still in flight after 5 s — proceeding anyway");
     CrashHandler::Uninstall();
     Console::Shutdown(); // консоль загрузчика не закрывается — она его
 

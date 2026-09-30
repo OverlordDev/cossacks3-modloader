@@ -155,6 +155,14 @@ namespace
         }
         __except (*exc = GetExceptionCode(), EXCEPTION_EXECUTE_HANDLER)
         {
+            // Если натив упал после push-ов, управление приходит сюда с ESP,
+            // уменьшенным на размер аргументов. Вернуть его обязан сам шлюз:
+            // иначе следующий C++ return/SEH продолжит работу на повреждённом
+            // стеке и случайный краш произойдёт уже далеко от причины.
+            __asm
+            {
+                mov esp, savedEsp
+            }
             return false;
         }
         *eaxOut = eaxValue;

@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "CrashHandler.h"
+#include "MemMap.h"
 #include "Console.h"
 #include "GameApi.h"
 #include "LuaHost.h"
@@ -316,6 +317,12 @@ namespace
         r << "Время:        " << Stamp("%04d-%02d-%02d %02d:%02d:%02d") << "\n";
         r << "Сборка:       " << __DATE__ << " " << __TIME__ << "\n";
         r << "Поток:        " << GetCurrentThreadId() << " — " << ThreadName() << "\n";
+        {
+            // Для "out of memory": игра 32-битная, кончается адресное пространство. Без выделений из кучи.
+            char mem[512];
+            MemMap::Summary(mem, sizeof mem);
+            r << mem << "\n";
+        }
 
         if (info)
         {

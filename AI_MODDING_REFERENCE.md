@@ -85,6 +85,19 @@ return {
 | `net.broadcast` | нет | да | да | — |
 | `net.on` | да | да | да | — |
 | `input.bind`, `web.*`, `ui.*`, `gfx.*`, `screens.onButton/onAnyButton/replace` | да | нет | нет | — |
+| `mathx.*`, `vec.*`, `tablex.*`, `stringx.*`, `geometry.*`, `validate.*`, `color.*` | да (pure: везде, в т.ч. shared) | да | да | да |
+| `scheduler.*`, `query.*` | да (чтение/таймеры) | да | да | да |
+| `rng.*` | да (только детерминированные вызовы!) | да | да (shared!) | да |
+| `config.*` | да (нужен link) | да (нужен link) | нет | нет |
+| `camera.*`, `minimap.*`, `animation.*`, `model.*`, `effects.*`, `decals.*` | да (только картинка) | да | да | да |
+| `pathfind.*`, `markers.*`, `cutscene.*`, `dbg.*`, `sound.*` | да | да | да | да |
+| `world.spawn/destroy/move`, `object.setState/destroyIn/progress`, `terrain.raise/lower/smooth/update`, `fow` (запись), `time.*` | **нет** | да | да | да |
+| `orders.*`, `formation.set`, `weapon.*`, `status.*`, `ai.*`, `scenario.*` (логика), `economy.*` (запись), `attach.follow/unfollow`, `vision.*` (запись), `time.*` | **нет** | да | да | да |
+| `targeting.*`, `scenario.present`, `panel.*`, `attach.effect/free`, `replay.*`, `profiler.*`, `content.*`, `mods.list` | да | да | да | да |
+| manifest `permissions = {...}` | — | — | — | — |
+| `steam.*` (presence локального игрока) | да | нет | нет | нет |
+| `group.*` (чтение), `tracks.*` (чтение — нет, всё server), `scenario.snapshot`, `dbg.*`, `gui.*`, `native.info` | да | нет/да (см.) | — | да |
+| `group.create/add/move/...`, `behaviour.*`, `tracks.*`, `regions.block`, `scenario.begin` | **нет** | да | да | да |
 
 `server`-обработчики событий и `net.on` работают только там, где решается игра (одиночка/хост).
 `shared` — на всех машинах.
@@ -124,6 +137,7 @@ events.hook("ShowHud", atEnd)   -- создать событие gui.ShowHud в 
 | `unit.order` | handle, type, target, x, z | любой приказ любому юниту (игрок, ИИ, сеть). type — строка ниже | `return true` (в сети только в shared) |
 | `player.order` | order | игрок этого компьютера отдал приказ мышью | `return true` |
 | `net.connect` / `net.disconnect` | payload | игрок вошёл/вышел из комнаты | — |
+| `net.sync` | — | сетевая партия: шаг синхронизации (~10 раз в секунду), выполняется у ВСЕХ на одном и том же шаге симуляции — место для сверки/детерминированной логики. Внутри только читать; тяжёлое и `net.send` — на `game.tick` | — |
 | `save.loaded` | — | загружен сейв, `savedata` уже с его данными | — |
 | `gui.<Состояние>` | payload | после `events.hook(...)` | — |
 | `*` | как у события | все события (отладка) | — |
@@ -150,6 +164,7 @@ game.isAuthority()                    --> true, если эта машина р�
 game.isInGame()                       --> идёт партия
 game.playerIndexOf(from)              --> индекс игрока по отправителю из net.on
 game.side                             --> "client" | "server"
+game.readFile("data/gen/x.tga")      --> байты файла из папки игры (только чтение, путь внутри папки) или nil
 ```
 
 Pascal в `game.exec`: переменные объявляются по месту (`var h : Integer = 5;`), результат —
@@ -232,7 +247,41 @@ buildings.finish(h)                       -- достроить мгновенн
 
 Правка логики зданий (`setProduceList`, `setUpgrade`) — в `shared`, в `game.start`.
 
-### 4.9. balance (server/shared) — статы типов
+### 4.9. abilities (server/shared) — способности и area damage
+
+`abilities` — безопасная заготовка для авиаударов, баллистики и миномётов. Она вызывает
+штатный `_misc_DoDamage`, поэтому проходят обычные события `unit.damage` и `unit.death`.
+Вызов меняет мир и разрешён только на server/shared-стороне; клиент должен передать запрос
+через `net.send`, а сервер обязан проверить координаты, право игрока и стоимость.
+
+```lua
+abilities.define("airstrike", {
+    cooldown = 20,
+    damage = 100000,
+    radius = 10,
+    target = "all",                 -- "all", "units" или "buildings"
+    effect = "cannon",              -- "cannon", "howitzer", "grenade" или "none"
+    ignorePeace = true,              -- разрешить урон во время мирного периода
+})
+
+net.on("airstrike.request", function(data, from)
+    local p = game.playerIndexOf(from)
+    local ok, hit, wait = abilities.fire("airstrike", data.x, data.z, { owner = p })
+    net.broadcast("airstrike.result", { player = p, ok = ok, hit = hit, wait = wait })
+end)
+```
+
+Методы: `abilities.define(id, spec)`, `abilities.get(id)`, `abilities.list()`,
+`abilities.ready(id, owner)`, `abilities.fire(id, x, z, opts)`. `opts` поддерживает
+`damage`, `radius`, `target`, `effect`, `ignorePeace`, `weaponKind`, `source` и `owner`. `fire` возвращает
+`true, hitCount` или `false, "cooldown", seconds`.
+
+Пример `ability_example` выключен по умолчанию: наведи курсор на карту и нажми F6 —
+выбор юнита не нужен. Клиент получает мировые координаты через
+`native.GetCurrentMouseWorldCoord()`, сервер вызывает `abilities.fire()`.
+`hitCount` — число объектов в области, а не число смертей.
+
+### 4.10. balance (server/shared) — статы типов
 
 ```lua
 balance.types()                          --> { {sid, country, id}, ... }
@@ -389,6 +438,394 @@ native.GetPlayerIndexInterfaceIO()          --> индекс своего игр
 Все 4856 — `GAME_API.md` (VA, объявление). Вызов с неправильным числом аргументов — ошибка Lua.
 Float — одинарной точности. Многие нативы падают вне партии.
 
+### 4.18. camera — свободная камера (client, только картинка)
+
+```lua
+local x, y, z = camera.pos()              -- где камера; camera.target() — куда смотрит
+camera.position(x, z)                     -- поставить; camera.rotate(x, y, z)
+camera.moveTo(x, z, speed)                -- плавный переезд; camera.stop()
+camera.follow(handle)                     -- следить; camera.follow(nil) — отпустить
+camera.limits{ left=, top=, right=, bottom= }   -- ограничение; camera.getLimits()
+camera.height(x, z)                       -- высота над точкой
+camera.trackClear()                       -- стереть треки
+local i = camera.trackAdd()
+camera.trackPoint("name", tx,ty,tz, ex,ey,ez)
+camera.trackPlay(i)
+```
+Вне партии нативы падают — проверяй `game.isInGame()`.
+
+### 4.19. minimap — родная миникарта (client)
+
+```lua
+minimap.show(true)                        -- minimap.isVisible()
+minimap.zoom(1.5)                         -- minimap.getZoom()
+minimap.frustum(true)                     -- конус камеры
+local i = minimap.icon("target")          -- новый примитив -> индекс
+minimap.setPos(i, x, y)                   -- координаты миникарты (не мировые x,z)
+minimap.setDir(i, dx, dy)                 -- направление
+minimap.setBlink(i, 0.5, 5)               -- мигание
+minimap.setVisible(i, true)               -- minimap.remove(i), minimap.clear()
+```
+
+### 4.20. animation + model — внешность (shared/client, только картинка)
+
+```lua
+animation.play(h, "attack")               -- разовая; animation.cycle(h, "work") — цикл
+animation.frame(h, 12)                    -- поставить кадр; animation.frame(h) — прочитать
+animation.info(h)                         --> { frameName=, cycle=, frame= }
+model.actor(h, "actor")                   -- model.material(h, "mat")
+model.scale(h, 1.2, 1.2, 1.2)             -- model.show(h, false)
+model.rotate(h, 0, 1.57, 0)               -- model.pointTo(h, x, y, z)
+```
+В сети — в `shared`, иначе визуальный рассинхрон. Имена анимаций — из .oss актёра.
+
+### 4.21. effects — дым/огонь/взрывы (shared/client, только картинка)
+
+```lua
+local id = effects.create(h, "PUEXP", "boom")   -- класс из data/pfx; effects.clear(h)
+effects.pfx(h, "manager", "key")                -- частицы; effects.deletePfx/clearPfx/isPfx
+effects.setLifetime(h, "manager", "key", 5.0)
+effects.setScale(h, "manager", "key", 2, 2, 2)
+effects.burst(id, 1.0, 30)                      -- effects.ring(id, ...) / effects.fire(id, ...)
+effects.highlight(h, "target", true, "")        -- effects.unhighlight(h, "target")
+```
+Урон — только через `abilities.fire`; эффекты урона не наносят.
+
+### 4.22. decals — следы на земле (shared, только картинка)
+
+```lua
+local d = decals.put("scorch", x, z)      -- имя из data/decals
+decals.move(d, x, z)                      -- decals.pos(d)
+decals.rotate(d, 1.2)                     -- decals.angle(d)
+decals.show(d, false)                     -- decals.remove(d), decals.clear()
+decals.count()                            -- decals.isInCircle(x, z, r, material)
+```
+
+### 4.23. world — спавн объектов (server/shared, меняет мир)
+
+```lua
+local h = world.spawn{ race = "ukr", base = "tree", x = 100, z = 50 }
+world.move(h, 120, 60)                    -- world.move(h, x, y, z) — явно
+local x, y, z = world.pos(h)              -- чтение — с любой стороны
+world.destroy(h)                          -- мягко; world.destroyNow(h) — сразу
+```
+В сети — в `shared`. Неверные race/base могут уронить игру.
+
+### 4.24. object — состояния (чтение везде, смена — server/shared)
+
+```lua
+object.state(h)                           --> "idle" / "burning" / ...
+object.setState(h, "burning")
+object.destroyIn(h, "destroyed")          -- уничтожить при входе в состояние
+object.waitFor(h, "destroyed", function(h) ... end)   -- разовый колбэк
+```
+
+### 4.25. pathfind — пути (запросы, везде)
+
+```lua
+pathfind.calculate(h, x, z)               -- 0 — путь найден
+pathfind.distance(x1, z1, x2, z2)         -- длина по проходимости, не прямая
+pathfind.groupReady(grHandle)             --> boolean
+```
+
+### 4.26. terrain — рельеф (server/shared; x, y — КЛЕТКИ)
+
+```lua
+terrain.raise(100, 80, { delta = 2 })     -- terrain.lower / terrain.smooth
+terrain.update()                          -- пересчитать после правок
+terrain.height(x, z)                      -- высота в мировой точке (везде)
+```
+
+### 4.27. fow — туман (чтение везде, запись — server/shared)
+
+```lua
+fow.enable(false)                         -- fow.isEnabled()
+fow.revealObject(h)                       -- прожектор; fow.hideObject(h), fow.clearObjects()
+fow.rebuild()                             -- пересчитать целиком
+```
+
+### 4.28. markers — маркеры (client, только картинка)
+
+```lua
+local id = markers.add{ x = 100, z = 50, icon = "attack", decal = "scorch", duration = 10 }
+markers.remove(id)                        -- markers.clear()
+```
+
+### 4.29. cutscene — катсцены (client)
+
+```lua
+cutscene.play{ { x = 10, z = 20, time = 2 }, { follow = h, time = 3 } }
+cutscene.stop()                           -- cutscene.playing()
+```
+
+### 4.30. dbg — оверлей разработчика (client)
+
+```lua
+dbg.text("tgt", x, y, z, "HP: 100")       -- dbg.clear("tgt"), dbg.count()
+dbg.unit(h)                               --> "h=123 musketeer18 pl=0 hp=80/100 ..."
+local hit, x, y, z = dbg.ray(x1,y1,z1, x2,y2,z2)
+```
+
+### 4.31. netrec — журнал к рассинхрону (shared)
+
+```lua
+netrec.start()                            -- в game.start; netrec.stop()
+log.info(netrec.report())                 -- шаги, хеши, последние приказы
+```
+Дополняет desync_watchdog: логи с двух машин рядом показывают первый разошедшийся шаг.
+
+### 4.32. time — скорость (server/shared)
+
+```lua
+time.speed(0.5)                           -- time.factor(); time.pause() / time.resume()
+```
+
+### 4.33. sound — звуки (client, экспериментально)
+
+```lua
+local s = sound.get(h, "explosion")       -- излучатель h, библиотека из data/sounds
+sound.play(s)                             -- sound.stop/volume/loop/source/remove
+sound.playAt(h, "boom", { volume = 0.5 })
+```
+
+### 4.34. orders — приказы (server/shared)
+
+```lua
+orders.move(h, x, z)                          -- orders.move({h1,h2}, x, z, { clear = false })
+orders.attackMove(units, x, z)                -- с боем; orders.attack(units, target, { lock = true })
+orders.patrol(h, x1, z1, x2, z2)              -- orders.follow(h, target) = guard
+orders.queue(h, { { move = {10, 20} }, { attackpoint = {30, 40} } })
+orders.cancel(h)                              -- orders.cancel(h, true) — жёстко
+```
+Через `_unit_AddOrder` игры: события `unit.order` проходят. ~1 мс на приказ.
+
+### 4.35. formation — построения (set: server/shared; slots: везде)
+
+```lua
+formation.set(units, "wedge", { x = 100, z = 50, spacing = 3, angle = 0 })
+-- формы: line/column/wedge/square/circle; order="attackpoint" — идти с боем
+```
+
+### 4.36. weapon — снаряды (server/shared)
+
+```lua
+abilities.define("how", { cooldown = 5, damage = 800, radius = 12 })
+weapon.fire{ ability = "how", target = { x = 100, z = 50 }, weapon = "PUEXPHOWITZER",
+             speed = 80, shots = 3, interval = 0.5, spread = 4,
+             sub = { count = 5, radius = 3, damage = 100 } }
+```
+Снаряд летит движком, урон — через abilities (события проходят). Разброс детерминирован.
+
+### 4.37. status — эффекты (server/shared)
+
+```lua
+status.add(h, "burning", { duration = 10, damage = 20 })
+status.add(h, "stunned", { duration = 3 })    -- резка приказов: status.installBlocker(events.on)
+                                            -- один раз в shared-моде (в api-окружении нет events)
+status.has(h, "burning")                      -- status.remove/list; status.define("rage", {...})
+```
+
+### 4.38. targeting — цели (везде, только чтение)
+
+```lua
+targeting.inCircle(x, z, 30, { enemy = true })   -- фильтры: enemy/player/sid/alive/maxR
+targeting.nearest({ x = x, z = z }, { enemy = true })
+targeting.inCone(x, z, dir, 0.4, 60, { enemy = true })
+targeting.los(ax, az, bx, bz)                 -- чист ли рельеф (юниты не учитываются)
+```
+
+### 4.39. ai — автоматы (server/shared)
+
+```lua
+ai.attach(h, { initial = "guard", states = {
+    guard = { onTick = function(h, api)
+        local foe = targeting.nearest(h, { enemy = true, maxR = 60 })
+        if foe then api.gotoState("attack", { target = foe }) end end },
+    attack = { onEnter = function(h, api, p) orders.attack(h, p.target) end },
+}})
+ai.set(h, "attack", { target = foe })         -- ai.detach(h), ai.state(h)
+```
+
+### 4.40. scenario — миссии (логика server/shared + present на client)
+
+```lua
+scenario.objective("mill", { type = "capture", x = 100, z = 50, radius = 20, player = 0,
+    onDone = function(id) ... end })          -- capture/destroy/survive/gather
+scenario.wave({ delay = 60, units = { "peauk" }, race = "tat", x = 200, z = 100, player = 1 })
+scenario.dialog("intro", { speaker = "Гетьман", text = "..." })
+-- привязки (api не видит net/savedata/ui мода — один раз в записях):
+--   scenario.link({ broadcast = net.broadcast, on = net.on })  -- server/shared+client
+--   economy.link(savedata)                                     -- server/shared
+--   panel.link(ui); gui.link(ui)                               -- client
+-- в client.lua: scenario.present()
+```
+
+### 4.41. economy — ресурсы модов (запись server/shared, хранится в сейве)
+
+```lua
+economy.link(savedata)                       -- сначала! иначе ошибка link
+economy.set(0, "fuel", 100)                   -- economy.get/add/consume (false — не хватает)
+economy.produce(h, "musketeer18", { time = 30, cost = { fuel = 10 }, amount = 5 })
+```
+
+### 4.42. panel — панели без CEF (client)
+
+```lua
+local p = panel.new{ name = "air", title = "Авиаудар", x = 100, y = 100 }
+p:label("...")                                -- p:button("Удар", function() ... end); p:close()
+```
+
+### 4.43. attach — составные объекты
+
+```lua
+attach.effect(h, "smoke_mgr", "chimney", { pos = {0, 3, 0}, scale = 1.5 })  -- везде
+attach.follow(flagH, poleH)                   -- server/shared; attach.unfollow/free
+```
+
+### 4.44. vision — разведка (дальность/раскрытие: server/shared)
+
+```lua
+vision.radius("cossack", 1200)                -- в game.start, в shared
+vision.reveal(towerH)                         -- vision.hide(towerH); vision.night(true)
+```
+Общего зрения (share) и детекторов air/stealth в движке нет — их нет и здесь.
+
+### 4.45. replay — метки и камера (везде)
+
+```lua
+replay.mark("airstrike")                      -- replay.camera(true); replay.export()
+```
+Отката симуляции (playFrom) движок не умеет.
+
+### 4.46. profiler — замеры (своя сторона)
+
+```lua
+profiler.start()                              -- ... игра ...; log.info(profiler.report())
+profiler.stop()                               -- profiler.time("ai", fn) — свои колбэки
+```
+
+### 4.47. content + permissions + mods
+
+```lua
+content.require({ mods = { my_pack = "1.2.0" } })  -- ошибка с понятным текстом
+mods.list()                                   --> { { id=, version=, permissions=} }
+```
+```lua
+-- manifest.lua
+return { id = "m", permissions = { world_spawn = true, terrain_edit = false } }
+```
+
+### 4.48. group — отряды (чтение везде, изменения — server/shared)
+
+```lua
+local g = group.create(0, "cavalry")      -- group.add(g, {h1, h2}), group.members(g)
+group.move(g, x, z)                       -- group.formation(g, "wedge", { spacing = 3 })
+group.stretch(g, 1.5)                     -- group.rebuild(g), group.destroy(g)
+```
+GroupSetVisible в движке нет — прячьте через model.show.
+
+### 4.49. behaviour — физика (server/shared)
+
+```lua
+local b = behaviour.create(h, "cannon_recoil")  -- behaviour.destroy(b)
+behaviour.force(behaviour.inertia(h), 500, 200, 0)  -- torque/push/bounce/mirror
+behaviour.blast(h, x, z, power, up)       -- взрывная волна от точки
+```
+
+### 4.50. regions — зоны (блок — только shared)
+
+```lua
+regions.create("base", { {x=0,z=0}, {x=100,z=0}, {x=100,z=100}, {x=0,z=100} })
+regions.units("base", { enemy = true })   -- regions.contains/onEnter/onLeave
+regions.block("base", true)               -- резать приказы внутрь (shared!)
+```
+Нативов AIRegion в движке нет — это Lua-полигоны.
+
+### 4.51. tracks — маршруты (server/shared)
+
+```lua
+local a, b = tracks.add("road", x1, y1, z1), tracks.add("road", x2, y2, z2)
+tracks.connect(a, b)                      -- tracks.exists(a, b) + tracks.lastLength()
+```
+
+### 4.52. gui — интерфейс без CEF (client)
+
+```lua
+local b = gui.create("button", { parent = gui.find("CityPanel"), text = "Авиаудар" })
+gui.onClick(b, function() ... end)        -- panel/button/label/image; gui.remove
+```
+
+### 4.53. dbg.draw + scenario.snapshot/trigger
+
+```lua
+dbg.line("p", x1,y1,z1, x2,y2,z2, "red")  -- box/sphere/axis/clean; цвета 0..1 или имена
+scenario.snapshot("brief.bmp", 800, 600)  -- КАДР экрана, не сейв! restore() нет
+scenario.trigger("fb", { on = "unit.death", action = function(...) ... end })
+```
+
+### 4.54. native.info — каталог всех 4856 нативов
+
+```lua
+native.info("PutDecalByName")
+--> { addr=, decl=, side="client", risk="visual", category="decal", wrappedBy="decals.put" }
+-- risk: read | visual | world (только server/shared) | forbidden (никогда на client)
+-- Генератор: tools/gen_native_catalog.py. Сводка: NATIVE_CATALOG.md.
+```
+
+### 4.55. steam — Rich Presence (client, только свой статус)
+
+```lua
+steam.setMatch{ status = "В партии", map = "Полтава", mode = "2v2",
+                opponents = { "Иван" } }   -- лимиты, троттлинг 3с, дедуп внутри
+steam.setOpponent("Иван")                 -- steam.clearOpponent()
+steam.playedWith("76561198000000000")     -- вручную; SteamID соперников узнать нельзя
+steam.myId()                              --> свой SteamID64 или nil
+steam.available()                         -- steam.status() -> "ok" | "no_dll" | ...
+steam.clear()                             -- снять статус
+```
+Автостатусы (меню/лобби/партия) ставит builtin-мод сам. Текст у друзей зависит
+от настройки Rich Presence Cossacks 3 в Steamworks (без неё видно лишь "В игре").
+
+### 4.56. Utility Libraries — стандартный слой (api/60–70)
+
+Чистые функции — везде включая shared (lockstep-безопасны): `mathx` (clamp/lerp/
+wrap/углы; NaN→ошибка), `vec` (v2/v3; для карты z идёт ВТОРЫМ компонентом v2;
+normalize(0)→0), `tablex` (map/filter/deepcopy/merge/shuffle — входы не мутируют,
+кроме `clear`), `stringx` (split/trim/plain-замены; `utf8Length`/`truncateUtf8`
+по символам, кириллица ок; `capitalize/lower/upper` — только ASCII!),
+`geometry` (круг/сектор/сегменты/полигоны; углы — РАДИАНЫ; граница = внутри),
+`validate` (проверки аргументов; хендлы бывают отрицательными!),
+`color` (диапазон 0..255 целые, как ui; hex `#RRGGBB[AA]`).
+
+С состоянием игры: `scheduler` (after/every/at/debounce/throttle на game.tick;
+время — `native.GetGameTime()`, fallback os.clock НЕдетерминирован; автоочистка
+на game.end/меню), `query` (сканы `O(n)` записями `{handle,x,z,hp,player,sid}`;
+building-фильтр — один batched exec; НЕ каждый тик без интервала),
+`rng` (splitmix64: `new/nextInt/nextFloat/range/pick/chance/shuffle/state`;
+`seedFromGame()` из зерна карты; `sharedSeed(name)` без времени/адресов —
+РАЗНОЕ ЧИСЛО ВЫЗОВОВ В ВЕТВЯХ = ДЕСИНХРОН), `config` (сначала
+`config.link(savedata)`! один ключ `cfg:<имя>`; dirty+`save()`; `_version`+
+migrate; client-конфиг — НЕ источник логики).
+
+Пример (только shared/server; вызовы RNG одинаковы у всех!):
+
+```lua
+local r = rng.new(12345)
+local center = vec.v3(100, 0, 50)
+
+scheduler.after(5, function()
+    local targets = query.units{
+        around = { x = center.x, z = center.z, radius = 20 },
+        alive = true
+    }
+
+    for _, unit in ipairs(targets) do
+        local damage = mathx.round(r:range(100, 200))
+        status.add(unit.handle, "burning", { damage = damage, duration = 5 })
+    end
+end)
+```
+
 ## 5. Замена файлов — assets/
 
 `assets/<путь как в игре>` заменяет файл игры: `assets/data/shaders/tone/tone.frag`.
@@ -446,6 +883,34 @@ battle {
     name = { ru = "...", en = "..." }, description = { ru = "...", en = "..." },
 }
 ```
+
+Своя статичная модель (здание, декор) из Blender — **только .glb** (File → Export → glTF 2.0, формат glTF Binary):
+
+```lua
+model {
+    file = "models/house.glb",                               -- внутри мода; все меши сцены с их трансформациями
+    osm = "data/actors/buildings/ukr/ukrcen.osm",            -- какую модель игры заменить (путь из .actor)
+    texture = nil,     -- по желанию: какую текстуру игры заменить; без него — текстура материала с именем модели (ukrcen)
+    image = nil,                                             -- по желанию: своя PNG/JPEG в моде вместо картинки из .glb
+    playercolor = false,                                     -- true: альфа картинки = где красить цветом игрока
+}
+```
+
+В Blender: Z вверх, лицом к −Y, 1 единица ≈ 1 м; модификаторы применять при экспорте.
+Несколько материалов со своими картинками — можно: модлоадер склеит картинки в одну текстуру-атлас (сетку)
+и пересчитает UV. В атласе картинка не может повторяться, поэтому UV за пределами 0..1 (тайлинг)
+зажимаются — для повторяющихся текстур сделайте развёртку в пределах картинки. Модлоадер сам
+переводит оси, UV и обход треугольников. Путь `osm` — в `.actor` модели (`MeshObjects.LoadFromFile`),
+`texture` — в `.mat` (`Material.Texture.image`). Анимированные модели (.oss) — пока нет.
+
+Стадии стройки и руины здания — в том же .glb: верхние объекты сцены (или пустышки-родители) с именами
+`stage1`…`stage4` (стадии стройки) и `death1`, `death2` (руины); остальные объекты — готовое здание.
+Из `osm = ".../ukrcen.osm"` получаются `ukrcen1.osm`…`ukrcen4.osm`, `ukrcen_death1.osm`, `ukrcen_death2.osm` —
+те же имена, что в `.actor` здания (игра переключает их сама, `building.inc/ontagstates.inc`).
+Леса, лестница и обломки — отдельный дочерний объект здания (`autochildrenproperty` в `.prop`, модели
+в `attach/`, материалы игры `scaffold` и `debris`): объекты `attach`, `stage1a`…`stage4a`, `death1a`, `death2a`
+-> `attach/ukrcena.osm`, `attach/ukrcen1a.osm`…, `attach/ukrcen_death1a.osm`. Их текстура — общая для всех
+строек игры, `texture` модели на них не действует. Нет объекта — остаётся модель игры.
 
 Нации игры: aus fra eng spa rus ukr pol swe pru ven tur alg net den por pie sax bav hun swi sco tat lit
 (mis — служебная). Новая нация = копия шаблона. Новый юнит = копия родителя + `base`/`prop`;

@@ -68,6 +68,8 @@ end
 
 -- ---------- чтение ----------
 
+-- buildings.list(player): здания игрока. Парам: player — индекс (по умолч. свой).
+-- Возврат: { { handle, sid, built, hp, maxhp, x, z, queue }, ... }. Сторона: server/shared/страница.
 function buildings.list(player)
     local p = player
     if p == nil then p = native.GetPlayerIndexInterfaceIO() end
@@ -105,6 +107,8 @@ ML_RET(s);]], p))
     return out
 end
 
+-- buildings.selected(): хендл выделенного здания. Возврат: number или nil.
+-- Сторона: server/shared/страница. Ошибок не кидает.
 function buildings.selected()
     local text = run([[
 var h : Integer;
@@ -115,15 +119,37 @@ if (pobj <> nil) and gObjProp[TObj(pobj).cid][TObj(pobj).id].bbuilding then ML_R
     return math.tointeger(tonumber(text))
 end
 
-local PRICE = "IntToStr(%s[0])+','+IntToStr(%s[1])+','+IntToStr(%s[2])+','+IntToStr(%s[3])+','+IntToStr(%s[4])+','+IntToStr(%s[5])"
+-- Цена: индексы 1..6, а НЕ 0..5.
+--
+-- Массив price в игре — это 0..6, где 0 это gc_resource_type_none (всегда ноль),
+-- а дальше по номерам типов ресурсов: 1 еда, 2 дерево, 3 камень, 4 золото,
+-- 5 железо, 6 уголь (dmscript.global:791-797). Раньше здесь читались 0..5:
+-- в цену попадал пустой нулевой слот, всё съезжало на одну позицию, а УГОЛЬ
+-- терялся совсем — а им, например, платят за часть улучшений академии.
+local PRICE = "IntToStr(%s[1])+','+IntToStr(%s[2])+','+IntToStr(%s[3])+','+" ..
+              "IntToStr(%s[4])+','+IntToStr(%s[5])+','+IntToStr(%s[6])"
 local function price(expr) return PRICE:gsub("%%s", expr) end
 
+-- Цена таблицей С ИМЕНАМИ, а не списком: на позициях легко ошибиться на единицу
+-- (см. выше), а по имени — нельзя.
+local RESOURCES = { "food", "wood", "stone", "gold", "iron", "coal" }
+
 local function priceList(text)
-    local out = {}
-    for v in (text .. ","):gmatch("(.-),") do out[#out + 1] = num(v) end
+    local out, i = {}, 0
+    for v in (text .. ","):gmatch("(.-),") do
+        i = i + 1
+        if RESOURCES[i] then out[RESOURCES[i]] = num(v) end
+    end
     return out
 end
 
+-- buildings.info(handle): всё о здании. Парам: handle — хендл.
+-- Возврат: { handle, sid, hp, maxhp, built, buildprogress, produce, upgrades, queue }, где
+--   produce[i]  = { sid, id, available, price, buildtime, x, y }
+--   upgrades[i] = { sid, index, available, enabled, level, kind, value, price, time }
+--   queue[i]    = { kind = "unit"|"upgrade", sid, amount, progress }
+--   price       = { food, wood, stone, gold, iron, coal } — по именам, не по номерам.
+-- Сторона: server/shared/страница. Ошибки: "not found" при неверном хендле.
 function buildings.info(handle)
     local h = checkHandle(handle)
     local text = run(string.format([[
@@ -241,6 +267,8 @@ gIntegerList.Add(h);
     return true
 end
 
+-- buildings.produce(handle, unitSid, amount): заказать юнитов. Парам: handle — здание; unitSid — тип; amount — штук (по умолч. 1, -1 — бесконечно).
+-- Возврат: true. Ошибки: "no object", "not available now", "unknown unit".
 function buildings.produce(handle, unitSid, amount)
     return command(checkHandle(handle), string.format([[
 var usid : String = %s;
@@ -252,6 +280,8 @@ _unit_ProduceUnit(plHnd, gIntegerList, cid, id, %d, True, True, True);
 ML_RET('True');]], quote(unitSid), math.tointeger(tonumber(amount) or 1) or 1))
 end
 
+-- buildings.cancel(handle, unitSid, amount): убрать из очереди. Парам: handle — здание; unitSid — тип; amount — штук (по умолч. 1).
+-- Возврат: true. Ошибки: "no object", "unknown unit".
 function buildings.cancel(handle, unitSid, amount)
     return command(checkHandle(handle), string.format([[
 var usid : String = %s;
@@ -272,7 +302,11 @@ _unit_MakeUpgrade(plHnd, gIntegerList, ui, %s, True);
 ML_RET('True');]], quote(upgSid), state and "True" or "False", state and "True" or "False"))
 end
 
+-- buildings.upgrade(handle, upgSid): заказать улучшение. Парам: handle — здание; upgSid — имя улучшения.
+-- Возврат: true. Ошибки: "no object", "not available now", "unknown upgrade".
 function buildings.upgrade(handle, upgSid) return upgradeCommand(handle, upgSid, true) end
+-- buildings.cancelUpgrade(handle, upgSid): отменить улучшение. Парам: handle — здание; upgSid — имя.
+-- Возврат: true. Ошибки: "no object", "unknown upgrade".
 function buildings.cancelUpgrade(handle, upgSid) return upgradeCommand(handle, upgSid, false) end
 
 -- ---------- логика: что строят здания, улучшения ----------
@@ -297,6 +331,8 @@ end
 
 local SLOTS = 24 -- gc_country_fixedproduce_maxcount
 
+-- buildings.produceList(bsid): что строит здание. Парам: bsid — sid здания. Возврат: список sid юнитов.
+-- Ошибки: "no building ... produces anything" при неверном sid.
 function buildings.produceList(bsid)
     local p = producePlaces(bsid)[1]
     local out = {}
@@ -307,7 +343,8 @@ function buildings.produceList(bsid)
     return out
 end
 
--- Новый список у всех наций с этим зданием. Позиции кнопок (x, y) — сеткой 6 в ряд, как у игры.
+-- buildings.setProduceList(bsid, list): новый список построек у всех наций. Парам: bsid — здание; list — до 24 sid.
+-- Кнопки (x, y) — сеткой 6 в ряд, как у игры. Ошибки: "at most 24 units".
 function buildings.setProduceList(bsid, list)
     needExec("setProduceList")
     if #list > SLOTS then error("buildings.setProduceList: at most " .. SLOTS .. " units", 2) end
@@ -323,6 +360,8 @@ function buildings.setProduceList(bsid, list)
     end
 end
 
+-- buildings.addProduce(bsid, unitSid): добавить юнит в постройку. Парам: bsid — здание; unitSid — тип.
+-- Дубли не добавляет. Сторона: server/shared/страница.
 function buildings.addProduce(bsid, unitSid)
     local list = buildings.produceList(bsid)
     for _, s in ipairs(list) do if s == unitSid then return end end
@@ -330,13 +369,16 @@ function buildings.addProduce(bsid, unitSid)
     buildings.setProduceList(bsid, list)
 end
 
+-- buildings.removeProduce(bsid, unitSid): убрать юнит из постройки. Парам: bsid — здание; unitSid — тип.
+-- Сторона: server/shared/страница. Нет юнита — список без изменений.
 function buildings.removeProduce(bsid, unitSid)
     local list, out = buildings.produceList(bsid), {}
     for _, s in ipairs(list) do if s ~= unitSid then out[#out + 1] = s end end
     buildings.setProduceList(bsid, out)
 end
 
--- Поле улучшения у всех наций, где оно есть: "time", "value", "price[3]", "enabled", "level".
+-- buildings.setUpgrade(upgSid, field, value): поле улучшения у всех наций. Парам: upgSid — имя; field — "time", "value", "price[3]", "enabled", "level"; value — значение.
+-- Ошибки: "unknown upgrade" при неверном имени.
 function buildings.setUpgrade(upgSid, field, value)
     needExec("setUpgrade")
     local text = run(string.format([[
@@ -412,6 +454,8 @@ local function prepare(sid, x, z, player)
         math.floor((tonumber(x) or 0) * 1000 + 0.5), math.floor((tonumber(z) or 0) * 1000 + 0.5))
 end
 
+-- buildings.canPlace(sid, x, z, player): можно ли построить здесь. Парам: sid — здание; x, z — мировые координаты; player — игрок (по умолч. свой).
+-- Возврат: true/false. Ошибки: "no player", "has no building" при неверных данных.
 function buildings.canPlace(sid, x, z, player)
     local r = run(prepare(sid, x, z, player) .. "if CanPlace then ML_RET('True') else ML_RET('False');")
     if r ~= "True" and r ~= "False" then error("buildings.canPlace: " .. r, 2) end
@@ -427,6 +471,8 @@ begin
 end;
 ]]
 
+-- buildings.build(sid, x, z, opts): построить здание. Парам: sid — здание; x, z — координаты; opts — { workers, instant, player, check }.
+-- Возврат: хендл стройки. Ошибки: "cannot place here", "not enough resources", "the game refused".
 function buildings.build(sid, x, z, opts)
     opts = opts or {}
     needExec("build")
@@ -455,6 +501,8 @@ ML_RET(IntToStr(h));]]
     return h
 end
 
+-- buildings.finish(handle): достроить стройку мгновенно. Парам: handle — хендл стройки.
+-- Сторона: server/shared (в сети — только shared у всех). Ошибок не кидает.
 function buildings.finish(handle)
     needExec("finish")
     local h = checkHandle(handle)

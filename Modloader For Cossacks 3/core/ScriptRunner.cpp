@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "CrashHandler.h"
+#include "Hooks.h"
 #include "ScriptRunner.h"
 #include "GameApi.h"
 #include "Console.h"
@@ -8,6 +9,7 @@
 #include "Overlay.h"
 
 #include <mutex>
+#include <set>
 #include <atomic>
 #include <unordered_map>
 
@@ -24,7 +26,8 @@ namespace
     std::vector<Job> g_queue;
     std::atomic<DWORD> g_scriptThread = 0;
     bool g_running = false; // трогается только из потока скриптов
-    int g_counter = 0;
+    // Примечание: states ModLoader.Exec.* переиспользуются пулом (см. Execute),
+    // счётчика больше нет — иначе они копились бы в машине скриптов навсегда.
 
     void CallStateExecute(uint8_t* state)
     {
@@ -90,10 +93,33 @@ namespace
             LOG_INFO("ScriptRunner: engine net/record mode = %d (execution gate bypassed)", mode);
         }
 
-        // Каждый вызов — новый state, т.к. AddCodeLine дописывает строки в конец существующего.
-        // Создаём его явно: иначе AddCodeLine сначала ищет state и движок логирует ошибку "StateByName".
-        GameApi::DelphiString name("ModLoader.Exec." + std::to_string(++g_counter));
-        addState(reinterpret_cast<int>(sm), name.get());
+        // Пул переиспользуемых states: раньше каждый вызов создавал новый
+        // "ModLoader.Exec.N" и они копились в машине скриптов навсегда (утечка:
+        // за партию набегали тысячи состояний). Удаления state у движка нет, зато
+        // строки кода можно стереть (ListDelete) и записать заново — так один state
+        // служит бесконечно. Пул из нескольких штук — на случай вложенности:
+        // скрипт внутри Execute может через событие дойти до нового game.exec,
+        // и общий state перезаписался бы под выполняющимся внешним вызовом.
+        // Вызовы идут только из главного потока игры — гонок за пул нет.
+        constexpr int kPool = 8;
+        static int next = 0;
+        GameApi::DelphiString name("ModLoader.Exec." + std::to_string(next));
+        next = (next + 1) % kPool;
+        uint8_t* reused = Engine::FindState(sm, name.get());
+        if (!reused)
+        {
+            // Первый круг: state ещё нет — создаём явно, иначе AddCodeLine сначала
+            // ищет state и движок логирует ошибку "StateByName".
+            addState(reinterpret_cast<int>(sm), name.get());
+        }
+        else
+        {
+            // Чистим код прошлого вызова: AddCodeLine только дописывает в конец.
+            uint8_t* list = Engine::StateCode(reused);
+            while (Engine::ListCount(list) > 0)
+                Engine::ListDelete(list, 0);
+            Engine::StateReset(reused);
+        }
         for (const auto& line : lines)
             addLine(reinterpret_cast<int>(sm), name.get(), GameApi::DelphiString(line).get());
 
@@ -144,6 +170,7 @@ namespace
 
     LRESULT CALLBACK WndProc(HWND wnd, UINT msg, WPARAM wp, LPARAM lp)
     {
+        Hooks::InFlight inFlight;
         if (msg == g_pumpMsg)
         {
             Pump();
@@ -279,8 +306,11 @@ namespace
     int g_callCounter = 0;
 }
 
-bool ScriptRunner::Call(const std::string& code, const std::string& arg, std::string* result)
+bool ScriptRunner::Call(const std::string& code, const std::string& arg, std::string* result,
+                        bool* createdState)
 {
+    if (createdState)
+        *createdState = false;
     CrashHandler::Scope scope("скрипт игры: " + code.substr(0, 160) + (code.size() > 160 ? "..." : "") +
                               (arg.empty() ? "" : "  [ML_ARG=" + arg.substr(0, 80) + "]"));
     uint8_t* sm = Engine::GuiStateMachine();
@@ -298,6 +328,8 @@ bool ScriptRunner::Call(const std::string& code, const std::string& arg, std::st
         auto addState = reinterpret_cast<GameApi::StateAddFn>(GameApi::Addr(GameApi::Va::StateMachineStateAdd));
         auto addLine  = reinterpret_cast<GameApi::StateAddCodeLineFn>(GameApi::Addr(GameApi::Va::StateMachineStateAddCodeLine));
 
+        if (createdState)
+            *createdState = true;
         std::string name = "ModLoader.Call." + std::to_string(++g_callCounter);
         if (g_callCounter % 500 == 0)
             LOG_WARN("ScriptRunner: %d cached script calls — pass changing values via arg, not in the code text", g_callCounter);
@@ -334,7 +366,28 @@ bool ScriptRunner::Call(const std::string& code, const std::string& arg, std::st
         return false;
     }
     if (state && state[GameApi::Off::StateHasErrors])
-        return false; // движок уже написал ошибку компиляции
+    {
+        // Движок пишет только имя состояния ("Compile script error: ModLoader.Call.N") — без строки и причины.
+        // Показываем сам код (один раз на текст) и частую причину: функции стандартного Pascal, которых нет
+        // в диалекте игры.
+        static std::set<std::string> reported;
+        if (reported.insert(code).second)
+        {
+            LOG_ERROR("ScriptRunner::Call: %s does not compile. Code:", it->second.c_str());
+            int n = 0;
+            for (size_t pos = 0; pos <= code.size();)
+            {
+                size_t end = code.find('\n', pos);
+                if (end == std::string::npos)
+                    end = code.size();
+                LOG_ERROR("  %3d| %s", ++n, code.substr(pos, end - pos).c_str());
+                pos = end + 1;
+            }
+            LOG_ERROR("  hint: the game's Pascal has no Pos/Copy/Delete/Length for strings — use StrPos(sub, s), "
+                      "SubStr(s, index, count), StrLength(s) (see scripts in data/scripts, tools/check_pascal.py)");
+        }
+        return false;
+    }
     if (result)
         *result = returned ? value : std::string();
     return true;

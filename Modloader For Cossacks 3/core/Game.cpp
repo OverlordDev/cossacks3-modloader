@@ -110,6 +110,12 @@ void Game::Install()
                 ")+'|'+FloatToStr(" + o.x + ")+'|'+FloatToStr(" + o.z + ")+'|'+IntToStr(" + o.group + "))",
             true);
 
+    // Шаг синхронизации сети: хост каждые 0.1 с пишет команду ReadLanSyncData в поток lockstep
+    // (progress.inc/nothing.inc -> WriteLanSyncData -> RecordCustomBegin), и КАЖДЫЙ компьютер
+    // выполняет её на одном и том же шаге симуляции. Момент, одинаковый у всех, — для сверки мира.
+    Events::HookLibraryStateCode("progress\\progress.aix", "ReadLanSyncData", "net.sync",
+        "DScriptSetgDbgString0('ML:net.sync');");
+
     // Сейв загружен: глобальный скрипт игроков выполняет OnAfterLoad — данные модов уже в переменных.
     Events::HookLibraryStateCode("units\\global.aix", "OnAfterLoad", "save.afterload",
         "DScriptSetgDbgString0('ML:save.afterload');");

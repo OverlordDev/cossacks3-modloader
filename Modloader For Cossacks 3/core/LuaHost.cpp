@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "CrashHandler.h"
 #include "LuaHost.h"
+#include "Overlay.h"
 #include "Console.h"
 #include "Events.h"
 #include "Game.h"
@@ -9,6 +10,7 @@
 #include "Net.h"
 #include "PostFx.h"
 #include "ScriptRunner.h"
+#include "SteamPresence.h"
 #include "Text.h"
 #include "Ui.h"
 #include "WebUi.h"
@@ -23,6 +25,7 @@
 #include <type_traits>
 #include <filesystem>
 #include <fstream>
+#include <chrono>
 #include <map>
 #include <sstream>
 
@@ -62,6 +65,7 @@ namespace
         int priority = 0;    // порядок загрузки: больше — позже (и главнее в файлах и патчах)
         std::vector<std::string> dependencies; // id модов, без которых этот не работает
         std::string multiplayer = "required";
+        std::map<std::string, bool> permissions; // manifest: permissions = { world_spawn = true, ... }
         std::map<std::string, fs::path> files; // имя модуля ("utils", "lib/math") -> путь
         bool enabled = true;
         bool builtin = false; // часть модлоадера (modloader/builtin): грузится всегда, не выключается
@@ -76,6 +80,12 @@ namespace
 
     lua_State* L = nullptr;
     std::vector<Mod> g_mods;
+    // Поколение таблицы модов: растёт в Close() (reload/unload). Любой обход g_mods,
+    // переживающий Call() в Lua (там может случиться reload и g_mods.clear()),
+    // обязан свериться с ним сразу после Call и остановиться при несовпадении —
+    // иначе ссылки Mod&/Bind& висят на освобождённой памяти.
+    uint64_t g_generation = 0;
+    std::vector<int> g_baseSubs; // подписки api-модулей (таймеры): снимаются в Close()
     Mod g_console; // псевдо-мод для строк из консоли (права server)
     int g_baseEnvRef[2] = { LUA_NOREF, LUA_NOREF };
 
@@ -190,10 +200,39 @@ namespace
         return 1;
     }
 
+    // ---------- чей это расход ----------
+    //
+    // Обращения к игре стоят дорого: каждое game.exec — компиляция и исполнение
+    // куска Pascal внутри движка, а каждый НОВЫЙ текст ещё и навсегда занимает
+    // состояние в машине GUI (снять его нечем до конца партии).
+    //
+    // Раньше всё это считалось общей кучей: в логе было "500 cached script calls"
+    // без имени виновника, а профайлер мерил всех вместе. Оба раза, когда это
+    // выстрелило — фриз раз в секунду и утечка состояний, — виновника искали
+    // руками по многу часов. Здесь он называется сам.
+    //
+    // Владелец берётся из того же who, с которым уже вызывается любой код мода.
+    struct Cost
+    {
+        long long calls = 0;      // обращений к игре
+        long long micros = 0;     // суммарное время в них
+        long long states = 0;     // новых состояний движка (то, что не вернуть)
+    };
+    std::map<std::string, Cost> g_cost;
+    std::vector<std::string> g_owners; // стек: обработчик мода может позвать другой код
+
+    const std::string& CurrentOwner()
+    {
+        static const std::string none = "(модлоадер)";
+        return g_owners.empty() ? none : g_owners.back();
+    }
+
     // pcall с трассировкой; false — ошибка уже залогирована.
     bool Call(int nargs, int nresults, const std::string& who)
     {
         CrashHandler::Scope scope("Lua: " + who);
+        g_owners.push_back(who);
+        struct Pop { ~Pop() { g_owners.pop_back(); } } pop;
         int base = lua_gettop(L) - nargs;
         lua_pushcfunction(L, Traceback);
         lua_insert(L, base);
@@ -446,7 +485,18 @@ namespace
     // Синхронный вызов скрипта; результат ML_RET(...) — строкой (или nil).
     bool ScriptCall(const std::string& code, const std::string& arg, std::string* result)
     {
-        if (!ScriptRunner::Call(Text::Utf8ToAnsi(code), Text::Utf8ToAnsi(arg), result))
+        bool created = false;
+        auto started = std::chrono::steady_clock::now();
+        bool ok = ScriptRunner::Call(Text::Utf8ToAnsi(code), Text::Utf8ToAnsi(arg), result, &created);
+        auto spent = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - started).count();
+
+        Cost& cost = g_cost[CurrentOwner()];
+        cost.calls += 1;
+        cost.micros += spent;
+        cost.states += created ? 1 : 0;
+
+        if (!ok)
             return false;
         *result = Text::AnsiToUtf8(*result);
         return true;
@@ -619,6 +669,38 @@ namespace
         Call(2, 0, who);
     }
 
+    // Подписка на несуществующее событие — самая дорогая опечатка в моддинге:
+    // events.on принимает любую строку, обработчик просто никогда не вызывается,
+    // и мод "написан, но не работает". Сверяем имя с каталогом (api/59_events.lua)
+    // и, если похоже на опечатку, называем ближайшее имя.
+    //
+    // Это предупреждение, а не ошибка: каталог может отстать от свежего события,
+    // и ломать из-за этого чужой мод нельзя.
+    void WarnUnknownEvent(int side, const std::string& event, const std::string& who)
+    {
+        if (g_baseEnvRef[side] == LUA_NOREF)
+            return;
+        lua_rawgeti(L, LUA_REGISTRYINDEX, g_baseEnvRef[side]);
+        lua_getfield(L, -1, "eventKnown");
+        if (!lua_isfunction(L, -1)) // api/59_events.lua не загружен — молчим
+        {
+            lua_pop(L, 2);
+            return;
+        }
+        lua_pushstring(L, event.c_str());
+        if (lua_pcall(L, 1, 2, 0) != LUA_OK)
+        {
+            lua_pop(L, 2);
+            return;
+        }
+        bool known = lua_toboolean(L, -2) != 0;
+        const char* hint = lua_tostring(L, -1); // готовая фраза из eventKnown, либо nullptr
+        if (!known)
+            LOG_WARN("[lua] %s: unknown event '%s', handler will never run. %s",
+                     who.c_str(), event.c_str(), hint ? hint : "See api/59_events.lua for the list.");
+        lua_pop(L, 3);
+    }
+
     int l_eventsOn(lua_State* L)
     {
         Mod* mod = ModFromUpvalue(L);
@@ -628,6 +710,7 @@ namespace
         lua_pushvalue(L, 2);
         int ref = luaL_ref(L, LUA_REGISTRYINDEX);
         std::string who = Who(*mod, side);
+        WarnUnknownEvent(side, event, who);
 
         bool everywhere = mod->shared;
         int id = Events::Subscribe(event, [ref, side, everywhere, who](const std::string& name, const std::string& payload) {
@@ -644,6 +727,34 @@ namespace
         int id = static_cast<int>(luaL_checkinteger(L, 1));
         Events::Unsubscribe(id);
         std::erase(mod->subscriptions, id);
+        return 0;
+    }
+
+    // events для api-модулей (таймеры weapon/status/ai/...): базовое окружение
+    // стороны, без привязки к моду. Сторона зашита в upvalue; обработчики работают
+    // везде (как shared): armed only where the caller runs (server gates inside).
+    int l_baseEventsOn(lua_State* L)
+    {
+        int side = static_cast<int>(lua_tointeger(L, lua_upvalueindex(1)));
+        std::string event = luaL_checkstring(L, 1);
+        luaL_checktype(L, 2, LUA_TFUNCTION);
+        lua_pushvalue(L, 2);
+        int ref = luaL_ref(L, LUA_REGISTRYINDEX);
+        std::string who = std::string("api:base:") + SideName(side);
+        WarnUnknownEvent(side, event, who);
+        int id = Events::Subscribe(event, [ref, side, who](const std::string& name, const std::string& payload) {
+            CallEventHandler(ref, side, true /*everywhere*/, who, name, payload);
+        });
+        g_baseSubs.push_back(id);
+        lua_pushinteger(L, id);
+        return 1;
+    }
+
+    int l_baseEventsOff(lua_State* L)
+    {
+        int id = static_cast<int>(luaL_checkinteger(L, 1));
+        Events::Unsubscribe(id);
+        std::erase(g_baseSubs, id);
         return 0;
     }
 
@@ -1124,6 +1235,63 @@ namespace
         return 1;
     }
 
+    // mods.list() -> { { id=, name=, version=, loaded=, shared=, permissions = {...} }, ... }
+    // Для content.check: какие моды стоят и их версии/разрешения.
+    // mods.cost() -> { { who, calls, ms, states }, ... } по убыванию времени.
+    // who — "мод/сторона" ровно в том виде, в каком он пишется в лог, чтобы одно
+    // с другим можно было сопоставить глазами.
+    int l_modsCost(lua_State* L)
+    {
+        std::vector<std::pair<std::string, Cost>> rows(g_cost.begin(), g_cost.end());
+        std::sort(rows.begin(), rows.end(),
+                  [](const auto& a, const auto& b) { return a.second.micros > b.second.micros; });
+        lua_createtable(L, static_cast<int>(rows.size()), 0);
+        int n = 0;
+        for (const auto& [who, cost] : rows)
+        {
+            lua_newtable(L);
+            lua_pushstring(L, who.c_str());                lua_setfield(L, -2, "who");
+            lua_pushinteger(L, cost.calls);                lua_setfield(L, -2, "calls");
+            lua_pushnumber(L, cost.micros / 1000.0);       lua_setfield(L, -2, "ms");
+            lua_pushinteger(L, cost.states);               lua_setfield(L, -2, "states");
+            lua_rawseti(L, -2, ++n);
+        }
+        return 1;
+    }
+
+    // mods.costReset() — обнулить счёт (мерить отдельный кусок игры).
+    int l_modsCostReset(lua_State*)
+    {
+        g_cost.clear();
+        return 0;
+    }
+
+    int l_modsList(lua_State* L)
+    {
+        lua_newtable(L);
+        int n = 0;
+        for (const Mod& m : g_mods)
+        {
+            if (!m.error.empty() || !m.enabled)
+                continue;
+            lua_newtable(L);
+            lua_pushstring(L, m.id.c_str());       lua_setfield(L, -2, "id");
+            lua_pushstring(L, m.name.c_str());     lua_setfield(L, -2, "name");
+            lua_pushstring(L, m.version.c_str());  lua_setfield(L, -2, "version");
+            lua_pushboolean(L, m.loaded);          lua_setfield(L, -2, "loaded");
+            lua_pushboolean(L, m.shared);          lua_setfield(L, -2, "shared");
+            lua_newtable(L);
+            for (const auto& [k, v] : m.permissions)
+            {
+                lua_pushboolean(L, v);
+                lua_setfield(L, -2, k.c_str());
+            }
+            lua_setfield(L, -2, "permissions");
+            lua_rawseti(L, -2, ++n);
+        }
+        return 1;
+    }
+
     int l_modFiles(lua_State* L)
     {
         Mod* mod = ModFromUpvalue(L);
@@ -1173,6 +1341,15 @@ namespace
     }
 
     // web.eval("document.title = 'x'") — выполнить код в открытой странице.
+    // web.keyboard(true) — клавиатура странице, а не игре (в режиме HUD).
+    // Обычно этим управляет сама страница (game.keyboard в JS): ей видно, когда
+    // её поле в фокусе. Модам нужно, когда страница чужая или без скриптов.
+    int l_webKeyboard(lua_State* L)
+    {
+        WebUi::SetKeyboard(lua_toboolean(L, 1) != 0);
+        return 0;
+    }
+
     // web.passthrough(true) — режим HUD: прозрачные места страницы пропускают мышь в игру.
     int l_webPassthrough(lua_State* L)
     {
@@ -1246,16 +1423,64 @@ end
     bool IsClientNative(const std::string& name)
     {
         // Только читают, но по имени не угадать: нужны objects (api/20_objects.lua) на клиенте.
-        if (name == "StateMachineGetArgDataByInd")
+        if (name == "StateMachineGetArgDataByInd" || name == "RayCastHeight") // высота земли — только чтение
             return true;
         static const char* prefixes[] = { "Get", "Is", "Has", "Can", "Calc", "Check", "Find", "Count" };
         for (const char* p : prefixes)
             if (name.rfind(p, 0) == 0)
                 return true;
-        bool gui = name.find("GUI") != std::string::npos;
         bool runsStates = name.find("ExecuteState") != std::string::npos || name.find("DelayExecute") != std::string::npos ||
                           name.find("TimeExec") != std::string::npos;
-        return gui && !runsStates;
+        if (runsStates)
+            return false;
+        if (name.find("GUI") != std::string::npos)
+            return true;
+        // api/22_camera.lua: free camera and tracks - local view only.
+        if (name.find("Camera") != std::string::npos)
+            return true;
+        // api/26_decals.lua: ground marks - visual only.
+        if (name.find("Decal") != std::string::npos)
+            return true;
+        // api/25_effects.lua: smoke/fire/explosions/highlight - visual (damage via abilities only).
+        if (name.find("PFX") != std::string::npos || name.rfind("Effect", 0) == 0 ||
+            name.find("EffectHighlight") != std::string::npos)
+            return true;
+        // api/24_animation.lua: animations and appearance - visual (no position/world change).
+        // Position (SetGameObjectPosition*), creation and destroy stay server-only.
+        static const char* kVisual[] = {
+            "GameObjectSetFrameAnimationByHandle", "GameObjectSwitchToFrameAnimationByHandle",
+            "GameObjectSwitchToAnimationCyclesByHandle", "GameObjectSwitchToTreeAnimationCyclesByHandle",
+            "GameObjectSwitchToFBAnimationCyclesByHandle", "GameObjectSwitchToFrameAnimationBlendByHandle",
+            "GameObjectSwitchToAnimationCyclesBlendByHandle", "GameObjectSwitchToTreeAnimationCyclesBlendByHandle",
+            "GameObjectSwitchToFBAnimationCyclesBlendByHandle", "GameObjectSwitchToAnimationCyclesDefaultByHandle",
+            "GameObjectSwitchToTreeAnimationCyclesDefaultByHandle", "GameObjectSwitchToFBAnimationCyclesDefaultByHandle",
+            "SetGameObjectCurrentFrameByHandle", "SetGameObjectActorNameByHandle",
+            "SetGameObjectMaterialNameByHandle", "SetGameObjectScaleByHandle",
+            "SetGameObjectVisibleByHandle", "GameObjectRotateAbsoluteByHandle", "GameObjectPointToByHandle",
+            "SetGameObjectAnimationCyclesModeByHandle", "SetGameObjectAnimationCyclesListByHandle",
+            "SetGameObjectFrameAnimationSynchronizeOptionByHandle", "SetGameObjectActorIndexByHandle",
+            "GameObjectResetFrameAnimationBlend",
+        };
+        for (const char* v : kVisual)
+            if (name == v)
+                return true;
+        // api/29_pathfind.lua: synchronous path queries - read-only.
+        if (name.find("CalcPath") != std::string::npos ||
+            name == "TopologyGetPathDistance" ||
+            name == "GroupGetFindPathByHandle" ||
+            name == "RayCastTerrain")
+            return true;
+        // api/34_dbg.lua: debug overlay text - visual only.
+        if (name.rfind("DebugText", 0) == 0)
+            return true;
+        // api/34_dbg.lua draw: figures - visual only.
+        if (name.rfind("DebugDraw", 0) == 0)
+            return true;
+        // api/37_sound.lua: local audio - this player only.
+        if (name.rfind("Snd", 0) == 0 || name.rfind("SetSnd", 0) == 0 ||
+            name.rfind("GetSnd", 0) == 0)
+            return true;
+        return false;
     }
 
     int l_nativeCall(lua_State* L)
@@ -1414,10 +1639,123 @@ end
         return 1;
     }
 
+    // ---------- API: steam (client-only Rich Presence) ----------
+    // Только главный поток игры (там живёт Steam). Чужие потоки — в очередь.
+    // Строки уже UTF-8 из Lua: в ANSI не перекодируем (русские имена).
+
+    int l_steamAvailable(lua_State* L)
+    {
+        if (!ScriptRunner::IsGameThread())
+        {
+            lua_pushboolean(L, 0);
+            return 1;
+        }
+        lua_pushboolean(L, SteamPresence::Available());
+        return 1;
+    }
+
+    int l_steamStatus(lua_State* L)
+    {
+        if (!ScriptRunner::IsGameThread())
+        {
+            lua_pushstring(L, "not_game_thread");
+            return 1;
+        }
+        lua_pushstring(L, SteamPresence::Status().c_str());
+        return 1;
+    }
+
+    int l_steamSet(lua_State* L)
+    {
+        std::string key = luaL_checkstring(L, 1);
+        std::string value = luaL_checkstring(L, 2);
+        if (!ScriptRunner::IsGameThread())
+        {
+            // Не из сетевого/фонового потока: отложить в безопасный поток игры.
+            ScriptRunner::RunOnGameThread([key, value] { SteamPresence::Set(key, value); });
+            lua_pushboolean(L, 1);
+            return 1;
+        }
+        lua_pushboolean(L, SteamPresence::Set(key, value));
+        return 1;
+    }
+
+    int l_steamClear(lua_State* L)
+    {
+        if (!ScriptRunner::IsGameThread())
+        {
+            ScriptRunner::RunOnGameThread([] { SteamPresence::Clear(); });
+            lua_pushboolean(L, 1);
+            return 1;
+        }
+        lua_pushboolean(L, SteamPresence::Clear());
+        return 1;
+    }
+
+    int l_steamPlayedWith(lua_State* L)
+    {
+        const char* id = luaL_checkstring(L, 1);
+        unsigned long long steamId = strtoull(id, nullptr, 10);
+        if (!steamId)
+            return luaL_error(L, "steam.playedWith: bad SteamID64");
+        if (!ScriptRunner::IsGameThread())
+        {
+            ScriptRunner::RunOnGameThread([steamId] { SteamPresence::PlayedWith(steamId); });
+            lua_pushboolean(L, 1);
+            return 1;
+        }
+        lua_pushboolean(L, SteamPresence::PlayedWith(steamId));
+        return 1;
+    }
+
+    int l_steamMyId(lua_State* L)
+    {
+        if (!ScriptRunner::IsGameThread())
+        {
+            lua_pushnil(L);
+            return 1;
+        }
+        std::string id = SteamPresence::MyId();
+        if (id.empty())
+            lua_pushnil(L);
+        else
+            lua_pushstring(L, id.c_str());
+        return 1;
+    }
+
     // ---------- API: gfx ----------
 
     // gfx.<Name> — как native.<Name>, но только нативы графики (GfxApi::IsGraphicsNative) и без
     // деления на стороны: картинка у каждого своя, на ход партии не влияет.
+    // gfx.capture(path, x, y, w, h) — снимок части кадра игры в BMP (в ближайшем кадре, без страницы и меню).
+    int l_gfxCapture(lua_State* L)
+    {
+        std::string path = luaL_checkstring(L, 1);
+        int x = static_cast<int>(luaL_checkinteger(L, 2)), y = static_cast<int>(luaL_checkinteger(L, 3));
+        int w = static_cast<int>(luaL_checkinteger(L, 4)), h = static_cast<int>(luaL_checkinteger(L, 5));
+        if (w <= 0 || h <= 0 || w > 4096 || h > 4096 || path.find("..") != std::string::npos)
+            return luaL_error(L, "gfx.capture: bad size or path");
+        Overlay::QueueCapture(path, x, y, w, h);
+        return 0;
+    }
+
+    // game.readFile(path) — файл из папки игры (только чтение): "data/gen/terrainmasks/....tga" -> байты или nil.
+    // Путь — внутри папки игры: без "..", без диска и без абсолютного пути.
+    int l_gameReadFile(lua_State* L)
+    {
+        std::string rel = luaL_checkstring(L, 1);
+        if (rel.empty() || rel.find("..") != std::string::npos || rel.find(':') != std::string::npos ||
+            rel[0] == '/' || rel[0] == '\\')
+            return luaL_error(L, "game.readFile: path must be inside the game folder");
+        while (rel.rfind(".\\", 0) == 0 || rel.rfind("./", 0) == 0)
+            rel.erase(0, 2);
+        std::string data;
+        if (!ReadFile(ModsDir().parent_path().parent_path() / fs::path(std::u8string(rel.begin(), rel.end())), &data))
+            return 0;
+        lua_pushlstring(L, data.data(), data.size());
+        return 1;
+    }
+
     int l_gfxIndex(lua_State* L)
     {
         const char* name = luaL_checkstring(L, 2);
@@ -1713,6 +2051,7 @@ end
         lua_newtable(L); // game
         SetPlain("eval", l_gameEval);
         SetPlain("evalInt", l_gameEvalInt);
+        SetPlain("readFile", l_gameReadFile);
         SetPlain("evalFloat", l_gameEvalFloat);
         SetPlain("evalBool", l_gameEvalBool);
         SetPlain("mode", l_gameMode);
@@ -1725,6 +2064,11 @@ end
         }
         lua_pushstring(L, SideName(side));
         lua_setfield(L, -2, "side");
+        // Режим разработчика (есть ли modloader/dev.txt). Нужен модам, которые дают
+        // возможности не для игроков: их следует включать только там, где модлоадер
+        // уже разрешает себе подобное (F9 с ресурсами, End, DevTools страницы).
+        lua_pushboolean(L, Console::Dev());
+        lua_setfield(L, -2, "dev");
         lua_setfield(L, -2, "game");
 
         lua_newtable(L); // native
@@ -1763,9 +2107,36 @@ end
             SetPlain("set", l_fxSet);
             SetPlain("apply", l_fxApply);
             lua_setfield(L, -2, "fx");
+            SetPlain("capture", l_gfxCapture);
 
             lua_setfield(L, -2, "gfx");
+
+            lua_newtable(L); // steam — Rich Presence локального игрока (client-only)
+            SetPlain("available", l_steamAvailable);
+            SetPlain("status", l_steamStatus);
+            SetPlain("set", l_steamSet);
+            SetPlain("clear", l_steamClear);
+            SetPlain("playedWith", l_steamPlayedWith);
+            SetPlain("myId", l_steamMyId);
+            lua_setfield(L, -2, "steam");
         }
+
+        lua_newtable(L); // events — таймеры api-модулей (снимаются в Close)
+        lua_pushinteger(L, side);
+        lua_pushcclosure(L, l_baseEventsOn, 1);
+        lua_setfield(L, -2, "on");
+        lua_pushcfunction(L, l_baseEventsOff);
+        lua_setfield(L, -2, "off");
+        lua_setfield(L, -2, "events");
+
+        lua_newtable(L); // mods — какие моды загружены (для content.check, всем)
+        lua_pushcfunction(L, l_modsList);
+        lua_setfield(L, -2, "list");
+        lua_pushcfunction(L, l_modsCost);
+        lua_setfield(L, -2, "cost");
+        lua_pushcfunction(L, l_modsCostReset);
+        lua_setfield(L, -2, "costReset");
+        lua_setfield(L, -2, "mods");
 
         g_baseEnvRef[side] = luaL_ref(L, LUA_REGISTRYINDEX);
 
@@ -1841,6 +2212,7 @@ end
             SetPlain("isOpen", l_webIsOpen);
             SetPlain("eval", l_webEval);
             SetPlain("passthrough", l_webPassthrough);
+            SetPlain("keyboard", l_webKeyboard);
             SetPlain("url", l_webUrl);
             lua_setfield(L, -2, "web");
 
@@ -1885,6 +2257,8 @@ end
         SetFunc("get", l_saveGet, modIndex, side);
         SetFunc("keys", l_saveKeys, modIndex, side);
         lua_setfield(L, -2, "savedata");
+
+
 
         lua_getfield(L, -1, "mod");
         lua_pushstring(L, mod.id.c_str());      lua_setfield(L, -2, "id");
@@ -2037,6 +2411,18 @@ end
                 lua_pop(L, 1);
             }
         lua_pop(L, lua_istable(L, -1) ? 2 : 1);
+        lua_getfield(L, t, "permissions");
+        if (lua_istable(L, -1))
+        {
+            lua_pushnil(L);
+            while (lua_next(L, -2))
+            {
+                if (lua_type(L, -2) == LUA_TSTRING && lua_type(L, -1) == LUA_TBOOLEAN)
+                    mod.permissions[lua_tostring(L, -2)] = lua_toboolean(L, -1) != 0;
+                lua_pop(L, 1);
+            }
+        }
+        lua_pop(L, 1);
         if (badPriority)
         {
             lua_pop(L, 1);
@@ -2123,10 +2509,15 @@ end
     {
         if (!L)
             return;
+        SteamPresence::Shutdown(); // убрать статус; steam_api.dll не трогаем
+        for (int id : g_baseSubs)
+            Events::Unsubscribe(id);
+        g_baseSubs.clear();
         for (auto& mod : g_mods)
             Detach(mod);
         Detach(g_console);
         g_mods.clear();
+        ++g_generation; // все обходы g_mods с живыми ссылками через Call() — недействительны
         g_console = {};
         lua_close(L);
         L = nullptr;
@@ -2313,19 +2704,22 @@ void LuaHost::OnNetMessage(char direction, const std::string& modId, const std::
         return;
     int side = direction == 's' ? Server : Client;
 
-    for (auto& mod : g_mods)
+    // Индекс вместо ссылки: Call() может дотянуться до LoadAll (см. PollInput).
+    for (size_t mi = 0; mi < g_mods.size(); ++mi)
     {
-        if (!mod.loaded || mod.id != modId)
+        if (!g_mods[mi].loaded || g_mods[mi].id != modId)
             continue;
         // Серверная логика работает только там, где решается игра; shared-моды считают у всех.
-        if (side == Server && !mod.shared && !Game::IsAuthority())
+        if (side == Server && !g_mods[mi].shared && !Game::IsAuthority())
             return;
-        auto it = mod.netHandlers[side].find(event);
-        if (it == mod.netHandlers[side].end())
+        auto it = g_mods[mi].netHandlers[side].find(event);
+        if (it == g_mods[mi].netHandlers[side].end())
         {
-            LOG_WARN("[%s] net message '%s' has no %s handler", Who(mod, side).c_str(), event.c_str(), SideName(side));
+            LOG_WARN("[%s] net message '%s' has no %s handler", Who(g_mods[mi], side).c_str(), event.c_str(), SideName(side));
             return;
         }
+        uint64_t gen = g_generation;
+        std::string who = Who(g_mods[mi], side);
         std::vector<int> refs = it->second; // обработчик может добавить новые
         for (int ref : refs)
         {
@@ -2338,12 +2732,14 @@ void LuaHost::OnNetMessage(char direction, const std::string& modId, const std::
                 if (!Decode(L, data, pos, 0) || pos != data.size())
                 {
                     lua_pop(L, 1);
-                    LOG_WARN("[%s] net message '%s' from %d is malformed", Who(mod, side).c_str(), event.c_str(), from);
+                    LOG_WARN("[%s] net message '%s' from %d is malformed", who.c_str(), event.c_str(), from);
                     return;
                 }
             }
             lua_pushinteger(L, from);
-            Call(2, 0, Who(mod, side));
+            Call(2, 0, who);
+            if (gen != g_generation || !L)
+                return; // моды перезагружены внутри обработчика
         }
         return;
     }
@@ -2373,25 +2769,44 @@ void LuaHost::PollInput(bool active)
 {
     if (!L)
         return;
-    for (auto& mod : g_mods)
+    // Обход по индексам, ссылки — только до Call(): обработчик может через очередь
+    // сообщений дотянуться до LoadAll (g_mods.clear + переаллокация), и Mod&/Bind&
+    // станут висячими. После каждого Call сверяем поколение и выходим целиком —
+    // продолжать нечего: при reload все привязки уже перерегистрированы заново.
+    for (size_t mi = 0; mi < g_mods.size(); ++mi)
     {
-        if (!mod.loaded)
+        if (!g_mods[mi].loaded)
             continue;
-        for (size_t i = 0; i < mod.binds.size(); ++i)
+        for (size_t i = 0; i < g_mods[mi].binds.size(); ++i)
         {
-            Bind& b = mod.binds[i];
-            bool down = active && (GetAsyncKeyState(b.vk) & 0x8000) != 0 && ModifiersMatch(b);
-            if (down && !b.wasDown)
+            uint64_t gen = g_generation;
+            int vk = g_mods[mi].binds[i].vk;
+            bool ctrl = g_mods[mi].binds[i].ctrl;
+            bool shift = g_mods[mi].binds[i].shift;
+            bool alt = g_mods[mi].binds[i].alt;
+            bool wasDown = g_mods[mi].binds[i].wasDown;
+            Bind tmp{ g_mods[mi].binds[i].key, vk, ctrl, shift, alt,
+                      g_mods[mi].binds[i].ref, wasDown };
+            bool isDown = active && (GetAsyncKeyState(tmp.vk) & 0x8000) != 0 &&
+                          ModifiersMatch(tmp);
+            if (isDown && !tmp.wasDown)
             {
-                b.wasDown = true;
-                lua_rawgeti(L, LUA_REGISTRYINDEX, b.ref);
-                lua_pushstring(L, b.key.c_str());
-                Call(1, 0, Who(mod, Client));
-                if (i >= mod.binds.size())
-                    break; // обработчик мог перезагрузить моды
+                g_mods[mi].binds[i].wasDown = true;
+                int ref = tmp.ref;
+                std::string key = tmp.key;
+                std::string who = Who(g_mods[mi], Client);
+                lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
+                lua_pushstring(L, key.c_str());
+                Call(1, 0, who);
+                if (gen != g_generation || !L)
+                    return; // моды перезагружены (или Lua закрыт) внутри обработчика
             }
-            else if (!down)
-                b.wasDown = false;
+            else if (!isDown)
+            {
+                if (gen != g_generation || !L)
+                    return;
+                g_mods[mi].binds[i].wasDown = false;
+            }
         }
     }
 }

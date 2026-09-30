@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "CrashHandler.h"
+#include "Hooks.h"
 #include "Overlay.h"
 #include "GraphicsTab.h"
 #include "Console.h"
@@ -13,6 +14,9 @@
 
 #include <GL/gl.h>
 #include <atomic>
+#include <algorithm>
+#include <vector>
+#include <fstream>
 #include <filesystem>
 #include <map>
 
@@ -93,6 +97,7 @@ namespace
 
     LRESULT CALLBACK WndProc(HWND wnd, UINT msg, WPARAM wp, LPARAM lp)
     {
+        Hooks::InFlight inFlight;
         if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN)
             ++g_keysIn;
         else if (msg == WM_CHAR)
@@ -115,14 +120,29 @@ namespace
         return g_unicode ? CallWindowProcW(g_origProc, wnd, msg, wp, lp) : CallWindowProcA(g_origProc, wnd, msg, wp, lp);
     }
 
+    LONG_PTR CurrentProc(HWND hwnd, bool unicode)
+    {
+        return unicode ? GetWindowLongW(hwnd, GWL_WNDPROC) : GetWindowLongA(hwnd, GWL_WNDPROC);
+    }
+
     void RestoreWndProc()
     {
-        if (!g_hwnd.load() || !g_origProc)
+        HWND hwnd = g_hwnd.load();
+        if (!hwnd || !g_origProc)
             return;
+        // Как ScriptRunner: снимаем, только если поверх нас никто не встал
+        // (игра пересоздаёт окна, CEF/оверлей Steam тоже хукят WndProc).
+        // Чужую процедуру трогать нельзя — оставим как есть, но отчитаемся.
+        if (CurrentProc(hwnd, g_unicode) != reinterpret_cast<LONG_PTR>(WndProc))
+        {
+            LOG_WARN("Overlay: WndProc of %p is no longer ours — not touching it", hwnd);
+            g_origProc = nullptr;
+            return;
+        }
         if (g_unicode)
-            SetWindowLongW(g_hwnd.load(), GWL_WNDPROC, reinterpret_cast<LONG>(g_origProc));
+            SetWindowLongW(hwnd, GWL_WNDPROC, reinterpret_cast<LONG>(g_origProc));
         else
-            SetWindowLongA(g_hwnd.load(), GWL_WNDPROC, reinterpret_cast<LONG>(g_origProc));
+            SetWindowLongA(hwnd, GWL_WNDPROC, reinterpret_cast<LONG>(g_origProc));
         g_origProc = nullptr;
     }
 
@@ -422,6 +442,62 @@ namespace
     }
 }
 
+namespace
+{
+    struct Capture { std::string path; int x, y, w, h; };
+    std::vector<Capture> g_captures; // только главный поток игры (Lua и кадр — там же)
+
+    void RunCaptures()
+    {
+        if (g_captures.empty())
+            return;
+        std::vector<Capture> list;
+        list.swap(g_captures);
+        GLint vp[4] = {};
+        glGetIntegerv(GL_VIEWPORT, vp);
+        for (const Capture& c : list)
+        {
+            int x = std::max(0, c.x), y = std::max(0, c.y);
+            int w = std::min(c.w, vp[2] - x), h = std::min(c.h, vp[3] - y);
+            if (w <= 0 || h <= 0)
+                continue;
+            std::vector<uint8_t> px(static_cast<size_t>(w) * h * 4);
+            glPixelStorei(GL_PACK_ALIGNMENT, 4);
+            glReadBuffer(GL_BACK);
+            glReadPixels(x, vp[3] - y - h, w, h, 0x80E1 /* GL_BGRA */, GL_UNSIGNED_BYTE, px.data());
+            for (size_t i = 3; i < px.size(); i += 4)
+                px[i] = 255;
+            // BMP снизу вверх — как строки glReadPixels.
+            uint32_t dataSize = static_cast<uint32_t>(px.size());
+            uint8_t head[54] = { 'B', 'M' };
+            auto put = [&](int at, uint32_t v) { memcpy(head + at, &v, 4); };
+            put(2, 54 + dataSize);
+            put(10, 54);
+            put(14, 40);
+            put(18, static_cast<uint32_t>(w));
+            put(22, static_cast<uint32_t>(h));
+            head[26] = 1;
+            head[28] = 32;
+            put(34, dataSize);
+            std::string tmp = c.path + ".tmp";
+            {
+                std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
+                out.write(reinterpret_cast<const char*>(head), sizeof(head));
+                out.write(reinterpret_cast<const char*>(px.data()), px.size());
+                if (!out)
+                    continue;
+            }
+            MoveFileExA(tmp.c_str(), c.path.c_str(), MOVEFILE_REPLACE_EXISTING); // страница не увидит полфайла
+        }
+    }
+}
+
+void Overlay::QueueCapture(const std::string& path, int x, int y, int w, int h)
+{
+    if (g_captures.size() < 16)
+        g_captures.push_back({ path, x, y, w, h });
+}
+
 void Overlay::OnSwapBuffers(HDC dc)
 {
     if (g_shutdownRequested)
@@ -476,6 +552,7 @@ void Overlay::OnSwapBuffers(HDC dc)
     }
 
     GraphicsTab::Tick();
+    RunCaptures(); // до страницы и меню: в снимке — только картинка игры
 
     // Веб-слой рисуется под меню модлоадера: оно должно оставаться сверху.
     WebUi::OnFrame(g_hwnd.load());

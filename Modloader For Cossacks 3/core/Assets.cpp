@@ -5,6 +5,8 @@
 #include "Hooks.h"
 #include "ScriptPatch.h"
 #include "Content.h"
+#include "ModelDecimate.h"
+#include "TextureShrink.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -40,6 +42,7 @@ namespace
     std::set<std::string> g_pending;         // ещё не собранные (патчи или встроенные правки)
     std::map<std::string, std::string> g_workshop; // путь в игре -> файл из включённого мода Steam
     std::set<std::string> g_seen;            // dev-лог: какие скрипты движок читал
+    std::set<std::string> g_contentKeys;     // что добавил content.lua — чтобы можно было пересобрать
     std::recursive_mutex g_mutex;
     std::string g_gameDir;
 
@@ -321,13 +324,82 @@ namespace
         return false;
     }
 
+    // ---------- режим экономии памяти: срез верхних мипов больших текстур ----------
+    // modloader/lod.txt: "textures = 1024" — максимальная сторона (пиксели) у текстур зданий, окружения и декалей
+    // местности; больше — срезаем верхние мип-уровни (TextureShrink), -3/4 памяти на уровень. Юниты, интерфейс и
+    // плитки земли не трогаем: юниты и так 512, интерфейс живёт в пикселях экрана, землю видно крупно.
+    // Режем лениво — когда движок открывает файл (в MapPath), результат кладём в modloader/cache/tex/.
+    constexpr int kTexVersion = 1;
+    unsigned g_texMax = 0;           // 0 — выключено
+    std::set<std::string> g_texDone; // уже разобранные ключи: второй раз файл не читаем
+    int g_texShrunk = 0, g_texCached = 0;
+    long long g_texSavedBytes = 0;
+
+    bool ShrinkableTexture(const std::string& key)
+    {
+        if (key.size() < 5 || key.compare(key.size() - 4, 4, ".dds") != 0)
+            return false;
+        for (const char* dir : { "data\\materials\\buildings\\", "data\\materials\\env\\", "data\\terrain\\decals\\" })
+            if (key.rfind(dir, 0) == 0)
+                return true;
+        return false;
+    }
+
+    // Под g_mutex. Если текстура больше лимита — кладёт в g_map срезанную копию.
+    void MaybeShrinkTexture(const std::string& key)
+    {
+        if (!g_texMax || !ShrinkableTexture(key) || !g_texDone.insert(key).second)
+            return;
+        std::string source = (fs::path(g_gameDir) / key).string();
+        if (auto it = g_map.find(key); it != g_map.end())
+            source = it->second.get(); // текстура из мода (assets/) важнее файла игры
+        std::error_code ec;
+        fs::path out = fs::path(g_gameDir) / L"modloader" / L"cache" / L"tex" /
+                       (L"v" + std::to_wstring(kTexVersion) + L"_" + std::to_wstring(g_texMax)) / key;
+        if (fs::exists(out, ec) && fs::last_write_time(out, ec) >= fs::last_write_time(fs::path(source), ec))
+        {
+            g_map.insert_or_assign(key, GameApi::DelphiString(out.string()));
+            ++g_texCached;
+            return;
+        }
+        // Сначала только заголовок: большинство текстур и так меньше лимита.
+        std::string head(128, '\0');
+        {
+            std::ifstream in(fs::path(source), std::ios::binary);
+            if (!in || !in.read(head.data(), 128))
+                return;
+        }
+        unsigned side = 0;
+        if (!TextureShrink::TopSide(head, &side) || side <= g_texMax)
+            return;
+        std::string data, shrunk;
+        int dropped = 0;
+        if (!ReadAll(source, &data) || TextureShrink::Shrink(data, g_texMax, &shrunk, &dropped) != TextureShrink::Result::Shrunk)
+            return;
+        fs::create_directories(out.parent_path(), ec);
+        std::ofstream o(out, std::ios::binary | std::ios::trunc);
+        o.write(shrunk.data(), static_cast<std::streamsize>(shrunk.size()));
+        if (!o)
+        {
+            LOG_ERROR("[textures] не записать %s", out.string().c_str());
+            return;
+        }
+        o.close();
+        g_map.insert_or_assign(key, GameApi::DelphiString(out.string()));
+        ++g_texShrunk;
+        g_texSavedBytes += static_cast<long long>(data.size()) - static_cast<long long>(shrunk.size());
+        LOG_DEV("[textures] %s: -%d уровн., %.1f -> %.1f МБ", key.c_str(), dropped, data.size() / 1048576.0, shrunk.size() / 1048576.0);
+    }
+
     // Вызывается из перехватов: вернуть путь мода или исходный, если подмены нет.
     const char* __cdecl MapPath(const char* path)
     {
+        Hooks::InFlight inFlight; // файловые хуки — naked, считают здесь
         if (!path)
             return path;
         std::string key = Normalize(path, g_gameDirKey);
         std::lock_guard lock(g_mutex);
+        MaybeShrinkTexture(key);
         if (Console::Dev() && IsScript(key) && key.find(".inc") == std::string::npos && g_seen.insert(key).second)
             LOG_DEV("[files] engine reads %s", key.c_str());
         if (g_pending.count(key))
@@ -412,11 +484,13 @@ namespace
         {
             g_patches[p.key].push_back({ p.mod, "", p.text });
             g_pending.insert(p.key);
+            g_contentKeys.insert(p.key);
         }
         for (const Content::Link& l : r.links) // файлы мода по новому пути в игре (карты сражений)
         {
             g_map.insert_or_assign(l.key, GameApi::DelphiString(l.source));
             g_list.push_back({ l.mod + " (content)", l.key, l.source });
+            g_contentKeys.insert(l.key);
         }
         fs::path dir = fs::path(g_gameDir) / L"modloader" / L"cache" / L"generated";
         for (const Content::File& f : r.files)
@@ -437,6 +511,125 @@ namespace
     }
 }
 
+namespace
+{
+    // modloader/lod.txt: "units = 60" — оставить 60% треугольников у моделей юнитов. Нет файла или 100 —
+    // выключено. Модели читаются один раз при старте игры, так что менять надо до запуска.
+    // Упрощённые файлы кладём в modloader/cache/lod/<версия алгоритма>_<процент>/, пока исходник не
+    // изменился — заново не считаем.
+    constexpr int kLodVersion = 1;
+    int g_lodPct = 100;
+    // Что стояло в g_map под ключом модели до нашей подмены ("" — ничего): нужно, чтобы вернуть, как было,
+    // и чтобы не потерять модель из мода (assets/), поверх которой мы положили упрощённую.
+    std::map<std::string, std::string> g_lodPrev;
+
+    int ReadLodPercent()
+    {
+        std::ifstream in(fs::path(g_gameDir) / L"modloader" / L"lod.txt");
+        std::string line;
+        while (std::getline(in, line))
+        {
+            size_t eq = line.find('=');
+            if (eq == std::string::npos || line.find("units") == std::string::npos || line.find('#') < eq)
+                continue;
+            int pct = atoi(line.c_str() + eq + 1);
+            return std::clamp(pct, 10, 100);
+        }
+        return 100;
+    }
+
+    unsigned ReadTextureMax()
+    {
+        std::ifstream in(fs::path(g_gameDir) / L"modloader" / L"lod.txt");
+        std::string line;
+        while (std::getline(in, line))
+        {
+            size_t eq = line.find('=');
+            if (eq == std::string::npos || line.find("textures") == std::string::npos || line.find('#') < eq)
+                continue;
+            int px = atoi(line.c_str() + eq + 1);
+            return px >= 128 ? static_cast<unsigned>(std::min(px, 8192)) : 0;
+        }
+        return 0;
+    }
+
+    void RemoveLod()
+    {
+        for (const auto& [key, prev] : g_lodPrev)
+        {
+            if (prev.empty())
+                g_map.erase(key);
+            else
+                g_map.insert_or_assign(key, GameApi::DelphiString(prev));
+        }
+        g_lodPrev.clear();
+        std::erase_if(g_list, [](const Assets::Override& o) { return o.mod == "lod"; });
+    }
+
+    void ApplyLod(int pct)
+    {
+        RemoveLod();
+        g_lodPct = pct;
+        if (pct >= 100)
+            return;
+        fs::path srcDir = fs::path(g_gameDir) / L"data" / L"actors" / L"units";
+        fs::path outDir = fs::path(g_gameDir) / L"modloader" / L"cache" / L"lod" /
+                          (L"v" + std::to_wstring(kLodVersion) + L"_" + std::to_wstring(pct));
+        std::error_code ec;
+        fs::create_directories(outDir, ec);
+        int done = 0, cached = 0, failed = 0;
+        long before = 0, after = 0;
+        for (const auto& e : fs::directory_iterator(srcDir, ec))
+        {
+            if (!e.is_regular_file() || e.path().extension() != ".oss")
+                continue;
+            std::string key = Normalize((fs::path(L"data") / L"actors" / L"units" / e.path().filename()).string(), {});
+            // Модель мода (assets/) важнее файла игры — упрощаем то, что игра реально загрузит бы.
+            std::string source = e.path().string();
+            if (auto it = g_map.find(key); it != g_map.end())
+                source = it->second.get();
+            fs::path out = outDir / e.path().filename();
+            std::error_code te;
+            if (fs::exists(out, te) && fs::last_write_time(out, te) >= fs::last_write_time(fs::path(source), te))
+            {
+                ++cached;
+            }
+            else
+            {
+                std::string in, res, err;
+                ModelDecimate::Stats st;
+                if (!ReadAll(source, &in) || !ModelDecimate::DecimateOss(in, pct / 100.0f, &res, &st, &err))
+                {
+                    LOG_WARN("[lod] %s: %s", key.c_str(), err.empty() ? "не прочитан" : err.c_str());
+                    ++failed;
+                    continue;
+                }
+                std::ofstream o(out, std::ios::binary | std::ios::trunc);
+                o.write(res.data(), static_cast<std::streamsize>(res.size()));
+                if (!o)
+                {
+                    LOG_ERROR("[lod] не записать %s", out.string().c_str());
+                    ++failed;
+                    continue;
+                }
+                before += st.trisBefore;
+                after += st.trisAfter;
+                ++done;
+            }
+            if (auto it = g_map.find(key); it != g_map.end())
+                g_lodPrev[key] = it->second.get();
+            else
+                g_lodPrev[key] = "";
+            g_map.insert_or_assign(key, GameApi::DelphiString(out.string()));
+            g_list.push_back({ "lod", key, out.string() });
+        }
+        LOG_INFO("[lod] units = %d%%: упрощено %d, из кеша %d, ошибок %d%s", pct, done, cached, failed,
+                 done ? (" (треугольников " + std::to_string(before) + " -> " + std::to_string(after) + ")").c_str() : "");
+    }
+
+    void GenerateLod() { ApplyLod(ReadLodPercent()); }
+}
+
 bool Assets::Install()
 {
     g_gameDir = GameDir();
@@ -445,6 +638,10 @@ bool Assets::Install()
         g_pending.insert(key);
     Scan();
     GenerateContent();
+    g_texMax = ReadTextureMax();
+    if (g_texMax)
+        LOG_INFO("[textures] режим экономии памяти: текстуры зданий/окружения/декалей не больше %u px", g_texMax);
+    GenerateLod();
     ScanWorkshop();
     // Перехваты нужны всегда: встроенные правки скриптов (события модлоадера) собираются при чтении.
 
@@ -459,6 +656,35 @@ bool Assets::Install()
     return ok;
 }
 
+int Assets::ReloadContent()
+{
+    std::lock_guard lock(g_mutex);
+
+    // Правки content.lua отличаются от патчей из patches/ тем, что пришли
+    // текстом, а не файлом мода. Снимаем только их — чужие патчи не трогаем.
+    for (auto it = g_patches.begin(); it != g_patches.end();)
+    {
+        auto& sources = it->second;
+        std::erase_if(sources, [](const PatchSource& p) { return p.file.empty() && !p.text.empty(); });
+        it = sources.empty() ? g_patches.erase(it) : std::next(it);
+    }
+    // Файлы и ссылки, которые content положил раньше: без этого исчезнувший из
+    // content.lua юнит остался бы в игре до перезапуска.
+    for (const std::string& key : g_contentKeys)
+    {
+        g_map.erase(key);
+        std::erase_if(g_list, [&](const Assets::Override& o) { return o.game == key; });
+        g_pending.insert(key); // пересобрать при следующем чтении
+    }
+    size_t before = g_contentKeys.size();
+    g_contentKeys.clear();
+
+    GenerateContent();
+    LOG_INFO("[content] пересобрано: было %d файл(ов), стало %d",
+             static_cast<int>(before), static_cast<int>(g_contentKeys.size()));
+    return static_cast<int>(g_contentKeys.size());
+}
+
 bool Assets::Built(const std::string& key)
 {
     std::lock_guard lock(g_mutex);
@@ -466,6 +692,38 @@ bool Assets::Built(const std::string& key)
         return false;
     auto it = g_map.find(key);
     return it != g_map.end() && Normalize(it->second.get(), g_gameDirKey).rfind("modloader\\cache", 0) == 0;
+}
+
+int Assets::LodPercent()
+{
+    return g_lodPct;
+}
+
+std::string Assets::TextureStatus()
+{
+    std::lock_guard lock(g_mutex);
+    if (!g_texMax)
+        return "textures: выключено (в modloader/lod.txt: textures = 1024)";
+    char buf[200];
+    snprintf(buf, sizeof buf, "textures: не больше %u px; срезано %d (сэкономлено на диске-кеше %.0f МБ на файлах этого запуска), из кеша %d",
+             g_texMax, g_texShrunk, g_texSavedBytes / 1048576.0, g_texCached);
+    return buf;
+}
+
+void Assets::SetLod(int percent)
+{
+    percent = std::clamp(percent, 10, 100);
+    {
+        std::lock_guard lock(g_mutex);
+        ApplyLod(percent);
+    }
+    // Чтобы следующий запуск начался с того же: lod.txt — единственное место, где это записано.
+    std::ofstream out(fs::path(g_gameDir) / L"modloader" / L"lod.txt", std::ios::trunc);
+    out << "# units = процент треугольников у моделей юнитов (10..100, 100 = выключено).\n"
+        << "# В игре меняется командой .lod <процент>; файл пишется ею же.\n"
+        << "units = " << percent << "\n";
+    if (g_texMax)
+        out << "textures = " << g_texMax << "\n";
 }
 
 const std::vector<Assets::Override>& Assets::List()

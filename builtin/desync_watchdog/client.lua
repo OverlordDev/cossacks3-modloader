@@ -1,5 +1,5 @@
--- Снимок мира у этого игрока. Раз в cfg.interval секунд ИГРОВОГО времени (GetGameTime — время
--- симуляции, одно на всех в сетевой игре) считаем отпечаток и отправляем хосту.
+-- Снимок мира у этого игрока. Раз в cfg.interval секунд игрового времени, на шаге синхронизации
+-- сети (событие net.sync — один и тот же шаг симуляции у всех), считаем отпечаток и шлём хосту.
 -- Хост сравнивает отпечатки с одинаковым временем (server.lua) и присылает вердикт.
 --
 -- Отпечаток — не один хеш, а набор по частям: "p2.pos" (позиции юнитов игрока 2), "p2.hp",
@@ -105,6 +105,9 @@ events.on("game.start", function()
     end
 end)
 
+-- Калибровка objects — на обычном такте (она может звать Pascal, а внутри шага синхронизации
+-- исполнять свой код игры не стоит). Отправка снимка — тоже здесь, вне шага.
+local outbox = nil
 events.on("game.tick", function()
     if game.mode() == "offline" or not active then return end
     if fast == nil then
@@ -117,19 +120,31 @@ events.on("game.tick", function()
         fast = objects.status() == "fast"
         if not fast then log.warn("objects не в быстром режиме — сверка рассинхронов выключена на эту партию") end
     end
-    if not fast then return end
+    if outbox then
+        local o = outbox
+        outbox = nil
+        net.send("dw.fp", { t = o.key, c = o.c })
+        if o.p then sendDetail(o.key, o.p, o.detail) end
+    end
+end)
+
+-- net.sync — команда синхронизации из потока lockstep: все компьютеры выполняют её на ОДНОМ И ТОМ ЖЕ
+-- шаге симуляции (хост шлёт её каждые 0.1 с). Снимаем мир именно здесь — тогда отпечатки
+-- сравнимы, а игровое время в этот момент одинаково у всех и служит ключом.
+events.on("net.sync", function()
+    if not active or not fast then return end
     local t = native.GetGameTime()
     if not t then return end
     local slot = math.floor(t / cfg.interval)
     if not nextT then nextT = slot + 1; return end
     if slot < nextT then return end
     nextT = slot + 1
-    local key = string.format("%.3f", t)
     local p = want
     want = nil
     local c, detail = snapshot(p)
-    net.send("dw.fp", { t = key, c = c })
-    if p then sendDetail(key, p, detail) end
+    -- Ключом служит округлённое игровое время в миллисекундах. Строковое
+    -- форматирование float могло дать разные ключи на разных машинах.
+    outbox = { key = math.floor(t * 1000 + 0.5), c = c, p = p, detail = detail }
 end)
 
 net.on("dw.hello", function()

@@ -3,6 +3,7 @@
 #include "Console.h"
 #include "GameApi.h"
 #include "Hooks.h"
+#include "ModelConvert.h"
 #include "NativeCall.h"
 #include "Text.h"
 
@@ -56,6 +57,15 @@ namespace
         Names name, description;
     };
     std::vector<BattleDef> g_battles;
+
+    // model { file = "models/house.glb", osm = "data/actors/...", texture = "data/materials/....dds" }
+    struct ModelDef
+    {
+        std::string mod, file, osm, texture, image; // file/image — внутри мода; osm/texture — пути в игре
+        std::filesystem::path modDir;
+        bool playerColor = false;
+    };
+    std::vector<ModelDef> g_models;
 
     // ---------- локализация ----------
 
@@ -221,7 +231,7 @@ namespace
         }
         lua_newtable(L);
         lua_setfield(L, LUA_REGISTRYINDEX, "ml_defs");
-        for (const char* kind : { "unit", "nation", "battle" })
+        for (const char* kind : { "unit", "nation", "battle", "model" })
         {
             lua_pushstring(L, kind);
             lua_pushcclosure(L, l_collect, 1);
@@ -242,6 +252,27 @@ namespace
         {
             int t = lua_gettop(L);
             std::string kind = FieldString(L, t, "__kind");
+            if (kind == "model")
+            {
+                ModelDef m;
+                m.mod = mod.folder;
+                m.modDir = mod.dir;
+                m.file = FieldString(L, t, "file");
+                m.osm = FieldString(L, t, "osm");
+                m.texture = FieldString(L, t, "texture");
+                m.image = FieldString(L, t, "image");
+                lua_getfield(L, t, "playercolor");
+                m.playerColor = lua_toboolean(L, -1);
+                lua_pop(L, 1);
+                auto inside = [](const std::string& p) { return !p.empty() && p.find("..") == std::string::npos && p.find(':') == std::string::npos; };
+                if (!inside(m.file) || !inside(m.osm) || (!m.texture.empty() && !inside(m.texture)) || (!m.image.empty() && !inside(m.image)))
+                    LOG_ERROR("[content] %s/model '%s': file = \"models/x.glb\" and osm = \"data/actors/....osm\" are required",
+                              mod.folder.c_str(), m.file.c_str());
+                else
+                    g_models.push_back(std::move(m));
+                lua_pop(L, 1);
+                continue;
+            }
             std::string sid = Lower(FieldString(L, t, "sid"));
             std::string from = Lower(FieldString(L, t, "from"));
             std::string who = mod.folder + "/" + kind + " '" + sid + "'";
@@ -472,12 +503,145 @@ Content::Result Content::Generate(const std::vector<ModDir>& mods, const std::fu
     g_nations.clear();
     g_battles.clear();
     g_units.clear();
+    g_models.clear();
     for (const ModDir& m : mods)
         ReadModContent(m);
 
     Result r;
+    // Модели: .glb мода -> .osm (и текстура .dds) по пути в игре.
+    for (const ModelDef& m : g_models)
+    {
+        auto key = [](std::string p) {
+            for (char& c : p)
+                c = c == '/' ? '\\' : static_cast<char>(tolower(static_cast<unsigned char>(c)));
+            while (p.rfind(".\\", 0) == 0)
+                p.erase(0, 2);
+            return p;
+        };
+        auto readMod = [&](const std::string& rel, std::string* out) {
+            std::ifstream in(m.modDir / std::filesystem::path(std::u8string(rel.begin(), rel.end())), std::ios::binary);
+            std::ostringstream ss;
+            ss << in.rdbuf();
+            *out = ss.str();
+            return in.good() || !out->empty();
+        };
+        std::string who = m.mod + "/model '" + m.file + "'";
+        std::string glb, osm, error;
+        std::vector<std::string> images; // картинки материалов .glb (несколько — атлас)
+        int uvOutside = 0;
+        ModelConvert::Stats st;
+        if (!readMod(m.file, &glb))
+        {
+            LOG_ERROR("[content] %s: file not found", who.c_str());
+            continue;
+        }
+        // Одна модель или здание со стадиями: верхние объекты stage1..4 / stage1a..4a / death1..2 в .glb
+        // становятся <osm без .osm>1.osm ... / _death1.osm — как у зданий игры (building.inc/ontagstates.inc).
+        std::string base = m.osm;
+        if (base.size() > 4 && Lower(base.substr(base.size() - 4)) == ".osm")
+            base.resize(base.size() - 4);
+        bool any = false;
+        for (const std::string& part : ModelConvert::GlbParts(glb))
+        {
+            // Пристройка (леса, лестница, обломки) — отдельный объект игры <имя>a в подпапке attach/:
+            // attach -> attach/<имя>a.osm, stage2a -> attach/<имя>2a.osm, death1a -> attach/<имя>_death1a.osm.
+            size_t slash = base.find_last_of("/\\");
+            std::string dir = slash == std::string::npos ? std::string() : base.substr(0, slash + 1);
+            std::string name = base.substr(slash == std::string::npos ? 0 : slash + 1);
+            bool attach = part == "attach" || (!part.empty() && part.back() == 'a');
+            std::string suffix = part.empty() || part == "attach" ? ""
+                               : part.rfind("death", 0) == 0 ? "_" + part.substr(0, 6)
+                               : part.substr(5, 1);
+            std::string out = part.empty() ? m.osm
+                            : attach ? dir + "attach/" + name + suffix + "a.osm"
+                            : base + suffix + ".osm";
+            std::vector<std::string> partImages;
+            if (!ModelConvert::GlbToOsm(glb, part, &osm, &partImages, &st, &error))
+            {
+                LOG_ERROR("[content] %s: %s", who.c_str(), error.c_str());
+                continue;
+            }
+            if (images.empty())
+                images = std::move(partImages); // раскладка атласа одна на весь файл
+            uvOutside += st.uvOutside;
+            r.files.push_back({ key(out), m.mod, std::move(osm) });
+            any = true;
+            LOG_INFO("[content] model %s%s -> %s: %d vertices, %d triangles, %d mesh(es)", who.c_str(),
+                     part.empty() ? "" : (" [" + part + "]").c_str(), out.c_str(), st.verts, st.tris, st.meshes);
+        }
+        if (!any)
+        {
+            LOG_ERROR("[content] %s: no meshes converted", who.c_str());
+            continue;
+        }
+        if (images.size() > 1)
+            LOG_INFO("[content] %s: %zu textures -> one atlas", who.c_str(), images.size());
+        if (uvOutside > 0)
+            LOG_WARN("[content] %s: %d vertices have UV outside 0..1 (tiling) - clamped: with several textures "
+                     "a texture cannot repeat", who.c_str(), uvOutside);
+        // Текстура не указана — ищем её сами: материал игры с именем модели (ukrcen.osm -> материал
+        // ukrcen -> Material.Texture.image), как у зданий и юнитов игры.
+        std::string texture = m.texture;
+        if (texture.empty() && (!images.empty() || !m.image.empty()))
+        {
+            std::string name = Lower(fs::path(m.osm).stem().string());
+            for (const char* lib : { "data\\materials\\buildings\\buildings.mat", "data\\materials\\units\\units.mat",
+                                     "data\\materials\\env\\env.mat", "data\\materials\\misc\\misc.mat" })
+            {
+                std::string text = readBase(lib);
+                std::istringstream in(text);
+                std::string line;
+                bool ours = false;
+                while (std::getline(in, line) && texture.empty())
+                {
+                    size_t eq = line.find('=');
+                    if (eq == std::string::npos)
+                        continue;
+                    std::string k = line.substr(0, eq), v = line.substr(eq + 1);
+                    auto trim = [](std::string& t) {
+                        t.erase(0, t.find_first_not_of(" \t\r"));
+                        t.erase(t.find_last_not_of(" \t\r") + 1);
+                    };
+                    trim(k);
+                    trim(v);
+                    if (k == "Material.Name")
+                        ours = Lower(v) == name;
+                    else if (ours && k == "Material.Texture.image")
+                        texture = v;
+                }
+                if (!texture.empty())
+                    break;
+            }
+            if (texture.empty())
+                LOG_ERROR("[content] %s: no game material '%s' found for the texture - set texture = \"data/materials/....dds\"",
+                          who.c_str(), name.c_str());
+            else
+                LOG_INFO("[content] %s: texture -> %s (material '%s')", who.c_str(), texture.c_str(), name.c_str());
+        }
+        if (texture.empty())
+            continue;
+        if (!m.image.empty())
+        {
+            std::string one;
+            if (!readMod(m.image, &one))
+            {
+                LOG_ERROR("[content] %s: image %s not found", who.c_str(), m.image.c_str());
+                continue;
+            }
+            if (images.size() > 1)
+                LOG_WARN("[content] %s: image = replaces %zu textures of the .glb with one", who.c_str(), images.size());
+            images = { one };
+        }
+        std::string dds;
+        if (images.empty() || images[0].empty())
+            LOG_ERROR("[content] %s: no texture in the .glb (give the material an image or set image = \"...png\")", who.c_str());
+        else if (!ModelConvert::ImageToDds(images, m.playerColor, &dds, &error))
+            LOG_ERROR("[content] %s: %s", who.c_str(), error.c_str());
+        else
+            r.files.push_back({ key(texture), m.mod, std::move(dds) });
+    }
     if (g_nations.empty() && g_units.empty() && g_battles.empty())
-        return r;
+        return r; // модели уже в r
     const std::string me = "content";
     std::map<std::string, std::string> patch; // ключ файла -> текст патча
     auto add = [&](const std::string& key, const std::string& text) { patch[key] += text; };
@@ -556,6 +720,29 @@ Content::Result Content::Generate(const std::vector<ModDir>& mods, const std::fu
 
         // Здания нации: каждое <шаблон>xxx.prop -> <нация>xxx.prop (та же модель, свой sid).
         std::string buildingsObjects = readBase(kBuildingsObjects);
+        // Точки зданий (куда крестьяне сдают ресурсы, где стоят строители, откуда выходят юниты, декаль)
+        // игра берёт из objcustom.cfg по sid (_country_InitObjCustom). Без блока у клона все точки
+        // нулевые: ресурсы несут в центр здания ("resourcepoint on collision"), выход из здания ломается.
+        const std::string kObjCustom = "data\\game\\var\\objcustom.cfg";
+        std::string objCustom = readBase(kObjCustom);
+        std::string newObjCustom;
+        auto cloneObjCustom = [&](const std::string& oldSid, const std::string& newSid) {
+            size_t at = objCustom.find("      sid = " + oldSid + "\r\n");
+            if (at == std::string::npos)
+                at = objCustom.find("      sid = " + oldSid + "\n");
+            if (at == std::string::npos)
+                return; // у здания нет своих точек и в оригинале
+            size_t begin = objCustom.rfind("   [*] : struct.begin", at);
+            size_t end = objCustom.find("\n   struct.end", at);
+            if (begin == std::string::npos || end == std::string::npos)
+                return;
+            end = objCustom.find('\n', end + 1);
+            std::string block = objCustom.substr(begin, (end == std::string::npos ? objCustom.size() : end) - begin);
+            block = ReplacePropValue(block, "sid", oldSid, newSid);
+            while (!block.empty() && (block.back() == '\n' || block.back() == '\r'))
+                block.pop_back();
+            newObjCustom += block + "\r\n";
+        };
         for (const NationDef& n : nations)
         {
             int count = 0;
@@ -578,6 +765,7 @@ Content::Result Content::Generate(const std::vector<ModDir>& mods, const std::fu
                     added.replace(added.find(entry), entry.size(), "\\data\\objects\\buildings\\" + newSid + ".prop");
                     add(kBuildingsObjects, InsertAfter(line, added));
                 }
+                cloneObjCustom(oldSid, newSid);
                 g_locAlias[newSid] = oldSid;
                 ++count;
             }
@@ -587,6 +775,8 @@ Content::Result Content::Generate(const std::vector<ModDir>& mods, const std::fu
             LOG_INFO("[content] nation %s (id %d, like %s) from %s: %d building(s)", n.sid.c_str(), n.id, n.from.c_str(),
                      n.mod.c_str(), count);
         }
+        if (!newObjCustom.empty())
+            add(kObjCustom, "@find\r\nsection.begin\r\n@with\r\nsection.begin\r\n" + newObjCustom + "\r\n");
     }
 
     if (!nations.empty())
@@ -836,27 +1026,38 @@ namespace
 
     struct Decision { int text; const char* value; };
     thread_local Decision g_decision; // хук возвращает указатель — у каждого потока свой
+    // Язык читают/обновляют разные потоки (хук локализации + фоновые): всё под мьютексом.
+    // Вызов натива игры оставлен ВНЕ лока (он сам может читать локализацию через этот же хук),
+    // под локом — только счётчик, чтение и запись кэша.
+    std::mutex g_langMutex;
     std::string g_lang;
     int g_langCheck = 0;
 
     std::string CurrentLang()
     {
-        if (g_lang.empty() || ++g_langCheck % 500 == 0)
         {
-            if (const NativeCall::Signature* sig = NativeCall::Find("GetLocaleTableListFileName"))
+            std::lock_guard lock(g_langMutex);
+            if (!g_lang.empty() && ++g_langCheck % 500 != 0)
+                return g_lang;
+        }
+        std::string fresh;
+        if (const NativeCall::Signature* sig = NativeCall::Find("GetLocaleTableListFileName"))
+        {
+            NativeCall::Value v;
+            std::string error;
+            if (NativeCall::Invoke(*sig, {}, &v, &error))
             {
-                NativeCall::Value v;
-                std::string error;
-                if (NativeCall::Invoke(*sig, {}, &v, &error))
-                {
-                    std::string p = Lower(v.s);
-                    size_t e = p.find_last_of("\\/");
-                    size_t b = e == std::string::npos ? std::string::npos : p.find_last_of("\\/", e - 1);
-                    if (b != std::string::npos)
-                        g_lang = p.substr(b + 1, e - b - 1);
-                }
+                std::string p = Lower(v.s);
+                size_t e = p.find_last_of("\\/");
+                size_t b = e == std::string::npos ? std::string::npos : p.find_last_of("\\/", e - 1);
+                if (b != std::string::npos)
+                    fresh = p.substr(b + 1, e - b - 1);
             }
         }
+        std::lock_guard lock(g_langMutex);
+        ++g_langCheck;
+        if (!fresh.empty())
+            g_lang = fresh;
         return g_lang;
     }
 
@@ -876,6 +1077,7 @@ namespace
     // null — как есть; text=1 — вернуть value; text=0 — искать по ключу value (родитель).
     Decision* __cdecl DecideLocale(const char* table, const char* key)
     {
+        Hooks::InFlight inFlight; // naked-хук выше считает здесь
         if (!key || !*key)
             return nullptr;
         thread_local bool inside = false; // натив языка сам может читать локализацию
@@ -952,13 +1154,15 @@ bool Content::InstallLocale()
 
 void Content::Print()
 {
-    if (g_nations.empty() && g_units.empty() && g_battles.empty())
+    if (g_nations.empty() && g_units.empty() && g_battles.empty() && g_models.empty())
     {
         Console::Print("No content.lua definitions. A mod can add nations and unit types: see MODDING.md");
         return;
     }
     for (const NationDef& n : g_nations)
         Console::Print("  nation %-10s id %-3d like %-4s  (%s)", n.sid.c_str(), n.id, n.from.c_str(), n.mod.c_str());
+    for (const ModelDef& m : g_models)
+        Console::Print("  model  %-24s -> %s  (%s)", m.file.c_str(), m.osm.c_str(), m.mod.c_str());
     for (const BattleDef& b : g_battles)
         Console::Print("  battle %-14s like %-14s map %s  (%s)", b.sid.c_str(), b.from.c_str(), b.map.c_str(), b.mod.c_str());
     for (const UnitDef& u : g_units)

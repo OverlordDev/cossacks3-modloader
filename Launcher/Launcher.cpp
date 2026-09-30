@@ -12,7 +12,9 @@
 // Без аргументов лаунчер ищет cossacks.exe рядом с собой — так его можно просто положить в папку игры.
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <TlHelp32.h>
 
+#include <cstring>
 #include <string>
 
 #include "Splash.h"
@@ -82,6 +84,90 @@ namespace
         return space == std::wstring::npos ? command : command.substr(0, space);
     }
 
+    // Адрес LoadLibraryW В ЧУЖОМ процессе: база его kernel32 (Toolhelp) + разбор
+    // export table чтением из его памяти. Адрес из нашего процесса больше не
+    // используется: совпадение баз системных DLL — лишь обычное, но не
+    // гарантированное поведение ASLR (другая сессия/патч — и инъекция ломалась).
+    void* GetRemoteProcAddress(HANDLE process, const wchar_t* module, const char* proc)
+    {
+        DWORD pid = GetProcessId(process);
+        HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, pid);
+        if (snap == INVALID_HANDLE_VALUE)
+            return nullptr;
+        ULONGLONG base = 0;
+        MODULEENTRY32W me;
+        me.dwSize = sizeof(me);
+        for (BOOL ok = Module32FirstW(snap, &me); ok; ok = Module32NextW(snap, &me))
+        {
+            if (_wcsicmp(me.szModule, module) == 0)
+            {
+                base = reinterpret_cast<ULONGLONG>(me.modBaseAddr);
+                break;
+            }
+        }
+        CloseHandle(snap);
+        if (!base || base > 0xFFFFFFFFULL)
+            return nullptr; // 32-битный процесс: база обязана влезать в 32 бита
+        auto read = [&](ULONGLONG addr, void* buf, size_t n) {
+            SIZE_T done = 0;
+            return ReadProcessMemory(process, reinterpret_cast<LPCVOID>(addr), buf, n, &done) &&
+                   done == n;
+        };
+        IMAGE_DOS_HEADER dos{};
+        if (!read(base, &dos, sizeof(dos)) || dos.e_magic != IMAGE_DOS_SIGNATURE)
+            return nullptr;
+        IMAGE_NT_HEADERS32 nt{};
+        if (!read(base + dos.e_lfanew, &nt, sizeof(nt)) || nt.Signature != IMAGE_NT_SIGNATURE)
+            return nullptr;
+        const auto& expDir = nt.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
+        if (!expDir.VirtualAddress || !expDir.Size)
+            return nullptr;
+        // Заголовки целиком читать не будем — тянем таблицу точечно, с проверками границ.
+        auto inRange = [&](ULONGLONG addr, size_t n) {
+            return addr >= base + expDir.VirtualAddress &&
+                   addr + n <= base + expDir.VirtualAddress + expDir.Size;
+        };
+        DWORD namesRva = 0, funcsRva = 0, ordsRva = 0, count = 0;
+        // IMAGE_EXPORT_DIRECTORY: NumberOfNames+20, AddressOfFunctions+28, Names+32, Ordinals+36.
+        if (!read(base + expDir.VirtualAddress + 24, &count, 4))
+            return nullptr;
+        if (count == 0 || count > 100000)
+            return nullptr;
+        if (!read(base + expDir.VirtualAddress + 28, &funcsRva, 4) ||
+            !read(base + expDir.VirtualAddress + 32, &namesRva, 4) ||
+            !read(base + expDir.VirtualAddress + 36, &ordsRva, 4))
+            return nullptr;
+        size_t want = strlen(proc);
+        char name[256];
+        for (DWORD i = 0; i < count; ++i)
+        {
+            DWORD nameRva = 0;
+            ULONGLONG nameAddr = base + namesRva + static_cast<ULONGLONG>(i) * 4;
+            if (!inRange(nameAddr, 4) || !read(nameAddr, &nameRva, 4))
+                return nullptr;
+            ULONGLONG strAddr = base + nameRva;
+            if (strAddr < base || strAddr + want + 1 >= base + 0x10000000ULL)
+                continue;
+            if (!read(strAddr, name, want + 1))
+                continue;
+            if (memcmp(name, proc, want + 1) != 0)
+                continue;
+            WORD ord = 0;
+            ULONGLONG ordAddr = base + ordsRva + static_cast<ULONGLONG>(i) * 2;
+            if (!inRange(ordAddr, 2) || !read(ordAddr, &ord, 2))
+                return nullptr;
+            DWORD funcRva = 0;
+            ULONGLONG funcAddr = base + funcsRva + static_cast<ULONGLONG>(ord) * 4;
+            if (!inRange(funcAddr, 4) || !read(funcAddr, &funcRva, 4) || !funcRva)
+                return nullptr;
+            // Форварды (RVA внутри export directory) не поддерживаем — такого у LoadLibraryW нет.
+            if (funcRva >= expDir.VirtualAddress && funcRva < expDir.VirtualAddress + expDir.Size)
+                return nullptr;
+            return reinterpret_cast<void*>(base + funcRva);
+        }
+        return nullptr;
+    }
+
     // Загрузить нашу DLL в чужой процесс: путь пишем в его память и зовём там LoadLibraryW.
     bool Inject(HANDLE process, const std::wstring& dll)
     {
@@ -93,9 +179,26 @@ namespace
         bool ok = WriteProcessMemory(process, remote, dll.c_str(), bytes, nullptr) != FALSE;
         if (ok)
         {
-            // kernel32 загружен в каждом процессе по одному адресу, так что адрес из нашего годится.
             auto loadLibrary = reinterpret_cast<LPTHREAD_START_ROUTINE>(
-                GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "LoadLibraryW"));
+                GetRemoteProcAddress(process, L"kernel32.dll", "LoadLibraryW"));
+            // На части Windows kernel32!LoadLibraryW — forwarder в KernelBase.
+            // GetRemoteProcAddress намеренно не исполняет forwarder-строки, поэтому
+            // пробуем реальный экспорт KernelBase напрямую.
+            if (!loadLibrary)
+                loadLibrary = reinterpret_cast<LPTHREAD_START_ROUTINE>(
+                    GetRemoteProcAddress(process, L"KernelBase.dll", "LoadLibraryW"));
+            // Последний fallback для старых/нестандартных систем: у 32-битной
+            // игры системные DLL обычно разделяют адрес, а старый путь через
+            // локальный kernel32 уже был рабочим. Это сохраняет запуск даже если
+            // Toolhelp/ReadProcessMemory временно не отдаёт таблицу экспорта.
+            if (!loadLibrary)
+                loadLibrary = reinterpret_cast<LPTHREAD_START_ROUTINE>(
+                    GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "LoadLibraryW"));
+            if (!loadLibrary)
+            {
+                VirtualFreeEx(process, remote, 0, MEM_RELEASE);
+                return false;
+            }
             HANDLE thread = CreateRemoteThread(process, nullptr, 0, loadLibrary, remote, 0, nullptr);
             ok = thread != nullptr;
             if (thread)

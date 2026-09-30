@@ -49,6 +49,8 @@ local function checkHandle(h)
     return h
 end
 
+-- units.selected(): что выделил игрок (юниты и здания). Возврат: { handle, ... } (пусто — {}).
+-- Сторона: только server/shared/страница (нужен game.exec). Ошибок не кидает.
 function units.selected()
     local out = {}
     for _, v in ipairs(split(run([[
@@ -61,6 +63,8 @@ ML_RET(s);]]), F)) do
     return out
 end
 
+-- units.info(handle): состояние объекта. Парам: handle — хендл. Возврат: { handle, sid, player, hp, maxhp, x, z, dead } или nil (нет объекта).
+-- Сторона: только server/shared/страница. Ошибки: handle не число.
 function units.info(handle)
     local h = checkHandle(handle)
     local f = split(run(string.format([[
@@ -78,6 +82,8 @@ ML_RET(gObjProp[cid][id].sid + #1 + IntToStr(pl) + #1 + IntToStr(TObj(pobj).hp) 
              x = num(f[5]), z = num(f[6]), dead = f[7] == "True" }
 end
 
+-- units.orders(handle): очередь приказов ([1] — текущий). Парам: handle — хендл. Возврат: { { type, target, x, z }, ... } (пусто — {}).
+-- Сторона: только server/shared/страница. Ошибки: handle не число.
 function units.orders(handle)
     local h = checkHandle(handle)
     local out = {}

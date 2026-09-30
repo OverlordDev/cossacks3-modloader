@@ -24,6 +24,7 @@ namespace
 
     BOOL WINAPI hkSwapBuffers(HDC dc)
     {
+        Hooks::InFlight inFlight;
         Overlay::OnSwapBuffers(dc); // меню рисуется поверх готового кадра
         BOOL result = oSwapBuffers(dc);
         LARGE_INTEGER now;

@@ -1,0 +1,62 @@
+{
+  "name": "cossacks3-modloader-api",
+  "displayName": "Cossacks 3 Modloader API",
+  "description": "Lua IntelliSense for Cossacks 3 Modloader API files",
+  "version": "0.1.0",
+  "publisher": "cossacks3-modloader",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Debuggers"
+  ],
+  "keywords": [
+    "cossacks 3",
+    "modloader",
+    "lua",
+    "intellisense"
+  ],
+  "activationEvents": [
+    "onLanguage:lua",
+    "onCommand:modloader.reloadApi",
+    "onCommand:modloader.showApiPath"
+  ],
+  "main": "extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "modloader.reloadApi",
+        "title": "Modloader: Reload API"
+      },
+      {
+        "command": "modloader.showApiPath",
+        "title": "Modloader: Show API Path"
+      }
+    ],
+    "configuration": {
+      "title": "Cossacks 3 Modloader",
+      "properties": {
+        "modloader.apiPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional absolute path to a Modloader api directory. Empty means automatic discovery."
+        },
+        "modloader.autoDiscover": {
+          "type": "boolean",
+          "default": true,
+          "description": "Find api next to modloader/mods/<mod> or in the workspace."
+        },
+        "modloader.showSourceInHover": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the API source file and line in hover documentation."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "check": "node --check extension.js"
+  }
+}

@@ -1,10 +1,38 @@
 #pragma once
 
 // Тонкая обёртка над MinHook.
+#include <atomic>
+
 namespace Hooks
 {
     bool Init();
     void Shutdown();
+
+    // Счётчик потоков, выполняющих сейчас наш detour-код. MinHook при DisableHook
+    // не ждёт уже вошедших: выгрузка DLL раньше их выхода = use-after-free
+    // (SwapBuffers, WndProc, файловые хуки). Ставим Hooks::InFlight guard первой
+    // строкой каждого detour, а при выгрузке ждём WaitForZero вместо Sleep(200).
+    inline std::atomic<long> g_inFlight{ 0 };
+
+    class InFlight
+    {
+    public:
+        InFlight() { ++g_inFlight; }
+        ~InFlight() { --g_inFlight; }
+    };
+
+    // Ждать обнуления счётчика (новые вызовы после Shutdown невозможны — хуки сняты).
+    // Возвращает false по таймауту (тогда выгрузка всё равно идёт дальше, но с варнингом).
+    inline bool WaitForZero(DWORD timeoutMs)
+    {
+        DWORD waited = 0;
+        while (g_inFlight.load() != 0 && waited < timeoutMs)
+        {
+            Sleep(10);
+            waited += 10;
+        }
+        return g_inFlight.load() == 0;
+    }
 
     // Создаёт и сразу включает хук. original получит трамплин на оригинальную функцию.
     bool CreateRaw(const char* name, void* target, void* detour, void** original);

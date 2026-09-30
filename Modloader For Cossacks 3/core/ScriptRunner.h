@@ -23,5 +23,10 @@ namespace ScriptRunner
     //   ML_ARG        — строка-аргумент (arg)
     //   ML_RET(expr)  — вернуть строковое значение в *result
     // false — ошибка компиляции/исключение (подробности в логе).
-    bool Call(const std::string& code, const std::string& arg, std::string* result);
+    // createdState (необязательный) — пришлось ли завести новое состояние в
+    // машине GUI. Движок кэширует скомпилированный Pascal ПО ТЕКСТУ, и каждый
+    // новый текст живёт до конца партии: снять состояние нечем. По этому счёту
+    // видно, какой мод клеит значения в код вместо передачи их аргументом.
+    bool Call(const std::string& code, const std::string& arg, std::string* result,
+              bool* createdState = nullptr);
 }
